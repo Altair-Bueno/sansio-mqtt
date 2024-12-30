@@ -4,9 +4,9 @@ use super::*;
 
 pub struct Subscribe<'input> {
     pub packet_id: NonZero<u16>,
-    
+
     pub subscriptions: Vec<Subscription<'input>>,
-    
+
     pub properties: SubscribeProperties<'input>,
 }
 
@@ -17,7 +17,6 @@ pub struct SubscribeHeaderFlags;
 #[derive(Debug, PartialEq, Clone)]
 
 pub struct Subscription<'input> {
-    
     pub topic: MQTTString<'input>,
     pub qos: Qos,
     pub no_local: bool,
@@ -29,6 +28,6 @@ pub struct Subscription<'input> {
 
 pub struct SubscribeProperties<'input> {
     pub subscription_identifier: Option<NonZero<u64>>,
-    
+
     pub user_properties: Vec<(MQTTString<'input>, MQTTString<'input>)>,
 }
