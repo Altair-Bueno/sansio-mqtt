@@ -1,0 +1,13 @@
+[package]
+name = "sansio-mqtt5"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[features]
+
+[dependencies]
+winnow = { workspace = true }
+strum = { workspace = true, features = ["derive"] }
+beef = { workspace = true }
+thiserror = { workspace = true }
