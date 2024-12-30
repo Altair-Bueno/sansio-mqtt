@@ -68,39 +68,39 @@ impl<'input> DisconnectProperties<'input> {
             + FromExternalError<Input, InvalidPropertyTypeError>
             + FromExternalError<Input, UnknownFormatIndicatorError>,
     {
-        combinator::trace(type_name::<Self>(), |input: &mut Input| {
-            // TODO: Can't use binary::length_and_then because it doesn't work
-            let data = binary::length_take(variable_byte_integer).parse_next(input)?;
-            let mut input = input.clone().update_slice(data);
-            let input = &mut input;
+        combinator::trace(
+            type_name::<Self>(),
+            binary::length_and_then(variable_byte_integer, |input: &mut Input| {
+                let mut properties = Self::default();
 
-            let mut properties = Self::default();
+                let mut parser = combinator::alt((
+                    combinator::eof.value(None),
+                    Property::parse(parser_settings).map(Some),
+                ));
 
-            let mut parser = combinator::alt((
-                combinator::eof.value(None),
-                Property::parse(parser_settings).map(Some),
-            ));
-
-            while let Some(p) = parser.parse_next(input)? {
-                match p {
-                    Property::SessionExpiryInterval(value) => {
-                        properties.session_expiry_interval.replace(value);
+                while let Some(p) = parser.parse_next(input)? {
+                    match p {
+                        Property::SessionExpiryInterval(value) => {
+                            properties.session_expiry_interval.replace(value);
+                        }
+                        Property::ReasonString(value) => {
+                            properties.reason_string.replace(value);
+                        }
+                        Property::UserProperty(key, value) => {
+                            properties.user_properties.push((key, value))
+                        }
+                        Property::ServerReference(value) => {
+                            properties.server_reference.replace(value);
+                        }
+                        _ => {
+                            return Err(ErrMode::Cut(Error::assert(input, "Invalid property type")))
+                        }
                     }
-                    Property::ReasonString(value) => {
-                        properties.reason_string.replace(value);
-                    }
-                    Property::UserProperty(key, value) => {
-                        properties.user_properties.push((key, value))
-                    }
-                    Property::ServerReference(value) => {
-                        properties.server_reference.replace(value);
-                    }
-                    _ => return Err(ErrMode::Cut(Error::assert(input, "Invalid property type"))),
                 }
-            }
 
-            Ok(properties)
-        })
+                Ok(properties)
+            }),
+        )
         .context(StrContext::Label(type_name::<Self>()))
     }
 }

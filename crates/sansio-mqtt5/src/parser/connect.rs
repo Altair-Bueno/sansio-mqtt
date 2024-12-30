@@ -161,68 +161,70 @@ impl<'input> ConnectProperties<'input> {
             + FromExternalError<Input, InvalidPropertyTypeError>
             + FromExternalError<Input, UnknownFormatIndicatorError>,
     {
-        combinator::trace(type_name::<Self>(), |input: &mut Input| {
-            // TODO: Can't use binary::length_and_then because it doesn't work
-            let data = binary::length_take(variable_byte_integer).parse_next(input)?;
-            let mut input = input.clone().update_slice(data);
-            let input = &mut input;
+        combinator::trace(
+            type_name::<Self>(),
+            binary::length_and_then(variable_byte_integer, |input: &mut Input| {
+                let mut properties = Self::default();
+                let mut authentication_method = None;
+                let mut authentication_data = None;
 
-            let mut properties = Self::default();
-            let mut authentication_method = None;
-            let mut authentication_data = None;
+                let mut parser = combinator::alt((
+                    combinator::eof.value(None),
+                    Property::parse(parser_settings).map(Some),
+                ));
 
-            let mut parser = combinator::alt((
-                combinator::eof.value(None),
-                Property::parse(parser_settings).map(Some),
-            ));
-
-            while let Some(p) = parser.parse_next(input)? {
-                match p {
-                    Property::SessionExpiryInterval(value) => {
-                        properties.session_expiry_interval.replace(value);
-                    }
-                    Property::ReceiveMaximum(value) => {
-                        properties.receive_maximum.replace(value);
-                    }
-                    Property::MaximumPacketSize(value) => {
-                        properties.maximum_packet_size.replace(value);
-                    }
-                    Property::TopicAliasMaximum(value) => {
-                        properties.topic_alias_maximum.replace(value);
-                    }
-                    Property::RequestResponseInformation(value) => {
-                        properties.request_response_information.replace(value);
-                    }
-                    Property::RequestProblemInformation(value) => {
-                        properties.request_problem_information.replace(value);
-                    }
-                    Property::AuthenticationMethod(value) => {
-                        authentication_method.replace(value);
-                    }
-                    Property::AuthenticationData(value) => {
-                        authentication_data.replace(value);
-                    }
-                    Property::UserProperty(key, value) => {
-                        properties.user_properties.push((key, value))
-                    }
-                    _ => return Err(ErrMode::Cut(Error::assert(input, "Invalid property type"))),
-                };
-            }
-
-            // It is a Protocol Error to include Authentication Data if there is no Authentication Method
-            properties.authentication = match (authentication_method, authentication_data) {
-                (None, None) => None,
-                (Some(method), None) => Some(AuthenticationKind::WithoutData { method }),
-                (Some(method), Some(data)) => Some(AuthenticationKind::WithData { method, data }),
-                (None, Some(_)) => {
-                    return Err(ErrMode::Cut(Error::assert(
-                        input,
-                        "Authentication Data without Authentication Method",
-                    )))
+                while let Some(p) = parser.parse_next(input)? {
+                    match p {
+                        Property::SessionExpiryInterval(value) => {
+                            properties.session_expiry_interval.replace(value);
+                        }
+                        Property::ReceiveMaximum(value) => {
+                            properties.receive_maximum.replace(value);
+                        }
+                        Property::MaximumPacketSize(value) => {
+                            properties.maximum_packet_size.replace(value);
+                        }
+                        Property::TopicAliasMaximum(value) => {
+                            properties.topic_alias_maximum.replace(value);
+                        }
+                        Property::RequestResponseInformation(value) => {
+                            properties.request_response_information.replace(value);
+                        }
+                        Property::RequestProblemInformation(value) => {
+                            properties.request_problem_information.replace(value);
+                        }
+                        Property::AuthenticationMethod(value) => {
+                            authentication_method.replace(value);
+                        }
+                        Property::AuthenticationData(value) => {
+                            authentication_data.replace(value);
+                        }
+                        Property::UserProperty(key, value) => {
+                            properties.user_properties.push((key, value))
+                        }
+                        _ => {
+                            return Err(ErrMode::Cut(Error::assert(input, "Invalid property type")))
+                        }
+                    };
                 }
-            };
-            Ok(properties)
-        })
+
+                // It is a Protocol Error to include Authentication Data if there is no Authentication Method
+                properties.authentication = match (authentication_method, authentication_data) {
+                    (None, None) => None,
+                    (Some(method), None) => Some(AuthenticationKind::WithoutData { method }),
+                    (Some(method), Some(data)) => {
+                        Some(AuthenticationKind::WithData { method, data })
+                    }
+                    (None, Some(_)) => {
+                        return Err(ErrMode::Cut(Error::assert(
+                            input,
+                            "Authentication Data without Authentication Method",
+                        )))
+                    }
+                };
+                Ok(properties)
+            }),
+        )
         .context(StrContext::Label(type_name::<Self>()))
     }
 }
@@ -241,48 +243,48 @@ impl<'input> WillProperties<'input> {
             + FromExternalError<Input, InvalidPropertyTypeError>
             + FromExternalError<Input, UnknownFormatIndicatorError>,
     {
-        combinator::trace(type_name::<Self>(), |input: &mut Input| {
-            // TODO: Can't use binary::length_and_then because it doesn't work
-            let data = binary::length_take(variable_byte_integer).parse_next(input)?;
-            let mut input = input.clone().update_slice(data);
-            let input = &mut input;
+        combinator::trace(
+            type_name::<Self>(),
+            binary::length_and_then(variable_byte_integer, |input: &mut Input| {
+                let mut properties = Self::default();
 
-            let mut properties = Self::default();
+                let mut parser = combinator::alt((
+                    combinator::eof.value(None),
+                    Property::parse(parser_settings).map(Some),
+                ));
 
-            let mut parser = combinator::alt((
-                combinator::eof.value(None),
-                Property::parse(parser_settings).map(Some),
-            ));
-
-            while let Some(p) = parser.parse_next(input)? {
-                match p {
-                    Property::WillDelayInterval(value) => {
-                        properties.will_delay_interval.replace(value);
+                while let Some(p) = parser.parse_next(input)? {
+                    match p {
+                        Property::WillDelayInterval(value) => {
+                            properties.will_delay_interval.replace(value);
+                        }
+                        Property::PayloadFormatIndicator(value) => {
+                            properties.payload_format_indicator.replace(value);
+                        }
+                        Property::MessageExpiryInterval(value) => {
+                            properties.message_expiry_interval.replace(value);
+                        }
+                        Property::ContentType(value) => {
+                            properties.content_type.replace(value);
+                        }
+                        Property::ResponseTopic(value) => {
+                            properties.response_topic.replace(value);
+                        }
+                        Property::CorrelationData(value) => {
+                            properties.correlation_data.replace(value);
+                        }
+                        Property::UserProperty(key, value) => {
+                            properties.user_properties.push((key, value))
+                        }
+                        _ => {
+                            return Err(ErrMode::Cut(Error::assert(input, "Invalid property type")))
+                        }
                     }
-                    Property::PayloadFormatIndicator(value) => {
-                        properties.payload_format_indicator.replace(value);
-                    }
-                    Property::MessageExpiryInterval(value) => {
-                        properties.message_expiry_interval.replace(value);
-                    }
-                    Property::ContentType(value) => {
-                        properties.content_type.replace(value);
-                    }
-                    Property::ResponseTopic(value) => {
-                        properties.response_topic.replace(value);
-                    }
-                    Property::CorrelationData(value) => {
-                        properties.correlation_data.replace(value);
-                    }
-                    Property::UserProperty(key, value) => {
-                        properties.user_properties.push((key, value))
-                    }
-                    _ => return Err(ErrMode::Cut(Error::assert(input, "Invalid property type"))),
                 }
-            }
 
-            Ok(properties)
-        })
+                Ok(properties)
+            }),
+        )
         .context(StrContext::Label(type_name::<Self>()))
     }
 }

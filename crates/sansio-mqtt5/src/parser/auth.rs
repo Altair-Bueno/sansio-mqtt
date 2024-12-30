@@ -67,53 +67,55 @@ impl<'input> AuthProperties<'input> {
             + FromExternalError<Input, InvalidPropertyTypeError>
             + FromExternalError<Input, UnknownFormatIndicatorError>,
     {
-        combinator::trace(type_name::<Self>(), |input: &mut Input| {
-            // TODO: Can't use binary::length_and_then because it doesn't work
-            let data = binary::length_take(variable_byte_integer).parse_next(input)?;
-            let mut input = input.clone().update_slice(data);
-            let input = &mut input;
+        combinator::trace(
+            type_name::<Self>(),
+            binary::length_and_then(variable_byte_integer, |input: &mut Input| {
+                let mut properties = Self::default();
+                let mut authentication_method = None;
+                let mut authentication_data = None;
 
-            let mut properties = Self::default();
-            let mut authentication_method = None;
-            let mut authentication_data = None;
+                let mut parser = combinator::alt((
+                    combinator::eof.value(None),
+                    Property::parse(parser_settings).map(Some),
+                ));
 
-            let mut parser = combinator::alt((
-                combinator::eof.value(None),
-                Property::parse(parser_settings).map(Some),
-            ));
-
-            while let Some(p) = parser.parse_next(input)? {
-                match p {
-                    Property::AuthenticationMethod(value) => {
-                        authentication_method.replace(value);
-                    }
-                    Property::AuthenticationData(value) => {
-                        authentication_data.replace(value);
-                    }
-                    Property::ReasonString(value) => {
-                        properties.reason_string.replace(value);
-                    }
-                    Property::UserProperty(key, value) => {
-                        properties.user_properties.push((key, value))
-                    }
-                    _ => return Err(ErrMode::Cut(Error::assert(input, "Invalid property type"))),
-                };
-            }
-
-            // It is a Protocol Error to include Authentication Data if there is no Authentication Method
-            properties.authentication = match (authentication_method, authentication_data) {
-                (None, None) => None,
-                (Some(method), None) => Some(AuthenticationKind::WithoutData { method }),
-                (Some(method), Some(data)) => Some(AuthenticationKind::WithData { method, data }),
-                (None, Some(_)) => {
-                    return Err(ErrMode::Cut(Error::assert(
-                        input,
-                        "Authentication Data without Authentication Method",
-                    )))
+                while let Some(p) = parser.parse_next(input)? {
+                    match p {
+                        Property::AuthenticationMethod(value) => {
+                            authentication_method.replace(value);
+                        }
+                        Property::AuthenticationData(value) => {
+                            authentication_data.replace(value);
+                        }
+                        Property::ReasonString(value) => {
+                            properties.reason_string.replace(value);
+                        }
+                        Property::UserProperty(key, value) => {
+                            properties.user_properties.push((key, value))
+                        }
+                        _ => {
+                            return Err(ErrMode::Cut(Error::assert(input, "Invalid property type")))
+                        }
+                    };
                 }
-            };
-            Ok(properties)
-        })
+
+                // It is a Protocol Error to include Authentication Data if there is no Authentication Method
+                properties.authentication = match (authentication_method, authentication_data) {
+                    (None, None) => None,
+                    (Some(method), None) => Some(AuthenticationKind::WithoutData { method }),
+                    (Some(method), Some(data)) => {
+                        Some(AuthenticationKind::WithData { method, data })
+                    }
+                    (None, Some(_)) => {
+                        return Err(ErrMode::Cut(Error::assert(
+                            input,
+                            "Authentication Data without Authentication Method",
+                        )))
+                    }
+                };
+                Ok(properties)
+            }),
+        )
         .context(StrContext::Label(type_name::<Self>()))
     }
 }
