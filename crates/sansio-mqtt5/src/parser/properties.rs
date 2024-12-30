@@ -27,7 +27,7 @@ impl<'input> Property<'input> {
         parser_settings: &'settings Settings,
     ) -> impl Parser<Input, Self, Error> + use<'input, 'settings, Input, Error>
     where
-        Input: Stream<Token = u8, Slice = &'input [u8]> + StreamIsPartial + Clone + 'input,
+        Input: Stream<Token = u8, Slice = &'input [u8]> + StreamIsPartial + Clone,
         Error: ParserError<Input>
             + FromExternalError<Input, Utf8Error>
             + FromExternalError<Input, InvalidQosError>

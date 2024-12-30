@@ -21,11 +21,7 @@ impl<'input> PingResp {
         _parser_settings: &'settings Settings,
     ) -> impl Parser<ByteInput, Self, ByteError> + use<'input, 'settings, ByteInput, ByteError, BitError>
     where
-        ByteInput: StreamIsPartial
-            + Stream<Token = u8, Slice = &'input [u8]>
-            + Clone
-            + UpdateSlice
-            + 'input,
+        ByteInput: StreamIsPartial + Stream<Token = u8, Slice = &'input [u8]> + Clone + UpdateSlice,
         ByteError: ParserError<ByteInput>,
         BitError: ParserError<(ByteInput, usize)> + ErrorConvert<ByteError>,
     {

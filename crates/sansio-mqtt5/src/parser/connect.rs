@@ -40,11 +40,7 @@ impl<'input> Connect<'input> {
         parser_settings: &'settings Settings,
     ) -> impl Parser<ByteInput, Self, ByteError> + use<'input, 'settings, ByteInput, ByteError, BitError>
     where
-        ByteInput: StreamIsPartial
-            + Stream<Token = u8, Slice = &'input [u8]>
-            + Clone
-            + UpdateSlice
-            + 'input,
+        ByteInput: StreamIsPartial + Stream<Token = u8, Slice = &'input [u8]> + Clone + UpdateSlice,
         ByteError: ParserError<ByteInput>
             + FromExternalError<ByteInput, Utf8Error>
             + FromExternalError<ByteInput, Utf8Error>
@@ -157,11 +153,7 @@ impl<'input> ConnectProperties<'input> {
         parser_settings: &'settings Settings,
     ) -> impl Parser<Input, Self, Error> + use<'input, 'settings, Input, Error>
     where
-        Input: Stream<Token = u8, Slice = &'input [u8]>
-            + UpdateSlice
-            + StreamIsPartial
-            + Clone
-            + 'input,
+        Input: Stream<Token = u8, Slice = &'input [u8]> + UpdateSlice + StreamIsPartial + Clone,
         Error: ParserError<Input>
             + AddContext<Input, StrContext>
             + FromExternalError<Input, Utf8Error>
@@ -241,11 +233,7 @@ impl<'input> WillProperties<'input> {
         parser_settings: &'settings Settings,
     ) -> impl Parser<Input, Self, Error> + use<'input, 'settings, Input, Error>
     where
-        Input: Stream<Token = u8, Slice = &'input [u8]>
-            + UpdateSlice
-            + StreamIsPartial
-            + Clone
-            + 'input,
+        Input: Stream<Token = u8, Slice = &'input [u8]> + UpdateSlice + StreamIsPartial + Clone,
         Error: ParserError<Input>
             + AddContext<Input, StrContext>
             + FromExternalError<Input, Utf8Error>

@@ -5,7 +5,7 @@ pub use binary::be_u32 as four_byte_integer;
 #[inline]
 pub fn variable_byte_integer<'input, Input, Error>(input: &mut Input) -> PResult<u64, Error>
 where
-    Input: StreamIsPartial + Stream<Token = u8> + 'input,
+    Input: StreamIsPartial + Stream<Token = u8>,
     Error: ParserError<Input> + AddContext<Input, StrContext>,
 {
     combinator::trace("variable_byte_integer", move |input: &mut Input| {
@@ -39,7 +39,7 @@ pub fn binary_data<'settings, 'input, Input, Error>(
     parser_settings: &'settings Settings,
 ) -> impl Parser<Input, Input::Slice, Error> + use<'input, 'settings, Input, Error>
 where
-    Input: StreamIsPartial + Stream<Token = u8> + 'input,
+    Input: StreamIsPartial + Stream<Token = u8>,
     Error: ParserError<Input> + AddContext<Input, StrContext>,
 {
     combinator::trace(
@@ -58,7 +58,7 @@ pub fn string_pair<'settings, 'input, Input, Error>(
 ) -> impl Parser<Input, (MQTTString<'input>, MQTTString<'input>), Error>
        + use<'input, 'settings, Input, Error>
 where
-    Input: StreamIsPartial + Stream<Token = u8, Slice = &'input [u8]> + 'input,
+    Input: StreamIsPartial + Stream<Token = u8, Slice = &'input [u8]>,
     Error: ParserError<Input> + FromExternalError<Input, Utf8Error> + AddContext<Input, StrContext>,
 {
     combinator::trace(
@@ -101,7 +101,7 @@ impl<'input> MQTTString<'input> {
     #[inline]
     pub fn parse<Input, Error>(parser_settings: &Settings) -> impl Parser<Input, Self, Error>
     where
-        Input: StreamIsPartial + Stream<Token = u8, Slice = &'input [u8]> + 'input,
+        Input: StreamIsPartial + Stream<Token = u8, Slice = &'input [u8]>,
         Error: ParserError<Input>
             + FromExternalError<Input, Utf8Error>
             + AddContext<Input, StrContext>,
@@ -123,7 +123,7 @@ impl<'input> PublishTopic<'input> {
     #[inline]
     pub fn parse<Input, Error>(parser_settings: &Settings) -> impl Parser<Input, Self, Error>
     where
-        Input: StreamIsPartial + Stream<Token = u8, Slice = &'input [u8]> + 'input,
+        Input: StreamIsPartial + Stream<Token = u8, Slice = &'input [u8]>,
         Error: ParserError<Input>
             + FromExternalError<Input, Utf8Error>
             + AddContext<Input, StrContext>,
@@ -184,7 +184,7 @@ impl FormatIndicator {
     #[inline]
     pub fn parse<'input, Input, Error>(input: &mut Input) -> PResult<Self, Error>
     where
-        Input: StreamIsPartial + Stream<Token = u8, Slice = &'input [u8]> + 'input,
+        Input: StreamIsPartial + Stream<Token = u8, Slice = &'input [u8]>,
         Error: ParserError<Input>
             + FromExternalError<Input, UnknownFormatIndicatorError>
             + AddContext<Input, StrContext>,
@@ -224,11 +224,7 @@ impl<'input> Subscription<'input> {
         parser_settings: &'settings Settings,
     ) -> impl Parser<ByteInput, Self, ByteError> + use<'input, 'settings, ByteInput, ByteError, BitError>
     where
-        ByteInput: StreamIsPartial
-            + Stream<Token = u8, Slice = &'input [u8]>
-            + Clone
-            + UpdateSlice
-            + 'input,
+        ByteInput: StreamIsPartial + Stream<Token = u8, Slice = &'input [u8]> + Clone + UpdateSlice,
         ByteError: ParserError<ByteInput>
             + FromExternalError<ByteInput, Utf8Error>
             + AddContext<ByteInput, StrContext>,
