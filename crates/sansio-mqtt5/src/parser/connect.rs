@@ -200,6 +200,14 @@ impl<'input> ConnectProperties<'input> {
                             authentication_data.replace(value);
                         }
                         Property::UserProperty(key, value) => {
+                            if properties.user_properties.len()
+                                >= parser_settings.max_user_properties_len
+                            {
+                                return Err(ErrMode::Cut(Error::assert(
+                                    input,
+                                    "User Properties length exceeds maximum",
+                                )));
+                            }
                             properties.user_properties.push((key, value))
                         }
                         _ => {
@@ -274,6 +282,14 @@ impl<'input> WillProperties<'input> {
                             properties.correlation_data.replace(value);
                         }
                         Property::UserProperty(key, value) => {
+                            if properties.user_properties.len()
+                                >= parser_settings.max_user_properties_len
+                            {
+                                return Err(ErrMode::Cut(Error::assert(
+                                    input,
+                                    "User Properties length exceeds maximum",
+                                )));
+                            }
                             properties.user_properties.push((key, value))
                         }
                         _ => {
