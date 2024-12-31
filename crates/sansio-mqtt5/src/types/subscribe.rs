@@ -4,9 +4,7 @@ use super::*;
 
 pub struct Subscribe<'input> {
     pub packet_id: NonZero<u16>,
-
-    pub subscriptions: Vec<Subscription<'input>>,
-
+    pub subscriptions: Vec1<Subscription<'input>>,
     pub properties: SubscribeProperties<'input>,
 }
 

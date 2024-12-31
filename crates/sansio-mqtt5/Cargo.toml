@@ -11,3 +11,4 @@ winnow = { workspace = true }
 strum = { workspace = true, features = ["derive"] }
 beef = { workspace = true }
 thiserror = { workspace = true }
+vec1 = { workspace = true }

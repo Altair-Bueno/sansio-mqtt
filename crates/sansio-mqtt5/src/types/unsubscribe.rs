@@ -4,10 +4,8 @@ use super::*;
 
 pub struct Unsubscribe<'input> {
     pub packet_id: NonZero<u16>,
-
     pub properties: UnsubscribeProperties<'input>,
-
-    pub topics: Vec<MQTTString<'input>>,
+    pub topics: Vec1<MQTTString<'input>>,
 }
 
 #[derive(Debug, PartialEq, Clone)]

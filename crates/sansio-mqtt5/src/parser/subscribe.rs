@@ -57,7 +57,8 @@ impl<'input> Subscribe<'input> {
                 .map(
                     move |(packet_id, properties, (subscriptions, _))| Subscribe {
                         packet_id,
-                        subscriptions,
+                        subscriptions: Vec1::try_from_vec(subscriptions)
+                            .expect("subscriptions length is guaranteed to be at least 1"),
                         properties,
                     },
                 ),

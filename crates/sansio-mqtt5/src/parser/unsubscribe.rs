@@ -51,7 +51,8 @@ impl<'input> Unsubscribe<'input> {
             )
                 .map(move |(packet_id, properties, (topics, _))| Unsubscribe {
                     packet_id,
-                    topics,
+                    topics: Vec1::try_from_vec(topics)
+                        .expect("topics length is guaranteed to be at least 1"),
                     properties,
                 }),
         )

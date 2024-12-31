@@ -11,6 +11,7 @@ use std::process::Stdio;
 
 use sansio_mqtt5::parser::Settings;
 use sansio_mqtt5::types::*;
+use vec1::vec1;
 use winnow::error::ContextError;
 use winnow::Parser as _;
 
@@ -192,7 +193,7 @@ fn assert_parser_handles_example_subscribe_packets() {
                 MQTTString::new("test").unwrap(),
             )],
         },
-        subscriptions: vec![Subscription {
+        subscriptions: vec1![Subscription {
             topic_filter: MQTTString::new("test").unwrap(),
             qos: Qos::AtMostOnce,
             no_local: false,
@@ -261,7 +262,7 @@ fn assert_parser_handles_example_unsubscribe_packets() {
                 MQTTString::new("test").unwrap(),
             )],
         },
-        topics: vec![
+        topics: vec1![
             MQTTString::new("test").unwrap(),
             MQTTString::new("a/topic").unwrap(),
         ],
