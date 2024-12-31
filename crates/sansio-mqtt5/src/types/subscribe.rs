@@ -17,7 +17,7 @@ pub struct SubscribeHeaderFlags;
 #[derive(Debug, PartialEq, Clone)]
 
 pub struct Subscription<'input> {
-    pub topic: MQTTString<'input>,
+    pub topic_filter: MQTTString<'input>,
     pub qos: Qos,
     pub no_local: bool,
     pub retain_as_published: bool,

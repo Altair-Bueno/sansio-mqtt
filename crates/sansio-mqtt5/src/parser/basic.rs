@@ -251,9 +251,9 @@ impl<'input> Subscription<'input> {
                 )),
             )
                 .map(
-                    |(topic, (_, retain_handling, retain_as_published, no_local, qos))| {
+                    |(topic_filter, (_, retain_handling, retain_as_published, no_local, qos))| {
                         Subscription {
-                            topic,
+                            topic_filter,
                             qos,
                             no_local,
                             retain_as_published,

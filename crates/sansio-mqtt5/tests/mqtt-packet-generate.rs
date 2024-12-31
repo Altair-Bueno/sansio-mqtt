@@ -193,7 +193,7 @@ fn assert_parser_handles_example_subscribe_packets() {
             )],
         },
         subscriptions: vec![Subscription {
-            topic: MQTTString::new("test").unwrap(),
+            topic_filter: MQTTString::new("test").unwrap(),
             qos: Qos::AtMostOnce,
             no_local: false,
             retain_as_published: true,
