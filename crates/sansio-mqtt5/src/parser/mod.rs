@@ -39,7 +39,7 @@ use winnow::token;
 pub struct Settings {
     pub max_bytes_string: u16,
     pub max_bytes_binary_data: u16,
-    pub max_remaining_bytes: u32,
+    pub max_remaining_bytes: u64,
     pub max_properties_len: u32,
     pub max_subscriptions_len: u32,
 }
@@ -55,7 +55,7 @@ impl Settings {
         Self {
             max_bytes_string: u16::MAX,
             max_bytes_binary_data: u16::MAX,
-            max_remaining_bytes: u32::MAX,
+            max_remaining_bytes: u64::MAX,
             max_properties_len: u32::MAX,
             max_subscriptions_len: u32::MAX,
         }

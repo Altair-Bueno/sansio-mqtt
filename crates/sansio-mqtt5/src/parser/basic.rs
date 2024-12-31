@@ -3,6 +3,32 @@ pub use binary::be_u16 as two_byte_integer;
 pub use binary::be_u32 as four_byte_integer;
 
 #[inline]
+pub fn two_byte_integer_len_with_limits<'input, Input, Error>(
+    limit: u16,
+) -> impl Parser<Input, u16, Error>
+where
+    Input: StreamIsPartial + Stream<Token = u8>,
+    Error: ParserError<Input> + AddContext<Input, StrContext>,
+{
+    two_byte_integer
+        .verify(move |len| *len <= limit)
+        .context(StrContext::Label("two_byte_integer_len_with_limits"))
+}
+
+#[inline]
+pub fn variable_byte_integer_len_with_limits<'input, Input, Error>(
+    limit: u64,
+) -> impl Parser<Input, u64, Error>
+where
+    Input: StreamIsPartial + Stream<Token = u8>,
+    Error: ParserError<Input> + AddContext<Input, StrContext>,
+{
+    variable_byte_integer
+        .verify(move |len| *len <= limit)
+        .context(StrContext::Label("variable_byte_integer_len_with_limits"))
+}
+
+#[inline]
 pub fn variable_byte_integer<'input, Input, Error>(input: &mut Input) -> PResult<u64, Error>
 where
     Input: StreamIsPartial + Stream<Token = u8>,
@@ -44,7 +70,9 @@ where
 {
     combinator::trace(
         "binary_data",
-        self::length_take_with_limits(two_byte_integer, parser_settings.max_bytes_binary_data),
+        binary::length_take(two_byte_integer_len_with_limits(
+            parser_settings.max_bytes_binary_data,
+        )),
     )
     .context(StrContext::Label("binary_data"))
     .context(StrContext::Expected(StrContextValue::Description(
@@ -71,32 +99,6 @@ where
     .context(StrContext::Label("string_pair"))
 }
 
-#[inline]
-pub fn length_take_with_limits<Input, Count, Error, CountParser>(
-    mut count: CountParser,
-    limit: impl ToUsize,
-) -> impl Parser<Input, <Input as Stream>::Slice, Error>
-where
-    Input: StreamIsPartial + Stream,
-    Count: ToUsize,
-    CountParser: Parser<Input, Count, Error>,
-    Error: ParserError<Input> + AddContext<Input, StrContext>,
-{
-    combinator::trace("length_take_with_limits", move |i: &mut Input| {
-        let length = count.parse_next(i)?;
-        let length = length.to_usize();
-        if length > limit.to_usize() {
-            // TODO: improve errors
-            return Err(ErrMode::Cut(Error::from_error_kind(i, ErrorKind::Verify)));
-        }
-        token::take(length).parse_next(i)
-    })
-    .context(StrContext::Label("length_take_with_limits"))
-    .context(StrContext::Expected(StrContextValue::Description(
-        "a length prefixed slice",
-    )))
-}
-
 impl<'input> MQTTString<'input> {
     #[inline]
     pub fn parse<Input, Error>(parser_settings: &Settings) -> impl Parser<Input, Self, Error>
@@ -108,9 +110,11 @@ impl<'input> MQTTString<'input> {
     {
         combinator::trace(
             type_name::<Self>(),
-            self::length_take_with_limits(two_byte_integer, parser_settings.max_bytes_string)
-                .try_map(str::from_utf8)
-                .verify_map(Self::new),
+            binary::length_take(two_byte_integer_len_with_limits(
+                parser_settings.max_bytes_string,
+            ))
+            .try_map(str::from_utf8)
+            .verify_map(Self::new),
         )
         .context(StrContext::Label(type_name::<Self>()))
         .context(StrContext::Expected(StrContextValue::Description(
