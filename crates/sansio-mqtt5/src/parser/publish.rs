@@ -70,7 +70,7 @@ impl<'input> Publish<'input> {
             };
             let properties = PublishProperties::parse(parser_settings).parse_next(input)?;
             let payload =
-                combinator::trace("payload", combinator::rest.output_into()).parse_next(input)?;
+                combinator::trace("payload", token::rest.output_into()).parse_next(input)?;
             Ok(Publish {
                 kind,
                 retain,
