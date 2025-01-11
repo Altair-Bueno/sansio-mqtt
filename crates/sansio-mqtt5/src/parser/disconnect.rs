@@ -27,6 +27,7 @@ impl<'input> Disconnect<'input> {
             + FromExternalError<ByteInput, Utf8Error>
             + FromExternalError<ByteInput, InvalidQosError>
             + FromExternalError<ByteInput, InvalidPropertyTypeError>
+            + FromExternalError<ByteInput, PropertiesError>
             + FromExternalError<ByteInput, UnknownFormatIndicatorError>
             + AddContext<ByteInput, StrContext>,
         BitError: ParserError<(ByteInput, usize)> + ErrorConvert<ByteError>,
@@ -66,48 +67,72 @@ impl<'input> DisconnectProperties<'input> {
             + FromExternalError<Input, Utf8Error>
             + FromExternalError<Input, InvalidQosError>
             + FromExternalError<Input, InvalidPropertyTypeError>
+            + FromExternalError<Input, PropertiesError>
             + FromExternalError<Input, UnknownFormatIndicatorError>,
     {
         combinator::trace(
             type_name::<Self>(),
-            binary::length_and_then(variable_byte_integer, |input: &mut Input| {
-                let mut properties = Self::default();
-
-                let mut parser = combinator::alt((
-                    combinator::eof.value(None),
-                    Property::parse(parser_settings).map(Some),
-                ));
-
-                while let Some(p) = parser.parse_next(input)? {
-                    match p {
-                        Property::SessionExpiryInterval(value) => {
-                            properties.session_expiry_interval.replace(value);
-                        }
-                        Property::ReasonString(value) => {
-                            properties.reason_string.replace(value);
-                        }
-                        Property::UserProperty(key, value) => {
-                            if properties.user_properties.len()
-                                >= parser_settings.max_user_properties_len
-                            {
-                                return Err(ErrMode::Cut(Error::assert(
-                                    input,
-                                    "User Properties length exceeds maximum",
-                                )));
-                            }
-                            properties.user_properties.push((key, value))
-                        }
-                        Property::ServerReference(value) => {
-                            properties.server_reference.replace(value);
-                        }
-                        _ => {
-                            return Err(ErrMode::Cut(Error::assert(input, "Invalid property type")))
-                        }
-                    }
-                }
-
-                Ok(properties)
-            }),
+            binary::length_and_then(
+                variable_byte_integer,
+                (
+                    combinator::repeat(.., Property::parse(parser_settings)).try_fold(
+                        Self::default,
+                        |mut properties, property| {
+                            let property_type = PropertyType::from(&property);
+                            match property {
+                                Property::SessionExpiryInterval(value) => {
+                                    match &mut properties.session_expiry_interval {
+                                        slot @ None => *slot = Some(value),
+                                        _ => {
+                                            return Err(PropertiesError::from(
+                                                DuplicatedPropertyError { property_type },
+                                            ))
+                                        }
+                                    }
+                                }
+                                Property::ReasonString(value) => {
+                                    match &mut properties.reason_string {
+                                        slot @ None => *slot = Some(value),
+                                        _ => {
+                                            return Err(PropertiesError::from(
+                                                DuplicatedPropertyError { property_type },
+                                            ))
+                                        }
+                                    }
+                                }
+                                Property::UserProperty(key, value) => {
+                                    if properties.user_properties.len()
+                                        >= parser_settings.max_user_properties_len
+                                    {
+                                        return Err(PropertiesError::from(
+                                            TooManyUserPropertiesError,
+                                        ));
+                                    }
+                                    properties.user_properties.push((key, value))
+                                }
+                                Property::ServerReference(value) => {
+                                    match &mut properties.server_reference {
+                                        slot @ None => *slot = Some(value),
+                                        _ => {
+                                            return Err(PropertiesError::from(
+                                                DuplicatedPropertyError { property_type },
+                                            ))
+                                        }
+                                    }
+                                }
+                                _ => {
+                                    return Err(PropertiesError::from(UnsupportedPropertyError {
+                                        property_type,
+                                    }))
+                                }
+                            };
+                            Ok(properties)
+                        },
+                    ),
+                    combinator::eof,
+                )
+                    .map(|(properties, _)| properties),
+            ),
         )
         .context(StrContext::Label(type_name::<Self>()))
     }

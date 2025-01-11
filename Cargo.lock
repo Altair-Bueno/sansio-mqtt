@@ -22,27 +22,27 @@ checksum = "78ca9ab1a0babb1e7d5695e3530886289c18cf2f87ec19a575a0abdce112e3a3"
 
 [[package]]
 name = "proc-macro2"
-version = "1.0.92"
+version = "1.0.93"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "37d3544b3f2748c54e147655edb5025752e2303145b5aefb3c3ea2c78b973bb0"
+checksum = "60946a68e5f9d28b0dc1c21bb8a97ee7d018a8b322fa57838ba31cc878e22d99"
 dependencies = [
  "unicode-ident",
 ]
 
 [[package]]
 name = "quote"
-version = "1.0.37"
+version = "1.0.38"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b5b9d34b8991d19d98081b46eacdd8eb58c6f2b201139f7c5f643cc155a633af"
+checksum = "0e4dccaaaf89514f546c693ddc140f729f958c247918a13380cccc6078391acc"
 dependencies = [
  "proc-macro2",
 ]
 
 [[package]]
 name = "rustversion"
-version = "1.0.18"
+version = "1.0.19"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0e819f2bc632f285be6d7cd36e25940d45b2391dd6d9b939e79de557f7014248"
+checksum = "f7c45b9784283f1b2e7fb61b42047c2fd678ef0960d4f6f1eba131594cc369d4"
 
 [[package]]
 name = "sansio-mqtt5"
@@ -79,9 +79,9 @@ dependencies = [
 
 [[package]]
 name = "syn"
-version = "2.0.89"
+version = "2.0.96"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "44d46482f1c1c87acd84dea20c1bf5ebff4c757009ed6bf19cfd36fb10e92c4e"
+checksum = "d5d0adab1ae378d7f53bdebc67a39f1f151407ef230f0ce2883572f5d8985c80"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -90,18 +90,18 @@ dependencies = [
 
 [[package]]
 name = "thiserror"
-version = "2.0.9"
+version = "2.0.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f072643fd0190df67a8bab670c20ef5d8737177d6ac6b2e9a236cb096206b2cc"
+checksum = "d452f284b73e6d76dd36758a0c8684b1d5be31f92b89d07fd5822175732206fc"
 dependencies = [
  "thiserror-impl",
 ]
 
 [[package]]
 name = "thiserror-impl"
-version = "2.0.9"
+version = "2.0.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7b50fa271071aae2e6ee85f842e2e28ba8cd2c5fb67f11fcb1fd70b276f9e7d4"
+checksum = "26afc1baea8a989337eeb52b6e72a039780ce45c3edfcc9c5b9d112feeb173c2"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -122,9 +122,9 @@ checksum = "eab68b56840f69efb0fefbe3ab6661499217ffdc58e2eef7c3f6f69835386322"
 
 [[package]]
 name = "winnow"
-version = "0.6.20"
+version = "0.6.24"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "36c1fec1a2bb5866f07c25f68c26e565c4c200aebb96d7e55710c19d3e8ac49b"
+checksum = "c8d71a593cc5c42ad7876e2c1fda56f314f3754c084128833e64f1345ff8a03a"
 dependencies = [
  "memchr",
 ]

@@ -45,6 +45,7 @@ pub use unsubscribe::*;
 pub use beef::Cow;
 use std::borrow::Borrow;
 pub use std::num::NonZero;
+use strum::Display;
 use strum::EnumDiscriminants;
 use strum::EnumIter;
 use strum::IntoEnumIterator;

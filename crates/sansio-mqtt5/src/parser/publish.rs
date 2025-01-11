@@ -47,6 +47,7 @@ impl<'input> Publish<'input> {
             + FromExternalError<ByteInput, Utf8Error>
             + FromExternalError<ByteInput, InvalidQosError>
             + FromExternalError<ByteInput, InvalidPropertyTypeError>
+            + FromExternalError<ByteInput, PropertiesError>
             + FromExternalError<ByteInput, UnknownFormatIndicatorError>
             + AddContext<ByteInput, StrContext>,
         BitError: ParserError<(ByteInput, usize)> + ErrorConvert<ByteError>,
@@ -93,60 +94,110 @@ impl<'input> PublishProperties<'input> {
             + FromExternalError<Input, Utf8Error>
             + FromExternalError<Input, InvalidQosError>
             + FromExternalError<Input, InvalidPropertyTypeError>
+            + FromExternalError<Input, PropertiesError>
             + FromExternalError<Input, UnknownFormatIndicatorError>,
     {
         combinator::trace(
             type_name::<Self>(),
-            binary::length_and_then(variable_byte_integer, |input: &mut Input| {
-                let mut properties = Self::default();
-
-                let mut parser = combinator::alt((
-                    combinator::eof.value(None),
-                    Property::parse(parser_settings).map(Some),
-                ));
-
-                while let Some(p) = parser.parse_next(input)? {
-                    match p {
-                        Property::PayloadFormatIndicator(value) => {
-                            properties.payload_format_indicator.replace(value);
-                        }
-                        Property::MessageExpiryInterval(value) => {
-                            properties.message_expiry_interval.replace(value);
-                        }
-                        Property::TopicAlias(value) => {
-                            properties.topic_alias.replace(value);
-                        }
-                        Property::ResponseTopic(value) => {
-                            properties.response_topic.replace(value);
-                        }
-                        Property::CorrelationData(value) => {
-                            properties.correlation_data.replace(value);
-                        }
-                        Property::UserProperty(key, value) => {
-                            if properties.user_properties.len()
-                                >= parser_settings.max_user_properties_len
-                            {
-                                return Err(ErrMode::Cut(Error::assert(
-                                    input,
-                                    "User Properties length exceeds maximum",
-                                )));
-                            }
-                            properties.user_properties.push((key, value))
-                        }
-                        Property::SubscriptionIdentifier(value) => {
-                            properties.subscription_identifier.replace(value);
-                        }
-                        Property::ContentType(value) => {
-                            properties.content_type.replace(value);
-                        }
-                        _ => {
-                            return Err(ErrMode::Cut(Error::assert(input, "Invalid property type")))
-                        }
-                    }
-                }
-
-                Ok(properties)
-            }),
+            binary::length_and_then(
+                variable_byte_integer,
+                (
+                    combinator::repeat(.., Property::parse(parser_settings)).try_fold(
+                        Self::default,
+                        |mut properties, property| {
+                            let property_type = PropertyType::from(&property);
+                            match property {
+                                Property::PayloadFormatIndicator(value) => {
+                                    match &mut properties.payload_format_indicator {
+                                        slot @ None => *slot = Some(value),
+                                        _ => {
+                                            return Err(PropertiesError::from(
+                                                DuplicatedPropertyError { property_type },
+                                            ))
+                                        }
+                                    }
+                                }
+                                Property::MessageExpiryInterval(value) => {
+                                    match &mut properties.message_expiry_interval {
+                                        slot @ None => *slot = Some(value),
+                                        _ => {
+                                            return Err(PropertiesError::from(
+                                                DuplicatedPropertyError { property_type },
+                                            ))
+                                        }
+                                    }
+                                }
+                                Property::TopicAlias(value) => match &mut properties.topic_alias {
+                                    slot @ None => *slot = Some(value),
+                                    _ => {
+                                        return Err(PropertiesError::from(
+                                            DuplicatedPropertyError { property_type },
+                                        ))
+                                    }
+                                },
+                                Property::ResponseTopic(value) => {
+                                    match &mut properties.response_topic {
+                                        slot @ None => *slot = Some(value),
+                                        _ => {
+                                            return Err(PropertiesError::from(
+                                                DuplicatedPropertyError { property_type },
+                                            ))
+                                        }
+                                    }
+                                }
+                                Property::CorrelationData(value) => {
+                                    match &mut properties.correlation_data {
+                                        slot @ None => *slot = Some(value),
+                                        _ => {
+                                            return Err(PropertiesError::from(
+                                                DuplicatedPropertyError { property_type },
+                                            ))
+                                        }
+                                    }
+                                }
+                                Property::SubscriptionIdentifier(value) => {
+                                    match &mut properties.subscription_identifier {
+                                        slot @ None => *slot = Some(value),
+                                        _ => {
+                                            return Err(PropertiesError::from(
+                                                DuplicatedPropertyError { property_type },
+                                            ))
+                                        }
+                                    }
+                                }
+                                Property::ContentType(value) => {
+                                    match &mut properties.content_type {
+                                        slot @ None => *slot = Some(value),
+                                        _ => {
+                                            return Err(PropertiesError::from(
+                                                DuplicatedPropertyError { property_type },
+                                            ))
+                                        }
+                                    }
+                                }
+                                Property::UserProperty(key, value) => {
+                                    if properties.user_properties.len()
+                                        >= parser_settings.max_user_properties_len
+                                    {
+                                        return Err(PropertiesError::from(
+                                            TooManyUserPropertiesError,
+                                        ));
+                                    }
+                                    properties.user_properties.push((key, value))
+                                }
+                                _ => {
+                                    return Err(PropertiesError::from(UnsupportedPropertyError {
+                                        property_type,
+                                    }))
+                                }
+                            };
+                            Ok(properties)
+                        },
+                    ),
+                    combinator::eof,
+                )
+                    .map(|(properties, _)| properties),
+            ),
         )
         .context(StrContext::Label(type_name::<Self>()))
     }

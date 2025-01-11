@@ -27,6 +27,7 @@ impl<'input> Auth<'input> {
             + FromExternalError<ByteInput, Utf8Error>
             + FromExternalError<ByteInput, InvalidQosError>
             + FromExternalError<ByteInput, InvalidPropertyTypeError>
+            + FromExternalError<ByteInput, PropertiesError>
             + FromExternalError<ByteInput, UnknownFormatIndicatorError>
             + AddContext<ByteInput, StrContext>,
         BitError: ParserError<(ByteInput, usize)> + ErrorConvert<ByteError>,
@@ -65,64 +66,88 @@ impl<'input> AuthProperties<'input> {
             + FromExternalError<Input, Utf8Error>
             + FromExternalError<Input, InvalidQosError>
             + FromExternalError<Input, InvalidPropertyTypeError>
+            + FromExternalError<Input, PropertiesError>
             + FromExternalError<Input, UnknownFormatIndicatorError>,
     {
         combinator::trace(
             type_name::<Self>(),
-            binary::length_and_then(variable_byte_integer, |input: &mut Input| {
-                let mut properties = Self::default();
-                let mut authentication_method = None;
-                let mut authentication_data = None;
-
-                let mut parser = combinator::alt((
-                    combinator::eof.value(None),
-                    Property::parse(parser_settings).map(Some),
-                ));
-
-                while let Some(p) = parser.parse_next(input)? {
-                    match p {
-                        Property::AuthenticationMethod(value) => {
-                            authentication_method.replace(value);
-                        }
-                        Property::AuthenticationData(value) => {
-                            authentication_data.replace(value);
-                        }
-                        Property::ReasonString(value) => {
-                            properties.reason_string.replace(value);
-                        }
-                        Property::UserProperty(key, value) => {
-                            if properties.user_properties.len()
-                                >= parser_settings.max_user_properties_len
-                            {
-                                return Err(ErrMode::Cut(Error::assert(
-                                    input,
-                                    "User Properties length exceeds maximum",
-                                )));
-                            }
-                            properties.user_properties.push((key, value))
-                        }
-                        _ => {
-                            return Err(ErrMode::Cut(Error::assert(input, "Invalid property type")))
-                        }
-                    };
-                }
-
-                // It is a Protocol Error to include Authentication Data if there is no Authentication Method
-                properties.authentication = match (authentication_method, authentication_data) {
-                    (None, None) => None,
-                    (Some(method), None) => Some(AuthenticationKind::WithoutData { method }),
-                    (Some(method), Some(data)) => {
-                        Some(AuthenticationKind::WithData { method, data })
-                    }
-                    (None, Some(_)) => {
-                        return Err(ErrMode::Cut(Error::assert(
-                            input,
-                            "Authentication Data without Authentication Method",
-                        )))
-                    }
-                };
-                Ok(properties)
-            }),
+            binary::length_and_then(
+                variable_byte_integer,
+                (
+                    combinator::repeat(.., Property::parse(parser_settings))
+                        .try_fold(
+                            Default::default,
+                            |(
+                                mut properties,
+                                mut authentication_data,
+                                mut authentication_method,
+                            ): (Self, Option<_>, Option<_>),
+                             property| {
+                                let property_type = PropertyType::from(&property);
+                                match property {
+                                    Property::ReasonString(value) => {
+                                        match &mut properties.reason_string {
+                                            slot @ None => *slot = Some(value),
+                                            _ => {
+                                                return Err(PropertiesError::from(
+                                                    DuplicatedPropertyError { property_type },
+                                                ))
+                                            }
+                                        }
+                                    }
+                                    Property::UserProperty(key, value) => {
+                                        if properties.user_properties.len()
+                                            >= parser_settings.max_user_properties_len
+                                        {
+                                            return Err(PropertiesError::from(
+                                                TooManyUserPropertiesError,
+                                            ));
+                                        }
+                                        properties.user_properties.push((key, value))
+                                    }
+                                    Property::AuthenticationMethod(value) => {
+                                        match &mut authentication_method {
+                                            slot @ None => *slot = Some(value),
+                                            _ => {
+                                                return Err(PropertiesError::from(
+                                                    DuplicatedPropertyError { property_type },
+                                                ))
+                                            }
+                                        }
+                                    }
+                                    Property::AuthenticationData(value) => {
+                                        match &mut authentication_data {
+                                            slot @ None => *slot = Some(value),
+                                            _ => {
+                                                return Err(PropertiesError::from(
+                                                    DuplicatedPropertyError { property_type },
+                                                ))
+                                            }
+                                        }
+                                    }
+                                    _ => {
+                                        return Err(PropertiesError::from(
+                                            UnsupportedPropertyError { property_type },
+                                        ))
+                                    }
+                                };
+                                Ok((properties, authentication_data, authentication_method))
+                            },
+                        )
+                        .try_map(
+                            |(mut properties, authentication_data, authentication_method)| -> Result<_, PropertiesError> {
+                                // It is a Protocol Error to include Authentication Data if there is no Authentication Method
+                                properties.authentication = AuthenticationKind::try_from_parts((
+                                    authentication_method,
+                                    authentication_data,
+                                ))?;
+                                Ok(properties)
+                            },
+                        ),
+                    combinator::eof,
+                )
+                    .map(|(properties, _)| properties),
+            ),
         )
         .context(StrContext::Label(type_name::<Self>()))
     }

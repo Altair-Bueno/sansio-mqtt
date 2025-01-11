@@ -1,36 +1,26 @@
 use super::*;
 
 #[derive(Debug, PartialEq, Clone, EnumDiscriminants)]
-#[strum_discriminants(derive(Hash, EnumIter))]
+#[strum_discriminants(derive(Hash, EnumIter, Display))]
 #[strum_discriminants(name(PropertyType))]
-
 pub enum Property<'input> {
     PayloadFormatIndicator(FormatIndicator),
     MessageExpiryInterval(u32),
-
     ContentType(MQTTString<'input>),
-
     ResponseTopic(PublishTopic<'input>),
-
     CorrelationData(Cow<'input, [u8]>),
     // It is a Protocol Error if the Subscription Identifier has a value of 0.
     SubscriptionIdentifier(NonZero<u64>),
     SessionExpiryInterval(u32),
-
     AssignedClientIdentifier(MQTTString<'input>),
     ServerKeepAlive(u16),
-
     AuthenticationMethod(MQTTString<'input>),
-
     AuthenticationData(Cow<'input, [u8]>),
     RequestProblemInformation(bool),
     WillDelayInterval(u32),
     RequestResponseInformation(bool),
-
     ResponseInformation(MQTTString<'input>),
-
     ServerReference(MQTTString<'input>),
-
     ReasonString(MQTTString<'input>),
     // It is a Protocol Error to include the Receive Maximum value more than once or for it to have the value 0.
     ReceiveMaximum(NonZero<u16>),
@@ -38,7 +28,6 @@ pub enum Property<'input> {
     TopicAlias(NonZero<u16>),
     MaximumQoS(MaximumQoS),
     RetainAvailable(bool),
-
     UserProperty(MQTTString<'input>, MQTTString<'input>),
     MaximumPacketSize(NonZero<u32>),
     WildcardSubscriptionAvailable(bool),
@@ -47,7 +36,6 @@ pub enum Property<'input> {
 }
 
 #[derive(Debug, PartialEq, Clone)]
-
 pub enum AuthenticationKind<'input> {
     WithoutData {
         method: MQTTString<'input>,
@@ -58,11 +46,64 @@ pub enum AuthenticationKind<'input> {
     },
 }
 
+impl<'input> AuthenticationKind<'input> {
+    pub fn try_from_parts(
+        (method, data): (Option<MQTTString<'input>>, Option<Cow<'input, [u8]>>),
+    ) -> Result<Option<Self>, MissingAuthenticationMethodError> {
+        match (method, data) {
+            (None, None) => Ok(None),
+            (Some(method), None) => Ok(Some(AuthenticationKind::WithoutData { method })),
+            (Some(method), Some(data)) => Ok(Some(AuthenticationKind::WithData { method, data })),
+            (None, Some(_)) => Err(MissingAuthenticationMethodError),
+        }
+    }
+}
+
 #[derive(Debug, PartialEq, Clone, Copy, Error)]
 #[error("Invalid property type: {value}")]
 #[repr(transparent)]
 pub struct InvalidPropertyTypeError {
     pub value: u64,
+}
+
+#[derive(Debug, PartialEq, Clone, Copy, Error)]
+#[error("Property {property_type} is required to appear at most once, but is duplicated")]
+#[repr(transparent)]
+pub struct DuplicatedPropertyError {
+    pub property_type: PropertyType,
+}
+
+#[derive(Debug, PartialEq, Clone, Copy, Error)]
+#[error("The packet cannot contain a property of type {property_type}")]
+#[repr(transparent)]
+pub struct UnsupportedPropertyError {
+    pub property_type: PropertyType,
+}
+
+#[derive(Debug, PartialEq, Clone, Copy, Error)]
+#[error("The number of user properties exceeds the maximum allowed")]
+#[repr(transparent)]
+pub struct TooManyUserPropertiesError;
+
+#[derive(Debug, PartialEq, Clone, Copy, Error)]
+#[error(
+    "Properties included {}, but {} is required",
+    PropertyType::AuthenticationData,
+    PropertyType::AuthenticationMethod
+)]
+#[repr(transparent)]
+pub struct MissingAuthenticationMethodError;
+
+#[derive(Debug, PartialEq, Clone, Copy, Error)]
+pub enum PropertiesError {
+    #[error(transparent)]
+    DuplicatedProperty(#[from] DuplicatedPropertyError),
+    #[error(transparent)]
+    TooManyUserProperties(#[from] TooManyUserPropertiesError),
+    #[error(transparent)]
+    MissingAuthenticationMethod(#[from] MissingAuthenticationMethodError),
+    #[error(transparent)]
+    UnsupportedProperty(#[from] UnsupportedPropertyError),
 }
 
 impl TryFrom<u64> for PropertyType {

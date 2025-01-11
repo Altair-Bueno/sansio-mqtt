@@ -26,6 +26,7 @@ impl<'input> ConnAck<'input> {
             + FromExternalError<ByteInput, Utf8Error>
             + FromExternalError<ByteInput, InvalidQosError>
             + FromExternalError<ByteInput, InvalidPropertyTypeError>
+            + FromExternalError<ByteInput, PropertiesError>
             + FromExternalError<ByteInput, UnknownFormatIndicatorError>
             + AddContext<ByteInput, StrContext>,
         BitError: ParserError<(ByteInput, usize)> + ErrorConvert<ByteError>,
@@ -79,104 +80,218 @@ impl<'input> ConnAckProperties<'input> {
             + FromExternalError<Input, Utf8Error>
             + FromExternalError<Input, InvalidQosError>
             + FromExternalError<Input, InvalidPropertyTypeError>
+            + FromExternalError<Input, PropertiesError>
             + FromExternalError<Input, UnknownFormatIndicatorError>,
     {
         combinator::trace(
             type_name::<Self>(),
-            binary::length_and_then(variable_byte_integer, |input: &mut Input| {
-                let mut properties = Self::default();
-                let mut authentication_method = None;
-                let mut authentication_data = None;
-
-                let mut parser = combinator::alt((
-                    combinator::eof.value(None),
-                    Property::parse(parser_settings).map(Some),
-                ));
-
-                while let Some(p) = parser.parse_next(input)? {
-                    match p {
-                        Property::SessionExpiryInterval(value) => {
-                            properties.session_expiry_interval.replace(value);
-                        }
-                        Property::ReceiveMaximum(value) => {
-                            properties.receive_maximum.replace(value);
-                        }
-                        Property::MaximumQoS(value) => {
-                            properties.maximum_qos.replace(value);
-                        }
-                        Property::RetainAvailable(value) => {
-                            properties.retain_available.replace(value);
-                        }
-                        Property::MaximumPacketSize(value) => {
-                            properties.maximum_packet_size.replace(value);
-                        }
-                        Property::AssignedClientIdentifier(value) => {
-                            properties.assigned_client_identifier.replace(value);
-                        }
-                        Property::TopicAliasMaximum(value) => {
-                            properties.topic_alias_maximum.replace(value);
-                        }
-                        Property::ReasonString(value) => {
-                            properties.reason_string.replace(value);
-                        }
-                        Property::UserProperty(key, value) => {
-                            if properties.user_properties.len()
-                                >= parser_settings.max_user_properties_len
-                            {
-                                return Err(ErrMode::Cut(Error::assert(
-                                    input,
-                                    "User Properties length exceeds maximum",
-                                )));
-                            }
-                            properties.user_properties.push((key, value))
-                        }
-                        Property::WildcardSubscriptionAvailable(value) => {
-                            properties.wildcard_subscription_available.replace(value);
-                        }
-                        Property::SubscriptionIdentifiersAvailable(value) => {
-                            properties.subscription_identifiers_available.replace(value);
-                        }
-                        Property::SharedSubscriptionAvailable(value) => {
-                            properties.shared_subscription_available.replace(value);
-                        }
-                        Property::ServerKeepAlive(value) => {
-                            properties.server_keep_alive.replace(value);
-                        }
-                        Property::ResponseInformation(value) => {
-                            properties.response_information.replace(value);
-                        }
-                        Property::ServerReference(value) => {
-                            properties.server_reference.replace(value);
-                        }
-                        Property::AuthenticationMethod(value) => {
-                            authentication_method.replace(value);
-                        }
-                        Property::AuthenticationData(value) => {
-                            authentication_data.replace(value);
-                        }
-
-                        _ => {
-                            return Err(ErrMode::Cut(Error::assert(input, "Invalid property type")))
-                        }
-                    };
-                }
-
-                // It is a Protocol Error to include Authentication Data if there is no Authentication Method
-                properties.authentication = match (authentication_method, authentication_data) {
-                    (None, None) => None,
-                    (Some(method), None) => Some(AuthenticationKind::WithoutData { method }),
-                    (Some(method), Some(data)) => {
-                        Some(AuthenticationKind::WithData { method, data })
-                    }
-                    (None, Some(_)) => {
-                        return Err(ErrMode::Cut(Error::assert(
-                            input,
-                            "Authentication Data without Authentication Method",
-                        )))
-                    }
-                };
-                Ok(properties)
-            }),
+            binary::length_and_then(
+                variable_byte_integer,
+                (
+                    combinator::repeat(.., Property::parse(parser_settings))
+                        .try_fold(
+                            Default::default,
+                            |(
+                                mut properties,
+                                mut authentication_data,
+                                mut authentication_method,
+                            ): (Self, Option<_>, Option<_>),
+                             property| {
+                                let property_type = PropertyType::from(&property);
+                                match property {
+                                    Property::SessionExpiryInterval(value) => {
+                                        match &mut properties.session_expiry_interval {
+                                            slot @ None => *slot = Some(value),
+                                            _ => {
+                                                return Err(PropertiesError::from(
+                                                    DuplicatedPropertyError { property_type },
+                                                ))
+                                            }
+                                        }
+                                    }
+                                    Property::ReceiveMaximum(value) => {
+                                        match &mut properties.receive_maximum {
+                                            slot @ None => *slot = Some(value),
+                                            _ => {
+                                                return Err(PropertiesError::from(
+                                                    DuplicatedPropertyError { property_type },
+                                                ))
+                                            }
+                                        }
+                                    }
+                                    Property::MaximumQoS(value) => {
+                                        match &mut properties.maximum_qos {
+                                            slot @ None => *slot = Some(value),
+                                            _ => {
+                                                return Err(PropertiesError::from(
+                                                    DuplicatedPropertyError { property_type },
+                                                ))
+                                            }
+                                        }
+                                    }
+                                    Property::RetainAvailable(value) => {
+                                        match &mut properties.retain_available {
+                                            slot @ None => *slot = Some(value),
+                                            _ => {
+                                                return Err(PropertiesError::from(
+                                                    DuplicatedPropertyError { property_type },
+                                                ))
+                                            }
+                                        }
+                                    }
+                                    Property::MaximumPacketSize(value) => {
+                                        match &mut properties.maximum_packet_size {
+                                            slot @ None => *slot = Some(value),
+                                            _ => {
+                                                return Err(PropertiesError::from(
+                                                    DuplicatedPropertyError { property_type },
+                                                ))
+                                            }
+                                        }
+                                    }
+                                    Property::AssignedClientIdentifier(value) => {
+                                        match &mut properties.assigned_client_identifier {
+                                            slot @ None => *slot = Some(value),
+                                            _ => {
+                                                return Err(PropertiesError::from(
+                                                    DuplicatedPropertyError { property_type },
+                                                ))
+                                            }
+                                        }
+                                    }
+                                    Property::TopicAliasMaximum(value) => {
+                                        match &mut properties.topic_alias_maximum {
+                                            slot @ None => *slot = Some(value),
+                                            _ => {
+                                                return Err(PropertiesError::from(
+                                                    DuplicatedPropertyError { property_type },
+                                                ))
+                                            }
+                                        }
+                                    }
+                                    Property::ReasonString(value) => {
+                                        match &mut properties.reason_string {
+                                            slot @ None => *slot = Some(value),
+                                            _ => {
+                                                return Err(PropertiesError::from(
+                                                    DuplicatedPropertyError { property_type },
+                                                ))
+                                            }
+                                        }
+                                    }
+                                    Property::UserProperty(key, value) => {
+                                        if properties.user_properties.len()
+                                            >= parser_settings.max_user_properties_len
+                                        {
+                                            return Err(PropertiesError::from(
+                                                TooManyUserPropertiesError,
+                                            ));
+                                        }
+                                        properties.user_properties.push((key, value))
+                                    }
+                                    Property::WildcardSubscriptionAvailable(value) => {
+                                        match &mut properties.wildcard_subscription_available {
+                                            slot @ None => *slot = Some(value),
+                                            _ => {
+                                                return Err(PropertiesError::from(
+                                                    DuplicatedPropertyError { property_type },
+                                                ))
+                                            }
+                                        }
+                                    }
+                                    Property::SubscriptionIdentifiersAvailable(value) => {
+                                        match &mut properties.subscription_identifiers_available {
+                                            slot @ None => *slot = Some(value),
+                                            _ => {
+                                                return Err(PropertiesError::from(
+                                                    DuplicatedPropertyError { property_type },
+                                                ))
+                                            }
+                                        }
+                                    }
+                                    Property::SharedSubscriptionAvailable(value) => {
+                                        match &mut properties.shared_subscription_available {
+                                            slot @ None => *slot = Some(value),
+                                            _ => {
+                                                return Err(PropertiesError::from(
+                                                    DuplicatedPropertyError { property_type },
+                                                ))
+                                            }
+                                        }
+                                    }
+                                    Property::ServerKeepAlive(value) => {
+                                        match &mut properties.server_keep_alive {
+                                            slot @ None => *slot = Some(value),
+                                            _ => {
+                                                return Err(PropertiesError::from(
+                                                    DuplicatedPropertyError { property_type },
+                                                ))
+                                            }
+                                        }
+                                    }
+                                    Property::ResponseInformation(value) => {
+                                        match &mut properties.response_information {
+                                            slot @ None => *slot = Some(value),
+                                            _ => {
+                                                return Err(PropertiesError::from(
+                                                    DuplicatedPropertyError { property_type },
+                                                ))
+                                            }
+                                        }
+                                    }
+                                    Property::ServerReference(value) => {
+                                        match &mut properties.server_reference {
+                                            slot @ None => *slot = Some(value),
+                                            _ => {
+                                                return Err(PropertiesError::from(
+                                                    DuplicatedPropertyError { property_type },
+                                                ))
+                                            }
+                                        }
+                                    }
+                                    Property::AuthenticationMethod(value) => {
+                                        match &mut authentication_method {
+                                            slot @ None => *slot = Some(value),
+                                            _ => {
+                                                return Err(PropertiesError::from(
+                                                    DuplicatedPropertyError { property_type },
+                                                ))
+                                            }
+                                        }
+                                    }
+                                    Property::AuthenticationData(value) => {
+                                        match &mut authentication_data {
+                                            slot @ None => *slot = Some(value),
+                                            _ => {
+                                                return Err(PropertiesError::from(
+                                                    DuplicatedPropertyError { property_type },
+                                                ))
+                                            }
+                                        }
+                                    }
+                                    _ => {
+                                        return Err(PropertiesError::from(
+                                            UnsupportedPropertyError { property_type },
+                                        ))
+                                    }
+                                };
+                                Ok((properties, authentication_data, authentication_method))
+                            },
+                        )
+                        .try_map(
+                            |(mut properties, authentication_data, authentication_method)| -> Result<_, PropertiesError> {
+                                // It is a Protocol Error to include Authentication Data if there is no Authentication Method
+                                properties.authentication = AuthenticationKind::try_from_parts((
+                                    authentication_method,
+                                    authentication_data,
+                                ))?;
+                                Ok(properties)
+                            },
+                        ),
+                    combinator::eof,
+                )
+                    .map(|(properties, _)| properties),
+            ),
         )
         .context(StrContext::Label(type_name::<Self>()))
     }
