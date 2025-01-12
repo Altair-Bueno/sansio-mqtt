@@ -1,6 +1,6 @@
 use super::*;
 
-#[derive(Debug, PartialEq, Clone, Copy, EnumIter, Hash)]
+#[derive(Debug, PartialEq, Clone, Copy, EnumIter, Hash, Display)]
 
 pub enum ReasonCode {
     Success,

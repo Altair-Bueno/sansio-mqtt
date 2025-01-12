@@ -62,7 +62,7 @@ fn assert_parser_handles_example_connect_packet() {
                 )],
                 ..Default::default()
             },
-            topic: MQTTString::new("mydevice/status").unwrap(),
+            topic: PublishTopic::new("mydevice/status").unwrap(),
             payload: Into::into(b"dead" as &[u8]),
             qos: Qos::AtMostOnce,
             retain: false,

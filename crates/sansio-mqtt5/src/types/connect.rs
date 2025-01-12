@@ -25,12 +25,10 @@ pub struct ConnectHeaderFlags;
 #[derive(Debug, PartialEq, Clone)]
 
 pub struct Will<'input> {
-    pub topic: MQTTString<'input>,
-
+    pub topic: PublishTopic<'input>,
     pub payload: Cow<'input, [u8]>,
     pub qos: Qos,
     pub retain: bool,
-
     pub properties: WillProperties<'input>,
 }
 

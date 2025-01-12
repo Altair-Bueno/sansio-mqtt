@@ -87,7 +87,7 @@ impl<'input> Connect<'input> {
                         will_flag,
                         (
                             WillProperties::parse(parser_settings),
-                            MQTTString::parse(parser_settings).map(Into::into),
+                            PublishTopic::parse(parser_settings).map(Into::into),
                             self::binary_data(parser_settings).map(Into::into),
                         )
                             .map(|(properties, topic, payload)| Will {
