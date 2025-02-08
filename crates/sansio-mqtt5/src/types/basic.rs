@@ -128,6 +128,13 @@ impl AsRef<str> for PublishTopic<'_> {
     }
 }
 
+impl<'s> AsRef<MQTTString<'s>> for PublishTopic<'s> {
+    #[inline]
+    fn as_ref(&self) -> &MQTTString<'s> {
+        &self.0
+    }
+}
+
 #[derive(Debug, PartialEq, Clone, Copy, EnumIter, Hash, PartialOrd, Eq, Ord)]
 
 pub enum RetainHandling {
