@@ -12,6 +12,12 @@ pub struct Disconnect<'input> {
 
 pub struct DisconnectHeaderFlags;
 
+impl From<DisconnectHeaderFlags> for u8 {
+    fn from(_: DisconnectHeaderFlags) -> u8 {
+        0
+    }
+}
+
 #[derive(Debug, PartialEq, Clone, Default)]
 
 pub struct DisconnectProperties<'input> {
@@ -22,4 +28,13 @@ pub struct DisconnectProperties<'input> {
     pub user_properties: Vec<(MQTTString<'input>, MQTTString<'input>)>,
 
     pub server_reference: Option<MQTTString<'input>>,
+}
+
+impl DisconnectProperties<'_> {
+    pub fn is_empty(&self) -> bool {
+        self.session_expiry_interval.is_none()
+            && self.reason_string.is_none()
+            && self.user_properties.is_empty()
+            && self.server_reference.is_none()
+    }
 }

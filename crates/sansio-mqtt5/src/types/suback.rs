@@ -20,3 +20,9 @@ pub struct SubAckProperties<'input> {
 #[derive(Debug, PartialEq, Clone)]
 
 pub struct SubAckHeaderFlags;
+
+impl From<SubAckHeaderFlags> for u8 {
+    fn from(_: SubAckHeaderFlags) -> u8 {
+        0
+    }
+}

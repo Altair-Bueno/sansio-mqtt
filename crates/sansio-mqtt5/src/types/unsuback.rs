@@ -12,6 +12,12 @@ pub struct UnsubAck<'input> {
 
 pub struct UnsubAckHeaderFlags;
 
+impl From<UnsubAckHeaderFlags> for u8 {
+    fn from(_: UnsubAckHeaderFlags) -> u8 {
+        0
+    }
+}
+
 #[derive(Debug, PartialEq, Clone, Default)]
 
 pub struct UnsubAckProperties<'input> {
