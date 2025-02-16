@@ -9,8 +9,8 @@ use std::num::NonZero;
 use std::process::Command;
 use std::process::Stdio;
 
-use sansio_mqtt5::parser::Settings;
-use sansio_mqtt5::types::*;
+use sansio_mqtt5_core::parser::Settings;
+use sansio_mqtt5_core::types::*;
 use vec1::vec1;
 use winnow::error::ContextError;
 use winnow::Parser as _;

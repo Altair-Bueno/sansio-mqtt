@@ -1,8 +1,8 @@
 use std::num::NonZero;
 
 use encode::Encodable;
-use sansio_mqtt5::parser::Settings;
-use sansio_mqtt5::types::*;
+use sansio_mqtt5_core::parser::Settings;
+use sansio_mqtt5_core::types::*;
 use winnow::error::ContextError;
 use winnow::Parser;
 
