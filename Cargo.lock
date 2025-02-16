@@ -60,7 +60,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f7c45b9784283f1b2e7fb61b42047c2fd678ef0960d4f6f1eba131594cc369d4"
 
 [[package]]
-name = "sansio-mqtt5"
+name = "sansio-mqtt5-core"
 version = "0.1.0"
 dependencies = [
  "beef",
