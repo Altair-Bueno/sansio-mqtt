@@ -12,6 +12,12 @@ pub struct Unsubscribe<'input> {
 
 pub struct UnsubscribeHeaderFlags;
 
+impl From<UnsubscribeHeaderFlags> for u8 {
+    fn from(_: UnsubscribeHeaderFlags) -> u8 {
+        0b0000_0010
+    }
+}
+
 #[derive(Debug, PartialEq, Clone, Default)]
 
 pub struct UnsubscribeProperties<'input> {

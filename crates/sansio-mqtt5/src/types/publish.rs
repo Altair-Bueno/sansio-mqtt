@@ -31,6 +31,23 @@ pub struct PublishHeaderFlags {
     pub retain: bool,
 }
 
+impl From<PublishHeaderFlags> for u8 {
+    fn from(flags: PublishHeaderFlags) -> u8 {
+        let mut byte = 0u8;
+
+        byte |= u8::from(flags.retain);
+        match flags.kind {
+            PublishHeaderFlagsKind::Simple => (),
+            PublishHeaderFlagsKind::Advanced { qos, dup } => {
+                byte |= u8::from(qos) << 1;
+                byte |= u8::from(dup) << 3;
+            }
+        };
+
+        byte
+    }
+}
+
 #[derive(Debug, PartialEq, Clone)]
 
 pub enum PublishHeaderFlagsKind {

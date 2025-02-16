@@ -15,6 +15,12 @@ pub struct Connect<'input> {
 #[derive(Debug, PartialEq, Clone)]
 pub struct ConnectHeaderFlags;
 
+impl From<ConnectHeaderFlags> for u8 {
+    fn from(_: ConnectHeaderFlags) -> u8 {
+        0b0000_0000
+    }
+}
+
 #[derive(Debug, PartialEq, Clone)]
 pub struct Will<'input> {
     pub topic: PublishTopic<'input>,

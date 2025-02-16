@@ -16,8 +16,13 @@ pub enum ConnAckKind {
 }
 
 #[derive(Debug, PartialEq, Clone)]
-
 pub struct ConnAckHeaderFlags;
+
+impl From<ConnAckHeaderFlags> for u8 {
+    fn from(_: ConnAckHeaderFlags) -> u8 {
+        0
+    }
+}
 
 #[derive(Debug, PartialEq, Clone, Default)]
 

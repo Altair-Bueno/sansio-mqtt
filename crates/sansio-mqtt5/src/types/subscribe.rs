@@ -12,6 +12,12 @@ pub struct Subscribe<'input> {
 
 pub struct SubscribeHeaderFlags;
 
+impl From<SubscribeHeaderFlags> for u8 {
+    fn from(_: SubscribeHeaderFlags) -> u8 {
+        0b0000_0010
+    }
+}
+
 #[derive(Debug, PartialEq, Clone)]
 
 pub struct Subscription<'input> {
