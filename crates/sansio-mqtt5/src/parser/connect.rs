@@ -3,7 +3,7 @@ use super::*;
 #[inline]
 pub fn flags<Input, BitError, ByteError>(
     input: &mut Input,
-) -> PResult<(bool, bool, bool, Qos, bool, bool), ByteError>
+) -> ModalResult<(bool, bool, bool, Qos, bool, bool), ByteError>
 where
     BitError: ParserError<(Input, usize)>
         + ErrorConvert<ByteError>
@@ -38,7 +38,7 @@ impl<'input> Connect<'input> {
     #[inline]
     pub fn parse<'settings, ByteInput, ByteError, BitError>(
         parser_settings: &'settings Settings,
-    ) -> impl Parser<ByteInput, Self, ByteError> + use<'input, 'settings, ByteInput, ByteError, BitError>
+    ) -> impl ModalParser<ByteInput, Self, ByteError> + use<'input, 'settings, ByteInput, ByteError, BitError>
     where
         ByteInput: StreamIsPartial + Stream<Token = u8, Slice = &'input [u8]> + Clone + UpdateSlice,
         ByteError: ParserError<ByteInput>
@@ -134,7 +134,7 @@ impl<'input> Connect<'input> {
 
 impl ConnectHeaderFlags {
     #[inline]
-    pub fn parse<Input, Error>(input: &mut (Input, usize)) -> PResult<Self, Error>
+    pub fn parse<Input, Error>(input: &mut (Input, usize)) -> ModalResult<Self, Error>
     where
         Input: Stream<Token = u8> + StreamIsPartial + Clone,
         Error: ParserError<(Input, usize)> + AddContext<(Input, usize), StrContext>,
@@ -152,7 +152,7 @@ impl<'input> ConnectProperties<'input> {
     #[inline]
     pub fn parse<'settings, Input, Error>(
         parser_settings: &'settings Settings,
-    ) -> impl Parser<Input, Self, Error> + use<'input, 'settings, Input, Error>
+    ) -> impl ModalParser<Input, Self, Error> + use<'input, 'settings, Input, Error>
     where
         Input: Stream<Token = u8, Slice = &'input [u8]> + UpdateSlice + StreamIsPartial + Clone,
         Error: ParserError<Input>
@@ -301,7 +301,7 @@ impl<'input> WillProperties<'input> {
     #[inline]
     pub fn parse<'settings, Input, Error>(
         parser_settings: &'settings Settings,
-    ) -> impl Parser<Input, Self, Error> + use<'input, 'settings, Input, Error>
+    ) -> impl ModalParser<Input, Self, Error> + use<'input, 'settings, Input, Error>
     where
         Input: Stream<Token = u8, Slice = &'input [u8]> + UpdateSlice + StreamIsPartial + Clone,
         Error: ParserError<Input>

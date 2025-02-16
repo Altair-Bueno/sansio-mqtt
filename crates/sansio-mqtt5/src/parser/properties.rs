@@ -2,7 +2,7 @@ use super::*;
 
 impl PropertyType {
     #[inline]
-    pub fn parse<Input, Error>(input: &mut Input) -> PResult<Self, Error>
+    pub fn parse<Input, Error>(input: &mut Input) -> ModalResult<Self, Error>
     where
         Input: Stream<Token = u8> + StreamIsPartial,
         Error: ParserError<Input>
@@ -25,7 +25,7 @@ impl<'input> Property<'input> {
     #[inline]
     pub fn parse<'settings, Input, Error>(
         parser_settings: &'settings Settings,
-    ) -> impl Parser<Input, Self, Error> + use<'input, 'settings, Input, Error>
+    ) -> impl ModalParser<Input, Self, Error> + use<'input, 'settings, Input, Error>
     where
         Input: Stream<Token = u8, Slice = &'input [u8]> + StreamIsPartial + Clone,
         Error: ParserError<Input>
