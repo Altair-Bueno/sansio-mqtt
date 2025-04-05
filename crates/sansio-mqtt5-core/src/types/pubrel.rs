@@ -3,8 +3,7 @@ use super::*;
 
 pub struct PubRel<'input> {
     pub packet_id: NonZero<u16>,
-    pub reason_code: ReasonCode,
-
+    pub reason_code: PubRelReasonCode,
     pub properties: PubRelProperties<'input>,
 }
 

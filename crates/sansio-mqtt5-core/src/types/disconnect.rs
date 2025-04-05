@@ -3,8 +3,7 @@ use super::*;
 #[derive(Debug, PartialEq, Clone)]
 
 pub struct Disconnect<'input> {
-    pub reason_code: ReasonCode,
-
+    pub reason_code: DisconnectReasonCode,
     pub properties: DisconnectProperties<'input>,
 }
 

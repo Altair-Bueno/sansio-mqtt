@@ -18,7 +18,8 @@ impl<'input> ConnAck<'input> {
     #[inline]
     pub fn parse<'settings, ByteInput, ByteError, BitError>(
         parser_settings: &'settings Settings,
-    ) -> impl ModalParser<ByteInput, Self, ByteError> + use<'input, 'settings, ByteInput, ByteError, BitError>
+    ) -> impl ModalParser<ByteInput, Self, ByteError>
+           + use<'input, 'settings, ByteInput, ByteError, BitError>
     where
         ByteInput: StreamIsPartial + Stream<Token = u8, Slice = &'input [u8]> + Clone + UpdateSlice,
         ByteError: ParserError<ByteInput>
@@ -28,6 +29,7 @@ impl<'input> ConnAck<'input> {
             + FromExternalError<ByteInput, InvalidPropertyTypeError>
             + FromExternalError<ByteInput, PropertiesError>
             + FromExternalError<ByteInput, UnknownFormatIndicatorError>
+            + FromExternalError<ByteInput, InvalidReasonCode>
             + AddContext<ByteInput, StrContext>,
         BitError: ParserError<(ByteInput, usize)> + ErrorConvert<ByteError>,
     {
@@ -35,14 +37,14 @@ impl<'input> ConnAck<'input> {
             type_name::<Self>(),
             (
                 flags::<_, BitError, _>,
-                ReasonCode::parse_connack,
+                ConnackReasonCode::parse,
                 ConnAckProperties::parse(parser_settings),
                 combinator::eof,
             )
                 .verify_map(move |((session_present,), reason_code, properties, _)| {
                     // If a Server sends a CONNACK packet containing a non-zero Reason Code it MUST set Session Present to 0 [MQTT-3.2.2-6].
                     let kind = match (session_present, reason_code) {
-                        (true, ReasonCode::Success) => ConnAckKind::ResumePreviousSession,
+                        (true, ConnackReasonCode::Success) => ConnAckKind::ResumePreviousSession,
                         (false, reason_code) => ConnAckKind::Other { reason_code },
                         (true, _) => return None,
                     };

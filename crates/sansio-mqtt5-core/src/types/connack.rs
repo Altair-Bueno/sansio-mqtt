@@ -12,7 +12,7 @@ pub struct ConnAck<'input> {
 
 pub enum ConnAckKind {
     ResumePreviousSession,
-    Other { reason_code: ReasonCode },
+    Other { reason_code: ConnackReasonCode },
 }
 
 #[derive(Debug, PartialEq, Clone)]

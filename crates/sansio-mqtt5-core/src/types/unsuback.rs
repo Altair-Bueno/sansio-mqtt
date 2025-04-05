@@ -3,9 +3,8 @@ use super::*;
 
 pub struct UnsubAck<'input> {
     pub packet_id: NonZero<u16>,
-
     pub properties: UnsubAckProperties<'input>,
-    pub reason_codes: Vec<ReasonCode>,
+    pub reason_codes: Vec<UnsubAckReasonCode>,
 }
 
 #[derive(Debug, PartialEq, Clone)]

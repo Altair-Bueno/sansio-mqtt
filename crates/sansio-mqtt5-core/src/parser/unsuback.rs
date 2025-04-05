@@ -30,6 +30,7 @@ impl<'input> UnsubAck<'input> {
             + FromExternalError<ByteInput, InvalidPropertyTypeError>
             + FromExternalError<ByteInput, PropertiesError>
             + FromExternalError<ByteInput, UnknownFormatIndicatorError>
+            + FromExternalError<ByteInput, InvalidReasonCode>
             + AddContext<ByteInput, StrContext>,
         BitError: ParserError<(ByteInput, usize)> + ErrorConvert<ByteError>,
     {
@@ -42,7 +43,7 @@ impl<'input> UnsubAck<'input> {
                     "reason codes",
                     combinator::repeat_till(
                         ..=parser_settings.max_subscriptions_len as usize,
-                        ReasonCode::parse_unsuback,
+                        UnsubAckReasonCode::parse,
                         combinator::eof,
                     ),
                 ),

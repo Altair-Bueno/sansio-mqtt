@@ -267,155 +267,33 @@ impl<'input> Subscription<'input> {
     }
 }
 
-impl ReasonCode {
-    #[inline(always)]
-    pub fn parse_auth<Input, Error>(input: &mut Input) -> ModalResult<Self, Error>
-    where
-        Input: StreamIsPartial + Stream<Token = u8>,
-        Error: ParserError<Input> + AddContext<Input, StrContext>,
-    {
-        combinator::trace(
-            type_name::<Self>(),
-            token::any.verify_map(ReasonCode::from_auth),
-        )
-        .context(StrContext::Label(type_name::<Self>()))
-        .context(StrContext::Expected(StrContextValue::Description(
-            "a Reason Code for an AUTH packet",
-        )))
-        .parse_next(input)
-    }
-
-    #[inline(always)]
-    pub fn parse_disconnect<Input, Error>(input: &mut Input) -> ModalResult<Self, Error>
-    where
-        Input: StreamIsPartial + Stream<Token = u8>,
-        Error: ParserError<Input> + AddContext<Input, StrContext>,
-    {
-        combinator::trace(
-            type_name::<Self>(),
-            token::any.verify_map(ReasonCode::from_disconnect),
-        )
-        .context(StrContext::Label(type_name::<Self>()))
-        .context(StrContext::Expected(StrContextValue::Description(
-            "a Reason Code for a DISCONNECT packet",
-        )))
-        .parse_next(input)
-    }
-
-    #[inline(always)]
-    pub fn parse_pubcomp<Input, Error>(input: &mut Input) -> ModalResult<Self, Error>
-    where
-        Input: StreamIsPartial + Stream<Token = u8>,
-        Error: ParserError<Input> + AddContext<Input, StrContext>,
-    {
-        combinator::trace(
-            type_name::<Self>(),
-            token::any.verify_map(ReasonCode::from_pubcomp),
-        )
-        .context(StrContext::Label(type_name::<Self>()))
-        .context(StrContext::Expected(StrContextValue::Description(
-            "a Reason Code for a PUBCOMP packet",
-        )))
-        .parse_next(input)
-    }
-
-    #[inline(always)]
-    pub fn parse_pubrel<Input, Error>(input: &mut Input) -> ModalResult<Self, Error>
-    where
-        Input: StreamIsPartial + Stream<Token = u8>,
-        Error: ParserError<Input> + AddContext<Input, StrContext>,
-    {
-        combinator::trace(
-            type_name::<Self>(),
-            token::any.verify_map(ReasonCode::from_pubrel),
-        )
-        .context(StrContext::Label(type_name::<Self>()))
-        .context(StrContext::Expected(StrContextValue::Description(
-            "a Reason Code for a PUBREL packet",
-        )))
-        .parse_next(input)
-    }
-
-    #[inline(always)]
-    pub fn parse_pubrec<Input, Error>(input: &mut Input) -> ModalResult<Self, Error>
-    where
-        Input: StreamIsPartial + Stream<Token = u8>,
-        Error: ParserError<Input> + AddContext<Input, StrContext>,
-    {
-        combinator::trace(
-            type_name::<Self>(),
-            token::any.verify_map(ReasonCode::from_pubrec),
-        )
-        .context(StrContext::Label(type_name::<Self>()))
-        .context(StrContext::Expected(StrContextValue::Description(
-            "a Reason Code for a PUBREC packet",
-        )))
-        .parse_next(input)
-    }
-
-    #[inline(always)]
-    pub fn parse_puback<Input, Error>(input: &mut Input) -> ModalResult<Self, Error>
-    where
-        Input: StreamIsPartial + Stream<Token = u8>,
-        Error: ParserError<Input> + AddContext<Input, StrContext>,
-    {
-        combinator::trace(
-            type_name::<Self>(),
-            token::any.verify_map(ReasonCode::from_puback),
-        )
-        .context(StrContext::Label(type_name::<Self>()))
-        .context(StrContext::Expected(StrContextValue::Description(
-            "a Reason Code for a PUBACK packet",
-        )))
-        .parse_next(input)
-    }
-
-    #[inline(always)]
-    pub fn parse_connack<Input, Error>(input: &mut Input) -> ModalResult<Self, Error>
-    where
-        Input: StreamIsPartial + Stream<Token = u8>,
-        Error: ParserError<Input> + AddContext<Input, StrContext>,
-    {
-        combinator::trace(
-            type_name::<Self>(),
-            token::any.verify_map(ReasonCode::from_connack),
-        )
-        .context(StrContext::Label(type_name::<Self>()))
-        .context(StrContext::Expected(StrContextValue::Description(
-            "a Reason Code for a CONNACK packet",
-        )))
-        .parse_next(input)
-    }
-    #[inline(always)]
-    pub fn parse_suback<Input, Error>(input: &mut Input) -> ModalResult<Self, Error>
-    where
-        Input: StreamIsPartial + Stream<Token = u8>,
-        Error: ParserError<Input> + AddContext<Input, StrContext>,
-    {
-        combinator::trace(
-            type_name::<Self>(),
-            token::any.verify_map(ReasonCode::from_suback),
-        )
-        .context(StrContext::Label(type_name::<Self>()))
-        .context(StrContext::Expected(StrContextValue::Description(
-            "a Reason Code for a SUBACK packet",
-        )))
-        .parse_next(input)
-    }
-    #[inline(always)]
-    pub fn parse_unsuback<Input, Error>(input: &mut Input) -> ModalResult<Self, Error>
-    where
-        Input: StreamIsPartial + Stream<Token = u8>,
-        Error: ParserError<Input> + AddContext<Input, StrContext>,
-    {
-        combinator::trace(
-            type_name::<Self>(),
-            token::any.verify_map(ReasonCode::from_unsuback),
-        )
-        .context(StrContext::Label(type_name::<Self>()))
-        .context(StrContext::Expected(StrContextValue::Description(
-            "a Reason Code for an UNSUBACK packet",
-        )))
-        .parse_next(input)
-    }
+macro_rules! impl_parser_for_reason_code {
+    ($name:ty) => {
+        impl $name {
+            #[inline]
+            pub fn parse<Input, Error>(input: &mut Input) -> ModalResult<Self, Error>
+            where
+                Input: Stream<Token = u8> + StreamIsPartial + Clone,
+                Error: ParserError<Input>
+                    + FromExternalError<Input, InvalidReasonCode>
+                    + AddContext<Input, StrContext>,
+            {
+                combinator::trace(type_name::<Self>(), token::any.try_map(Self::try_from))
+                    .context(StrContext::Label(type_name::<Self>()))
+                    .parse_next(input)
+            }
+        }
+    };
 }
+
+impl_parser_for_reason_code!(ConnectReasonCode);
+impl_parser_for_reason_code!(ConnackReasonCode);
+impl_parser_for_reason_code!(PublishReasonCode);
+impl_parser_for_reason_code!(PubAckReasonCode);
+impl_parser_for_reason_code!(PubRecReasonCode);
+impl_parser_for_reason_code!(PubRelReasonCode);
+impl_parser_for_reason_code!(PubCompReasonCode);
+impl_parser_for_reason_code!(SubAckReasonCode);
+impl_parser_for_reason_code!(UnsubAckReasonCode);
+impl_parser_for_reason_code!(DisconnectReasonCode);
+impl_parser_for_reason_code!(AuthReasonCode);

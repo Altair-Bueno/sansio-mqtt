@@ -4,8 +4,7 @@ use super::*;
 
 pub struct PubComp<'input> {
     pub packet_id: NonZero<u16>,
-    pub reason_code: ReasonCode,
-
+    pub reason_code: PubCompReasonCode,
     pub properties: PubCompProperties<'input>,
 }
 

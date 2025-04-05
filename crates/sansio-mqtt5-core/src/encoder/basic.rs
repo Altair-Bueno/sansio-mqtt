@@ -88,10 +88,27 @@ where
     }
 }
 
-impl<E: Encoder> Encodable<E> for ReasonCode {
-    type Error = E::Error;
+macro_rules! impl_encode_for_reason_code {
+    ($name:ty) => {
+        impl<E: Encoder> Encodable<E> for $name {
+            type Error = E::Error;
 
-    fn encode(&self, encoder: &mut E) -> Result<(), Self::Error> {
-        u8::from(*self).encode(encoder)
-    }
+            #[inline]
+            fn encode(&self, encoder: &mut E) -> Result<(), Self::Error> {
+                u8::from(*self).encode(encoder)
+            }
+        }
+    };
 }
+
+impl_encode_for_reason_code!(ConnectReasonCode);
+impl_encode_for_reason_code!(ConnackReasonCode);
+impl_encode_for_reason_code!(PublishReasonCode);
+impl_encode_for_reason_code!(PubAckReasonCode);
+impl_encode_for_reason_code!(PubRecReasonCode);
+impl_encode_for_reason_code!(PubRelReasonCode);
+impl_encode_for_reason_code!(PubCompReasonCode);
+impl_encode_for_reason_code!(SubAckReasonCode);
+impl_encode_for_reason_code!(UnsubAckReasonCode);
+impl_encode_for_reason_code!(DisconnectReasonCode);
+impl_encode_for_reason_code!(AuthReasonCode);

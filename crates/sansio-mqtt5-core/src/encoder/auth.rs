@@ -55,7 +55,7 @@ where
                     &self.properties,
                 ),
                 |(reason_code, properties)| {
-                    let success = **reason_code == ReasonCode::Success;
+                    let success = **reason_code == AuthReasonCode::Success;
                     let no_properties = properties.is_empty();
 
                     !(success && no_properties)

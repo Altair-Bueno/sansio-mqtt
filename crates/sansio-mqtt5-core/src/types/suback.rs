@@ -4,9 +4,8 @@ use super::*;
 
 pub struct SubAck<'input> {
     pub packet_id: NonZero<u16>,
-
     pub properties: SubAckProperties<'input>,
-    pub reason_codes: Vec<ReasonCode>,
+    pub reason_codes: Vec<SubAckReasonCode>,
 }
 
 #[derive(Debug, PartialEq, Clone, Default)]

@@ -19,7 +19,8 @@ impl<'input> SubAck<'input> {
     #[inline]
     pub fn parse<'settings, ByteInput, ByteError, BitError>(
         parser_settings: &'settings Settings,
-    ) -> impl ModalParser<ByteInput, Self, ByteError> + use<'input, 'settings, ByteInput, ByteError, BitError>
+    ) -> impl ModalParser<ByteInput, Self, ByteError>
+           + use<'input, 'settings, ByteInput, ByteError, BitError>
     where
         ByteInput: StreamIsPartial + Stream<Token = u8, Slice = &'input [u8]> + Clone + UpdateSlice,
         ByteError: ParserError<ByteInput>
@@ -29,6 +30,7 @@ impl<'input> SubAck<'input> {
             + FromExternalError<ByteInput, InvalidPropertyTypeError>
             + FromExternalError<ByteInput, PropertiesError>
             + FromExternalError<ByteInput, UnknownFormatIndicatorError>
+            + FromExternalError<ByteInput, InvalidReasonCode>
             + AddContext<ByteInput, StrContext>,
         BitError: ParserError<(ByteInput, usize)> + ErrorConvert<ByteError>,
     {
@@ -41,7 +43,7 @@ impl<'input> SubAck<'input> {
                     "reason codes",
                     combinator::repeat_till(
                         ..=parser_settings.max_subscriptions_len as usize,
-                        ReasonCode::parse_suback,
+                        SubAckReasonCode::parse,
                         combinator::eof,
                     ),
                 ),

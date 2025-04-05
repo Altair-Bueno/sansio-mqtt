@@ -1,15 +1,12 @@
 use super::*;
 
 #[derive(Debug, PartialEq, Clone)]
-
 pub struct Auth<'input> {
-    pub reason_code: ReasonCode,
-
+    pub reason_code: AuthReasonCode,
     pub properties: AuthProperties<'input>,
 }
 
 #[derive(Debug, PartialEq, Clone)]
-
 pub struct AuthHeaderFlags;
 
 impl From<AuthHeaderFlags> for u8 {
@@ -19,7 +16,6 @@ impl From<AuthHeaderFlags> for u8 {
 }
 
 #[derive(Debug, PartialEq, Clone, Default)]
-
 pub struct AuthProperties<'input> {
     pub reason_string: Option<MQTTString<'input>>,
     pub authentication: Option<AuthenticationKind<'input>>,

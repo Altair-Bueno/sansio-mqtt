@@ -50,7 +50,7 @@ where
                     &self.properties,
                 ),
                 |(reason_code, properties)| {
-                    let success = **reason_code == ReasonCode::Success;
+                    let success = **reason_code == DisconnectReasonCode::NormalDisconnection;
                     let no_properties = properties.is_empty();
 
                     !(success && no_properties)

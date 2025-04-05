@@ -19,7 +19,8 @@ impl<'input> PubAck<'input> {
     #[inline]
     pub fn parse<'settings, ByteInput, ByteError, BitError>(
         parser_settings: &'settings Settings,
-    ) -> impl ModalParser<ByteInput, Self, ByteError> + use<'input, 'settings, ByteInput, ByteError, BitError>
+    ) -> impl ModalParser<ByteInput, Self, ByteError>
+           + use<'input, 'settings, ByteInput, ByteError, BitError>
     where
         ByteInput: StreamIsPartial + Stream<Token = u8, Slice = &'input [u8]> + Clone + UpdateSlice,
         ByteError: ParserError<ByteInput>
@@ -29,6 +30,7 @@ impl<'input> PubAck<'input> {
             + FromExternalError<ByteInput, InvalidPropertyTypeError>
             + FromExternalError<ByteInput, PropertiesError>
             + FromExternalError<ByteInput, UnknownFormatIndicatorError>
+            + FromExternalError<ByteInput, InvalidReasonCode>
             + AddContext<ByteInput, StrContext>,
         BitError: ParserError<(ByteInput, usize)> + ErrorConvert<ByteError>,
     {
@@ -39,12 +41,12 @@ impl<'input> PubAck<'input> {
                 // The Reason Code and Property Length can be omitted if the Reason Code is 0x00 (Success) and there are no Properties. In this case the PUBREC has a Remaining Length of 2.
                 combinator::alt((
                     (
-                        combinator::empty.value(ReasonCode::Success),
-                        combinator::empty.value(PubAckProperties::default()),
+                        combinator::empty.default_value(),
+                        combinator::empty.default_value(),
                         combinator::eof,
                     ),
                     (
-                        ReasonCode::parse_puback,
+                        PubAckReasonCode::parse,
                         PubAckProperties::parse(parser_settings),
                         combinator::eof,
                     ),

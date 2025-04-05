@@ -114,7 +114,7 @@ where
         let reason_code = if let ConnAckKind::Other { reason_code } = self.kind {
             reason_code
         } else {
-            ReasonCode::Success
+            ConnackReasonCode::Success
         };
         encode::combinators::LengthPrefix::<_, VariableByteInteger, Self::Error>::new((
             encode::combinators::FromError::<_, Self::Error>::new(ack_flags),

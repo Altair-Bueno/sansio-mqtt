@@ -30,6 +30,7 @@ impl<'input> Auth<'input> {
             + FromExternalError<ByteInput, InvalidPropertyTypeError>
             + FromExternalError<ByteInput, PropertiesError>
             + FromExternalError<ByteInput, UnknownFormatIndicatorError>
+            + FromExternalError<ByteInput, InvalidReasonCode>
             + AddContext<ByteInput, StrContext>,
         BitError: ParserError<(ByteInput, usize)> + ErrorConvert<ByteError>,
     {
@@ -37,12 +38,12 @@ impl<'input> Auth<'input> {
             type_name::<Self>(),
             combinator::alt((
                 (
-                    combinator::empty.value(ReasonCode::Success),
+                    combinator::empty.default_value(),
                     combinator::empty.default_value(),
                     combinator::eof,
                 ),
                 (
-                    ReasonCode::parse_auth,
+                    AuthReasonCode::parse,
                     AuthProperties::parse(parser_settings),
                     combinator::eof,
                 ),

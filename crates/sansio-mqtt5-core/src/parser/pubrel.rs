@@ -33,6 +33,7 @@ impl<'input> PubRel<'input> {
             + FromExternalError<ByteInput, InvalidPropertyTypeError>
             + FromExternalError<ByteInput, PropertiesError>
             + FromExternalError<ByteInput, UnknownFormatIndicatorError>
+            + FromExternalError<ByteInput, InvalidReasonCode>
             + AddContext<ByteInput, StrContext>,
         BitError: ParserError<(ByteInput, usize)> + ErrorConvert<ByteError>,
     {
@@ -43,12 +44,12 @@ impl<'input> PubRel<'input> {
                 // The Reason Code and Property Length can be omitted if the Reason Code is 0x00 (Success) and there are no Properties. In this case the PUBREC has a Remaining Length of 2.
                 combinator::alt((
                     (
-                        combinator::empty.value(ReasonCode::Success),
+                        combinator::empty.default_value(),
                         combinator::empty.default_value(),
                         combinator::eof,
                     ),
                     (
-                        ReasonCode::parse_pubrel,
+                        PubRelReasonCode::parse,
                         PubRelProperties::parse(parser_settings),
                         combinator::eof,
                     ),
