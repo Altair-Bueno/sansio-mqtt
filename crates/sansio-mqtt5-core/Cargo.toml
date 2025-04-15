@@ -13,3 +13,6 @@ beef = { workspace = true }
 thiserror = { workspace = true }
 vec1 = { workspace = true }
 encode = { workspace = true }
+
+[dev-dependencies]
+rstest = { workspace = true }
