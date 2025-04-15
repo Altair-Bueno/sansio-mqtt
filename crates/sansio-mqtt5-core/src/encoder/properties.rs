@@ -1,6 +1,6 @@
 use super::*;
 
-impl<E: Encoder> Encodable<E> for PropertyType
+impl<E: ByteEncoder> Encodable<E> for PropertyType
 where
     EncodeError: From<E::Error>,
 {
@@ -11,7 +11,7 @@ where
     }
 }
 
-impl<E: Encoder> Encodable<E> for Property<'_>
+impl<E: ByteEncoder> Encodable<E> for Property<'_>
 where
     EncodeError: From<E::Error>,
 {

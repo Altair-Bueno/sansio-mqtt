@@ -2,7 +2,7 @@ use super::*;
 
 impl<E> Encodable<E> for ConnAckProperties<'_>
 where
-    E: Encoder,
+    E: ByteEncoder,
     EncodeError: From<E::Error>,
 {
     type Error = EncodeError;
@@ -90,7 +90,7 @@ where
 
 impl<E> Encodable<E> for ConnAck<'_>
 where
-    E: Encoder,
+    E: ByteEncoder,
     EncodeError: From<E::Error>,
 {
     type Error = EncodeError;
@@ -99,7 +99,7 @@ where
         let mut header_flags = 0u8;
         header_flags |= u8::from(ControlPacketType::ConnAck) << 4;
         header_flags |= u8::from(ConnAckHeaderFlags);
-        encoder.put_byte(header_flags)?;
+        header_flags.encode(encoder)?;
 
         let ack_flags = encode::combinators::Flags::new([
             false,

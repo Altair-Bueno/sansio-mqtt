@@ -1,6 +1,6 @@
 use super::*;
 
-impl<E: Encoder> Encodable<E> for PingResp
+impl<E: ByteEncoder> Encodable<E> for PingResp
 where
     EncodeError: From<E::Error>,
 {
@@ -11,7 +11,7 @@ where
         header_flags |= u8::from(ControlPacketType::PingResp) << 4;
         header_flags |= u8::from(PingRespHeaderFlags);
 
-        encoder.put_byte(header_flags)?;
+        header_flags.encode(encoder)?;
         encode::combinators::LengthPrefix::<_, VariableByteInteger, Self::Error>::new(())
             .encode(encoder)
     }

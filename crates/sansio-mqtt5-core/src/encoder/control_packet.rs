@@ -2,7 +2,7 @@ use super::*;
 
 impl<E> Encodable<E> for ControlPacket<'_>
 where
-    E: Encoder,
+    E: ByteEncoder,
     EncodeError: From<E::Error>,
 {
     type Error = EncodeError;

@@ -18,7 +18,7 @@ impl TryFrom<usize> for VariableByteInteger {
 
 impl<E> Encodable<E> for VariableByteInteger
 where
-    E: Encoder,
+    E: ByteEncoder,
     EncodeError: From<E::Error>,
 {
     type Error = EncodeError;
@@ -32,7 +32,7 @@ where
             if value > 0 {
                 encoded_byte |= 128;
             }
-            encoder.put_byte(encoded_byte)?;
+            encoded_byte.encode(encoder)?;
             if value == 0 {
                 break;
             }
@@ -41,7 +41,7 @@ where
     }
 }
 
-impl<E: Encoder> Encodable<E> for MQTTString<'_>
+impl<E: ByteEncoder> Encodable<E> for MQTTString<'_>
 where
     EncodeError: From<E::Error>,
 {
@@ -51,7 +51,7 @@ where
         BinaryData::new(self.as_bytes()).encode(encoder)
     }
 }
-impl<E: Encoder> Encodable<E> for PublishTopic<'_>
+impl<E: ByteEncoder> Encodable<E> for PublishTopic<'_>
 where
     EncodeError: From<E::Error>,
 {
@@ -62,7 +62,7 @@ where
     }
 }
 
-impl<E: Encoder> Encodable<E> for FormatIndicator {
+impl<E: ByteEncoder> Encodable<E> for FormatIndicator {
     type Error = E::Error;
 
     fn encode(&self, encoder: &mut E) -> Result<(), Self::Error> {
@@ -70,7 +70,7 @@ impl<E: Encoder> Encodable<E> for FormatIndicator {
     }
 }
 
-impl<E: Encoder> Encodable<E> for Subscription<'_>
+impl<E: ByteEncoder> Encodable<E> for Subscription<'_>
 where
     EncodeError: From<E::Error>,
 {
@@ -90,7 +90,7 @@ where
 
 macro_rules! impl_encode_for_reason_code {
     ($name:ty) => {
-        impl<E: Encoder> Encodable<E> for $name {
+        impl<E: ByteEncoder> Encodable<E> for $name {
             type Error = E::Error;
 
             #[inline]

@@ -2,7 +2,7 @@ use super::*;
 
 impl<E> Encodable<E> for PublishProperties<'_>
 where
-    E: Encoder,
+    E: ByteEncoder,
     EncodeError: From<E::Error>,
 {
     type Error = EncodeError;
@@ -45,7 +45,7 @@ where
 
 impl<E> Encodable<E> for Publish<'_>
 where
-    E: Encoder,
+    E: ByteEncoder,
     EncodeError: From<E::Error>,
 {
     type Error = EncodeError;
@@ -69,7 +69,7 @@ where
             kind,
             retain: self.retain,
         });
-        encoder.put_byte(header_flags)?;
+        header_flags.encode(encoder)?;
 
         encode::combinators::LengthPrefix::<_, VariableByteInteger, Self::Error>::new((
             &self.topic,

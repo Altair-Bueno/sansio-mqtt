@@ -21,6 +21,6 @@ mod unsubscribe;
 
 use super::types::*;
 use basic::*;
+use encode::ByteEncoder;
 use encode::Encodable;
-use encode::Encoder;
 use error::EncodeError;

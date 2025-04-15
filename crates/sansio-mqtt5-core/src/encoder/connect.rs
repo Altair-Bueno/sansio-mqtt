@@ -2,7 +2,7 @@ use super::*;
 
 impl<E> Encodable<E> for ConnectProperties<'_>
 where
-    E: Encoder,
+    E: ByteEncoder,
     EncodeError: From<E::Error>,
 {
     type Error = EncodeError;
@@ -61,7 +61,7 @@ where
 }
 impl<E> Encodable<E> for WillProperties<'_>
 where
-    E: Encoder,
+    E: ByteEncoder,
     EncodeError: From<E::Error>,
 {
     type Error = EncodeError;
@@ -104,7 +104,7 @@ where
 
 impl<E> Encodable<E> for Connect<'_>
 where
-    E: Encoder,
+    E: ByteEncoder,
     EncodeError: From<E::Error>,
 {
     type Error = EncodeError;
@@ -113,7 +113,7 @@ where
         let mut header_flags = 0u8;
         header_flags |= u8::from(ControlPacketType::Connect) << 4;
         header_flags |= u8::from(ConnectHeaderFlags);
-        encoder.put_byte(header_flags)?;
+        header_flags.encode(encoder)?;
 
         let mut flags = 0u8;
         flags |= u8::from(self.clean_start) << 1;

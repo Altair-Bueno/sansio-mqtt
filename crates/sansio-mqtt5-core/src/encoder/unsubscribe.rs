@@ -2,7 +2,7 @@ use super::*;
 
 impl<E> Encodable<E> for UnsubscribeProperties<'_>
 where
-    E: Encoder,
+    E: ByteEncoder,
     EncodeError: From<E::Error>,
 {
     type Error = EncodeError;
@@ -22,7 +22,7 @@ where
 
 impl<E> Encodable<E> for Unsubscribe<'_>
 where
-    E: Encoder,
+    E: ByteEncoder,
     EncodeError: From<E::Error>,
 {
     type Error = EncodeError;
@@ -31,7 +31,7 @@ where
         let mut header_flags = 0u8;
         header_flags |= u8::from(ControlPacketType::Unsubscribe) << 4;
         header_flags |= u8::from(UnsubscribeHeaderFlags);
-        encoder.put_byte(header_flags)?;
+        header_flags.encode(encoder)?;
 
         encode::combinators::LengthPrefix::<_, VariableByteInteger, Self::Error>::new((
             encode::combinators::FromError::new(TwoByteInteger::new(self.packet_id.get())),

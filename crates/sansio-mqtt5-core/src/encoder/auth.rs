@@ -2,7 +2,7 @@ use super::*;
 
 impl<E> Encodable<E> for AuthProperties<'_>
 where
-    E: Encoder,
+    E: ByteEncoder,
     EncodeError: From<E::Error>,
 {
     type Error = EncodeError;
@@ -37,7 +37,7 @@ where
 
 impl<E> Encodable<E> for Auth<'_>
 where
-    E: Encoder,
+    E: ByteEncoder,
     EncodeError: From<E::Error>,
 {
     type Error = EncodeError;
@@ -46,7 +46,7 @@ where
         let mut header_flags = 0u8;
         header_flags |= u8::from(ControlPacketType::Auth) << 4;
         header_flags |= u8::from(AuthHeaderFlags);
-        encoder.put_byte(header_flags)?;
+        header_flags.encode(encoder)?;
 
         encode::combinators::LengthPrefix::<_, VariableByteInteger, Self::Error>::new(
             encode::combinators::Cond::new(

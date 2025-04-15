@@ -2,7 +2,7 @@ use super::*;
 
 impl<E> Encodable<E> for DisconnectProperties<'_>
 where
-    E: Encoder,
+    E: ByteEncoder,
     EncodeError: From<E::Error>,
 {
     type Error = EncodeError;
@@ -32,7 +32,7 @@ where
 
 impl<E> Encodable<E> for Disconnect<'_>
 where
-    E: Encoder,
+    E: ByteEncoder,
     EncodeError: From<E::Error>,
 {
     type Error = EncodeError;
@@ -41,7 +41,7 @@ where
         let mut header_flags = 0u8;
         header_flags |= u8::from(ControlPacketType::Disconnect) << 4;
         header_flags |= u8::from(DisconnectHeaderFlags);
-        encoder.put_byte(header_flags)?;
+        header_flags.encode(encoder)?;
 
         encode::combinators::LengthPrefix::<_, VariableByteInteger, Self::Error>::new(
             encode::combinators::Cond::new(
