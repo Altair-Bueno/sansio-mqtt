@@ -48,8 +48,8 @@ impl<'input> Connect<'input> {
             + FromExternalError<ByteInput, InvalidPropertyTypeError>
             + FromExternalError<ByteInput, PropertiesError>
             + FromExternalError<ByteInput, UnknownFormatIndicatorError>
-            + FromExternalError<ByteInput, MQTTStringError>
-            + FromExternalError<ByteInput, PublishTopicError>
+            + FromExternalError<ByteInput, Utf8StringError>
+            + FromExternalError<ByteInput, TopicError>
             + FromExternalError<ByteInput, TryFromIntError>
             + AddContext<ByteInput, StrContext>,
         BitError: ParserError<(ByteInput, usize)>
@@ -66,7 +66,7 @@ impl<'input> Connect<'input> {
                 properties,
                 client_identifier,
             ) = (
-                combinator::trace("Protocol name", MQTTString::parse(parser_settings)),
+                combinator::trace("Protocol name", Utf8String::parse(parser_settings)),
                 combinator::trace("Protocol version", token::any),
                 self::flags::<_, BitError, _>.verify(
                     |(_, _, will_retain, will_qos, will_flag, _)| {
@@ -79,7 +79,7 @@ impl<'input> Connect<'input> {
                 ),
                 combinator::trace("Keep alive", self::two_byte_integer),
                 ConnectProperties::parse(parser_settings),
-                combinator::trace("Client identifier", MQTTString::parse(parser_settings)),
+                combinator::trace("Client identifier", Utf8String::parse(parser_settings)),
             )
                 .parse_next(input)?;
 
@@ -90,7 +90,7 @@ impl<'input> Connect<'input> {
                         will_flag,
                         (
                             WillProperties::parse(parser_settings),
-                            PublishTopic::parse(parser_settings).map(Into::into),
+                            Topic::parse(parser_settings).map(Into::into),
                             self::binary_data(parser_settings).map(Into::into),
                         )
                             .map(|(properties, topic, payload)| Will {
@@ -106,7 +106,7 @@ impl<'input> Connect<'input> {
                     "username",
                     combinator::cond(
                         username_flag,
-                        MQTTString::parse(parser_settings).map(Into::into),
+                        Utf8String::parse(parser_settings).map(Into::into),
                     ),
                 ),
                 combinator::trace(
@@ -165,9 +165,9 @@ impl<'input> ConnectProperties<'input> {
             + FromExternalError<Input, InvalidPropertyTypeError>
             + FromExternalError<Input, PropertiesError>
             + FromExternalError<Input, UnknownFormatIndicatorError>
-            + FromExternalError<Input, MQTTStringError>
+            + FromExternalError<Input, Utf8StringError>
             + FromExternalError<Input, TryFromIntError>
-            + FromExternalError<Input, PublishTopicError>,
+            + FromExternalError<Input, TopicError>,
     {
         combinator::trace(
             type_name::<Self>(),
@@ -317,8 +317,8 @@ impl<'input> WillProperties<'input> {
             + FromExternalError<Input, InvalidPropertyTypeError>
             + FromExternalError<Input, PropertiesError>
             + FromExternalError<Input, UnknownFormatIndicatorError>
-            + FromExternalError<Input, MQTTStringError>
-            + FromExternalError<Input, PublishTopicError>
+            + FromExternalError<Input, Utf8StringError>
+            + FromExternalError<Input, TopicError>
             + FromExternalError<Input, TryFromIntError>,
     {
         combinator::trace(

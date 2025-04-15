@@ -21,7 +21,7 @@ impl From<SubscribeHeaderFlags> for u8 {
 #[derive(Debug, PartialEq, Clone)]
 
 pub struct Subscription<'input> {
-    pub topic_filter: MQTTString<'input>,
+    pub topic_filter: Utf8String<'input>,
     pub qos: Qos,
     pub no_local: bool,
     pub retain_as_published: bool,
@@ -33,5 +33,5 @@ pub struct Subscription<'input> {
 pub struct SubscribeProperties<'input> {
     pub subscription_identifier: Option<NonZero<u64>>,
 
-    pub user_properties: Vec<(MQTTString<'input>, MQTTString<'input>)>,
+    pub user_properties: Vec<(Utf8String<'input>, Utf8String<'input>)>,
 }

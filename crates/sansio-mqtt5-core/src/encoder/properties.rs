@@ -29,11 +29,11 @@ where
             }
             Property::ContentType(value) => {
                 PropertyType::ContentType.encode(encoder)?;
-                MQTTString::encode(value, encoder)?;
+                Utf8String::encode(value, encoder)?;
             }
             Property::ResponseTopic(value) => {
                 PropertyType::ResponseTopic.encode(encoder)?;
-                PublishTopic::encode(value, encoder)?;
+                Topic::encode(value, encoder)?;
             }
             Property::CorrelationData(value) => {
                 PropertyType::CorrelationData.encode(encoder)?;
@@ -49,7 +49,7 @@ where
             }
             Property::AssignedClientIdentifier(value) => {
                 PropertyType::AssignedClientIdentifier.encode(encoder)?;
-                MQTTString::encode(value, encoder)?;
+                Utf8String::encode(value, encoder)?;
             }
             Property::ServerKeepAlive(value) => {
                 PropertyType::ServerKeepAlive.encode(encoder)?;
@@ -57,7 +57,7 @@ where
             }
             Property::AuthenticationMethod(value) => {
                 PropertyType::AuthenticationMethod.encode(encoder)?;
-                MQTTString::encode(value, encoder)?;
+                Utf8String::encode(value, encoder)?;
             }
             Property::AuthenticationData(value) => {
                 PropertyType::AuthenticationData.encode(encoder)?;
@@ -77,15 +77,15 @@ where
             }
             Property::ResponseInformation(value) => {
                 PropertyType::ResponseInformation.encode(encoder)?;
-                MQTTString::encode(value, encoder)?;
+                Utf8String::encode(value, encoder)?;
             }
             Property::ServerReference(value) => {
                 PropertyType::ServerReference.encode(encoder)?;
-                MQTTString::encode(value, encoder)?;
+                Utf8String::encode(value, encoder)?;
             }
             Property::ReasonString(value) => {
                 PropertyType::ReasonString.encode(encoder)?;
-                MQTTString::encode(value, encoder)?;
+                Utf8String::encode(value, encoder)?;
             }
             Property::ReceiveMaximum(value) => {
                 PropertyType::ReceiveMaximum.encode(encoder)?;
@@ -109,8 +109,8 @@ where
             }
             Property::UserProperty(k, v) => {
                 PropertyType::UserProperty.encode(encoder)?;
-                MQTTString::encode(k, encoder)?;
-                MQTTString::encode(v, encoder)?;
+                Utf8String::encode(k, encoder)?;
+                Utf8String::encode(v, encoder)?;
             }
             Property::MaximumPacketSize(value) => {
                 PropertyType::MaximumPacketSize.encode(encoder)?;

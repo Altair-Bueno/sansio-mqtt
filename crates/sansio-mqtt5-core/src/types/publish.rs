@@ -8,7 +8,7 @@ pub struct Publish<'input> {
 
     pub payload: Cow<'input, [u8]>,
 
-    pub topic: PublishTopic<'input>,
+    pub topic: Topic<'input>,
 
     pub properties: PublishProperties<'input>,
 }
@@ -62,12 +62,12 @@ pub struct PublishProperties<'input> {
     pub message_expiry_interval: Option<u32>,
     pub topic_alias: Option<NonZero<u16>>,
 
-    pub response_topic: Option<PublishTopic<'input>>,
+    pub response_topic: Option<Topic<'input>>,
 
     pub correlation_data: Option<Cow<'input, [u8]>>,
 
-    pub user_properties: Vec<(MQTTString<'input>, MQTTString<'input>)>,
+    pub user_properties: Vec<(Utf8String<'input>, Utf8String<'input>)>,
     pub subscription_identifier: Option<NonZero<u64>>,
 
-    pub content_type: Option<MQTTString<'input>>,
+    pub content_type: Option<Utf8String<'input>>,
 }

@@ -41,7 +41,7 @@ where
     }
 }
 
-impl<E: ByteEncoder> Encodable<E> for MQTTString<'_>
+impl<E: ByteEncoder> Encodable<E> for Utf8String<'_>
 where
     EncodeError: From<E::Error>,
 {
@@ -51,14 +51,14 @@ where
         BinaryData::new(self.as_bytes()).encode(encoder)
     }
 }
-impl<E: ByteEncoder> Encodable<E> for PublishTopic<'_>
+impl<E: ByteEncoder> Encodable<E> for Topic<'_>
 where
     EncodeError: From<E::Error>,
 {
     type Error = EncodeError;
 
     fn encode(&self, encoder: &mut E) -> Result<(), Self::Error> {
-        MQTTString::encode(self.as_ref(), encoder)
+        Utf8String::encode(self.as_ref(), encoder)
     }
 }
 

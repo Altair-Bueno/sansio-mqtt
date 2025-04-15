@@ -1,29 +1,27 @@
-use std::ops::Deref;
-
 use super::*;
 
 #[nutype::nutype(
-    validate(predicate = MQTTString::is_valid),
+    validate(predicate = Utf8String::is_valid),
     // new_unchecked,
     derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord,AsRef,Deref, Hash, Display, Borrow, TryFrom, Into),
 )]
-pub struct MQTTString<'input>(Cow<'input, str>);
+pub struct Utf8String<'input>(Cow<'input, str>);
 
 #[nutype::nutype(
-    validate(predicate = PublishTopic::is_valid),
+    validate(predicate = Topic::is_valid),
     // new_unchecked,
     derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord,AsRef,Deref, Hash, Display, Borrow, TryFrom, Into),
 )]
-pub struct PublishTopic<'input>(MQTTString<'input>);
+pub struct Topic<'input>(Utf8String<'input>);
 
-impl<'input> MQTTString<'input> {
+impl<'input> Utf8String<'input> {
     #[inline]
     fn is_valid(s: &Cow<'_, str>) -> bool {
         !s.as_ref().chars().any(Self::is_invalid_character)
     }
 
     #[inline]
-    fn is_invalid_character(c: char) -> bool {
+    const fn is_invalid_character(c: char) -> bool {
         matches!(
             c,
             // Control characters
@@ -38,15 +36,15 @@ impl<'input> MQTTString<'input> {
     }
 }
 
-impl<'input> PublishTopic<'input> {
+impl<'input> Topic<'input> {
     #[inline(always)]
-    fn is_valid(s: &MQTTString<'_>) -> bool {
+    fn is_valid(s: &Utf8String<'_>) -> bool {
         !s.contains(['#', '+'])
     }
 }
 
-impl TryFrom<String> for MQTTString<'static> {
-    type Error = MQTTStringError;
+impl TryFrom<String> for Utf8String<'static> {
+    type Error = Utf8StringError;
 
     #[inline]
     fn try_from(value: String) -> Result<Self, Self::Error> {
@@ -54,8 +52,8 @@ impl TryFrom<String> for MQTTString<'static> {
     }
 }
 
-impl<'input> TryFrom<&'input str> for MQTTString<'input> {
-    type Error = MQTTStringError;
+impl<'input> TryFrom<&'input str> for Utf8String<'input> {
+    type Error = Utf8StringError;
 
     #[inline]
     fn try_from(value: &'input str) -> Result<Self, Self::Error> {

@@ -30,9 +30,9 @@ impl<'input> SubAck<'input> {
             + FromExternalError<ByteInput, PropertiesError>
             + FromExternalError<ByteInput, UnknownFormatIndicatorError>
             + FromExternalError<ByteInput, InvalidReasonCode>
-            + FromExternalError<ByteInput, MQTTStringError>
+            + FromExternalError<ByteInput, Utf8StringError>
             + FromExternalError<ByteInput, TryFromIntError>
-            + FromExternalError<ByteInput, PublishTopicError>
+            + FromExternalError<ByteInput, TopicError>
             + AddContext<ByteInput, StrContext>,
         BitError: ParserError<(ByteInput, usize)> + ErrorConvert<ByteError>,
     {
@@ -73,9 +73,9 @@ impl<'input> SubAckProperties<'input> {
             + FromExternalError<Input, InvalidPropertyTypeError>
             + FromExternalError<Input, PropertiesError>
             + FromExternalError<Input, UnknownFormatIndicatorError>
-            + FromExternalError<Input, MQTTStringError>
+            + FromExternalError<Input, Utf8StringError>
             + FromExternalError<Input, TryFromIntError>
-            + FromExternalError<Input, PublishTopicError>,
+            + FromExternalError<Input, TopicError>,
     {
         combinator::trace(
             type_name::<Self>(),

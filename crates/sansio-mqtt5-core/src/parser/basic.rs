@@ -80,33 +80,33 @@ where
 #[inline]
 pub fn string_pair<'settings, 'input, Input, Error>(
     parser_settings: &'settings Settings,
-) -> impl Parser<Input, (MQTTString<'input>, MQTTString<'input>), Error>
+) -> impl Parser<Input, (Utf8String<'input>, Utf8String<'input>), Error>
        + use<'input, 'settings, Input, Error>
 where
     Input: StreamIsPartial + Stream<Token = u8, Slice = &'input [u8]>,
     Error: ParserError<Input>
         + FromExternalError<Input, Utf8Error>
         + AddContext<Input, StrContext>
-        + FromExternalError<Input, MQTTStringError>,
+        + FromExternalError<Input, Utf8StringError>,
 {
     combinator::trace(
         "string_pair",
         (
-            MQTTString::parse(parser_settings),
-            MQTTString::parse(parser_settings),
+            Utf8String::parse(parser_settings),
+            Utf8String::parse(parser_settings),
         ),
     )
     .context(StrContext::Label("string_pair"))
 }
 
-impl<'input> MQTTString<'input> {
+impl<'input> Utf8String<'input> {
     #[inline]
     pub fn parse<Input, Error>(parser_settings: &Settings) -> impl Parser<Input, Self, Error>
     where
         Input: StreamIsPartial + Stream<Token = u8, Slice = &'input [u8]>,
         Error: ParserError<Input>
             + FromExternalError<Input, Utf8Error>
-            + FromExternalError<Input, MQTTStringError>
+            + FromExternalError<Input, Utf8StringError>
             + AddContext<Input, StrContext>,
     {
         combinator::trace(
@@ -125,20 +125,20 @@ impl<'input> MQTTString<'input> {
     }
 }
 
-impl<'input> PublishTopic<'input> {
+impl<'input> Topic<'input> {
     #[inline]
     pub fn parse<Input, Error>(parser_settings: &Settings) -> impl Parser<Input, Self, Error>
     where
         Input: StreamIsPartial + Stream<Token = u8, Slice = &'input [u8]>,
         Error: ParserError<Input>
             + FromExternalError<Input, Utf8Error>
-            + FromExternalError<Input, MQTTStringError>
-            + FromExternalError<Input, PublishTopicError>
+            + FromExternalError<Input, Utf8StringError>
+            + FromExternalError<Input, TopicError>
             + AddContext<Input, StrContext>,
     {
         combinator::trace(
             type_name::<Self>(),
-            MQTTString::parse(parser_settings).try_map(Self::try_from),
+            Utf8String::parse(parser_settings).try_map(Self::try_from),
         )
         .context(StrContext::Label(type_name::<Self>()))
         .context(StrContext::Expected(StrContextValue::Description(
@@ -236,7 +236,7 @@ impl<'input> Subscription<'input> {
         ByteError: ParserError<ByteInput>
             + FromExternalError<ByteInput, Utf8Error>
             + AddContext<ByteInput, StrContext>
-            + FromExternalError<ByteInput, MQTTStringError>,
+            + FromExternalError<ByteInput, Utf8StringError>,
         BitError: ParserError<(ByteInput, usize)>
             + ErrorConvert<ByteError>
             + FromExternalError<(ByteInput, usize), InvalidQosError>
@@ -246,7 +246,7 @@ impl<'input> Subscription<'input> {
         combinator::trace(
             type_name::<Self>(),
             (
-                MQTTString::parse(parser_settings),
+                Utf8String::parse(parser_settings),
                 bits::bits::<_, _, BitError, _, _>((
                     bits::pattern(0u8, 2usize),
                     RetainHandling::parse,

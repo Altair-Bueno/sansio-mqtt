@@ -21,9 +21,9 @@ impl From<PubAckHeaderFlags> for u8 {
 #[derive(Debug, PartialEq, Clone, Default)]
 
 pub struct PubAckProperties<'input> {
-    pub reason_string: Option<MQTTString<'input>>,
+    pub reason_string: Option<Utf8String<'input>>,
 
-    pub user_properties: Vec<(MQTTString<'input>, MQTTString<'input>)>,
+    pub user_properties: Vec<(Utf8String<'input>, Utf8String<'input>)>,
 }
 
 impl PubAckProperties<'_> {

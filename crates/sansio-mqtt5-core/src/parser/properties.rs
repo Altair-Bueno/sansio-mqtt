@@ -33,8 +33,8 @@ impl<'input> Property<'input> {
             + FromExternalError<Input, InvalidQosError>
             + FromExternalError<Input, InvalidPropertyTypeError>
             + FromExternalError<Input, UnknownFormatIndicatorError>
-            + FromExternalError<Input, MQTTStringError>
-            + FromExternalError<Input, PublishTopicError>
+            + FromExternalError<Input, Utf8StringError>
+            + FromExternalError<Input, TopicError>
             + FromExternalError<Input, TryFromIntError>
             + AddContext<Input, StrContext>,
     {
@@ -61,7 +61,7 @@ impl<'input> Property<'input> {
                 .parse_next(input),
                 PropertyType::ContentType => combinator::trace(
                     "ContentType",
-                    MQTTString::parse(parser_settings).map(Property::ContentType),
+                    Utf8String::parse(parser_settings).map(Property::ContentType),
                 )
                 .context(StrContext::Label("ContentType"))
                 .context(StrContext::Expected(StrContextValue::Description(
@@ -70,7 +70,7 @@ impl<'input> Property<'input> {
                 .parse_next(input),
                 PropertyType::ResponseTopic => combinator::trace(
                     "ResponseTopic",
-                    PublishTopic::parse(parser_settings).map(Property::ResponseTopic),
+                    Topic::parse(parser_settings).map(Property::ResponseTopic),
                 )
                 .context(StrContext::Label("ResponseTopic"))
                 .context(StrContext::Expected(StrContextValue::Description(
@@ -110,7 +110,7 @@ impl<'input> Property<'input> {
                 .parse_next(input),
                 PropertyType::AssignedClientIdentifier => combinator::trace(
                     "assignedClientIdentifier",
-                    MQTTString::parse(parser_settings).map(Property::AssignedClientIdentifier),
+                    Utf8String::parse(parser_settings).map(Property::AssignedClientIdentifier),
                 )
                 .context(StrContext::Label("assignedClientIdentifier"))
                 .context(StrContext::Expected(StrContextValue::Description(
@@ -128,7 +128,7 @@ impl<'input> Property<'input> {
                 .parse_next(input),
                 PropertyType::AuthenticationMethod => combinator::trace(
                     "authenticationMethod",
-                    MQTTString::parse(parser_settings).map(Property::AuthenticationMethod),
+                    Utf8String::parse(parser_settings).map(Property::AuthenticationMethod),
                 )
                 .context(StrContext::Label("authenticationMethod"))
                 .context(StrContext::Expected(StrContextValue::Description(
@@ -179,7 +179,7 @@ impl<'input> Property<'input> {
                 .parse_next(input),
                 PropertyType::ResponseInformation => combinator::trace(
                     "ResponseInformation",
-                    MQTTString::parse(parser_settings).map(Property::ResponseInformation),
+                    Utf8String::parse(parser_settings).map(Property::ResponseInformation),
                 )
                 .context(StrContext::Label("ResponseInformation"))
                 .context(StrContext::Expected(StrContextValue::Description(
@@ -188,7 +188,7 @@ impl<'input> Property<'input> {
                 .parse_next(input),
                 PropertyType::ServerReference => combinator::trace(
                     "ServerReference",
-                    MQTTString::parse(parser_settings).map(Property::ServerReference),
+                    Utf8String::parse(parser_settings).map(Property::ServerReference),
                 )
                 .context(StrContext::Label("ServerReference"))
                 .context(StrContext::Expected(StrContextValue::Description(
@@ -197,7 +197,7 @@ impl<'input> Property<'input> {
                 .parse_next(input),
                 PropertyType::ReasonString => combinator::trace(
                     "ReasonString",
-                    MQTTString::parse(parser_settings).map(Property::ReasonString),
+                    Utf8String::parse(parser_settings).map(Property::ReasonString),
                 )
                 .context(StrContext::Label("ReasonString"))
                 .context(StrContext::Expected(StrContextValue::Description(

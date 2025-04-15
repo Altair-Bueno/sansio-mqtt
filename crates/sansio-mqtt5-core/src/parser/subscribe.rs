@@ -33,8 +33,8 @@ impl<'input> Subscribe<'input> {
             + FromExternalError<ByteInput, InvalidPropertyTypeError>
             + FromExternalError<ByteInput, PropertiesError>
             + FromExternalError<ByteInput, UnknownFormatIndicatorError>
-            + FromExternalError<ByteInput, MQTTStringError>
-            + FromExternalError<ByteInput, PublishTopicError>
+            + FromExternalError<ByteInput, Utf8StringError>
+            + FromExternalError<ByteInput, TopicError>
             + FromExternalError<ByteInput, TryFromIntError>
             + AddContext<ByteInput, StrContext>,
         BitError: ParserError<(ByteInput, usize)>
@@ -84,8 +84,8 @@ impl<'input> SubscribeProperties<'input> {
             + FromExternalError<Input, InvalidPropertyTypeError>
             + FromExternalError<Input, PropertiesError>
             + FromExternalError<Input, UnknownFormatIndicatorError>
-            + FromExternalError<Input, MQTTStringError>
-            + FromExternalError<Input, PublishTopicError>
+            + FromExternalError<Input, Utf8StringError>
+            + FromExternalError<Input, TopicError>
             + FromExternalError<Input, TryFromIntError>,
     {
         combinator::trace(

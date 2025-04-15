@@ -6,29 +6,29 @@ use super::*;
 pub enum Property<'input> {
     PayloadFormatIndicator(FormatIndicator),
     MessageExpiryInterval(u32),
-    ContentType(MQTTString<'input>),
-    ResponseTopic(PublishTopic<'input>),
+    ContentType(Utf8String<'input>),
+    ResponseTopic(Topic<'input>),
     CorrelationData(Cow<'input, [u8]>),
     // It is a Protocol Error if the Subscription Identifier has a value of 0.
     SubscriptionIdentifier(NonZero<u64>),
     SessionExpiryInterval(u32),
-    AssignedClientIdentifier(MQTTString<'input>),
+    AssignedClientIdentifier(Utf8String<'input>),
     ServerKeepAlive(u16),
-    AuthenticationMethod(MQTTString<'input>),
+    AuthenticationMethod(Utf8String<'input>),
     AuthenticationData(Cow<'input, [u8]>),
     RequestProblemInformation(bool),
     WillDelayInterval(u32),
     RequestResponseInformation(bool),
-    ResponseInformation(MQTTString<'input>),
-    ServerReference(MQTTString<'input>),
-    ReasonString(MQTTString<'input>),
+    ResponseInformation(Utf8String<'input>),
+    ServerReference(Utf8String<'input>),
+    ReasonString(Utf8String<'input>),
     // It is a Protocol Error to include the Receive Maximum value more than once or for it to have the value 0.
     ReceiveMaximum(NonZero<u16>),
     TopicAliasMaximum(u16),
     TopicAlias(NonZero<u16>),
     MaximumQoS(MaximumQoS),
     RetainAvailable(bool),
-    UserProperty(MQTTString<'input>, MQTTString<'input>),
+    UserProperty(Utf8String<'input>, Utf8String<'input>),
     MaximumPacketSize(NonZero<u32>),
     WildcardSubscriptionAvailable(bool),
     SubscriptionIdentifiersAvailable(bool),
@@ -38,17 +38,17 @@ pub enum Property<'input> {
 #[derive(Debug, PartialEq, Clone)]
 pub enum AuthenticationKind<'input> {
     WithoutData {
-        method: MQTTString<'input>,
+        method: Utf8String<'input>,
     },
     WithData {
-        method: MQTTString<'input>,
+        method: Utf8String<'input>,
         data: Cow<'input, [u8]>,
     },
 }
 
 impl<'input> AuthenticationKind<'input> {
     pub fn try_from_parts(
-        (method, data): (Option<MQTTString<'input>>, Option<Cow<'input, [u8]>>),
+        (method, data): (Option<Utf8String<'input>>, Option<Cow<'input, [u8]>>),
     ) -> Result<Option<Self>, MissingAuthenticationMethodError> {
         match (method, data) {
             (None, None) => Ok(None),

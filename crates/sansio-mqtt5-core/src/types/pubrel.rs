@@ -20,8 +20,8 @@ impl From<PubRelHeaderFlags> for u8 {
 #[derive(Debug, PartialEq, Clone, Default)]
 
 pub struct PubRelProperties<'input> {
-    pub reason_string: Option<MQTTString<'input>>,
-    pub user_properties: Vec<(MQTTString<'input>, MQTTString<'input>)>,
+    pub reason_string: Option<Utf8String<'input>>,
+    pub user_properties: Vec<(Utf8String<'input>, Utf8String<'input>)>,
 }
 
 impl PubRelProperties<'_> {

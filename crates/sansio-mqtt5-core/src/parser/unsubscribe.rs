@@ -33,8 +33,8 @@ impl<'input> Unsubscribe<'input> {
             + FromExternalError<ByteInput, InvalidPropertyTypeError>
             + FromExternalError<ByteInput, PropertiesError>
             + FromExternalError<ByteInput, UnknownFormatIndicatorError>
-            + FromExternalError<ByteInput, MQTTStringError>
-            + FromExternalError<ByteInput, PublishTopicError>
+            + FromExternalError<ByteInput, Utf8StringError>
+            + FromExternalError<ByteInput, TopicError>
             + FromExternalError<ByteInput, TryFromIntError>
             + AddContext<ByteInput, StrContext>,
         BitError: ParserError<(ByteInput, usize)> + ErrorConvert<ByteError>,
@@ -48,7 +48,7 @@ impl<'input> Unsubscribe<'input> {
                     "topics",
                     combinator::repeat_till(
                         1..=parser_settings.max_subscriptions_len as usize,
-                        MQTTString::parse(parser_settings),
+                        Utf8String::parse(parser_settings),
                         combinator::eof,
                     ),
                 ),
@@ -77,8 +77,8 @@ impl<'input> UnsubscribeProperties<'input> {
             + FromExternalError<Input, InvalidPropertyTypeError>
             + FromExternalError<Input, PropertiesError>
             + FromExternalError<Input, UnknownFormatIndicatorError>
-            + FromExternalError<Input, MQTTStringError>
-            + FromExternalError<Input, PublishTopicError>
+            + FromExternalError<Input, Utf8StringError>
+            + FromExternalError<Input, TopicError>
             + FromExternalError<Input, TryFromIntError>,
     {
         combinator::trace(

@@ -17,9 +17,9 @@ impl From<AuthHeaderFlags> for u8 {
 
 #[derive(Debug, PartialEq, Clone, Default)]
 pub struct AuthProperties<'input> {
-    pub reason_string: Option<MQTTString<'input>>,
+    pub reason_string: Option<Utf8String<'input>>,
     pub authentication: Option<AuthenticationKind<'input>>,
-    pub user_properties: Vec<(MQTTString<'input>, MQTTString<'input>)>,
+    pub user_properties: Vec<(Utf8String<'input>, Utf8String<'input>)>,
 }
 
 impl AuthProperties<'_> {

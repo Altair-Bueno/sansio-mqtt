@@ -33,20 +33,20 @@ pub struct ConnAckProperties<'input> {
     pub retain_available: Option<bool>,
     pub maximum_packet_size: Option<NonZero<u32>>,
 
-    pub assigned_client_identifier: Option<MQTTString<'input>>,
+    pub assigned_client_identifier: Option<Utf8String<'input>>,
     pub topic_alias_maximum: Option<u16>,
 
-    pub reason_string: Option<MQTTString<'input>>,
+    pub reason_string: Option<Utf8String<'input>>,
     pub wildcard_subscription_available: Option<bool>,
     pub subscription_identifiers_available: Option<bool>,
     pub shared_subscription_available: Option<bool>,
     pub server_keep_alive: Option<u16>,
 
-    pub response_information: Option<MQTTString<'input>>,
+    pub response_information: Option<Utf8String<'input>>,
 
-    pub server_reference: Option<MQTTString<'input>>,
+    pub server_reference: Option<Utf8String<'input>>,
 
     pub authentication: Option<AuthenticationKind<'input>>,
 
-    pub user_properties: Vec<(MQTTString<'input>, MQTTString<'input>)>,
+    pub user_properties: Vec<(Utf8String<'input>, Utf8String<'input>)>,
 }

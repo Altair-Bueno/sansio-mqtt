@@ -14,8 +14,8 @@ impl<'input> ControlPacket<'input> {
             + FromExternalError<ByteInput, PropertiesError>
             + FromExternalError<ByteInput, UnknownFormatIndicatorError>
             + FromExternalError<ByteInput, InvalidReasonCode>
-            + FromExternalError<ByteInput, MQTTStringError>
-            + FromExternalError<ByteInput, PublishTopicError>
+            + FromExternalError<ByteInput, Utf8StringError>
+            + FromExternalError<ByteInput, TopicError>
             + FromExternalError<ByteInput, TryFromIntError>
             + AddContext<ByteInput, StrContext>,
         BitError: ParserError<(ByteInput, usize)>

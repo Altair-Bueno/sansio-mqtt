@@ -5,7 +5,7 @@ use super::*;
 pub struct Unsubscribe<'input> {
     pub packet_id: NonZero<u16>,
     pub properties: UnsubscribeProperties<'input>,
-    pub topics: Vec1<MQTTString<'input>>,
+    pub topics: Vec1<Utf8String<'input>>,
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -21,5 +21,5 @@ impl From<UnsubscribeHeaderFlags> for u8 {
 #[derive(Debug, PartialEq, Clone, Default)]
 
 pub struct UnsubscribeProperties<'input> {
-    pub user_properties: Vec<(MQTTString<'input>, MQTTString<'input>)>,
+    pub user_properties: Vec<(Utf8String<'input>, Utf8String<'input>)>,
 }
