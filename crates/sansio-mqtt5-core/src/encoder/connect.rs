@@ -131,18 +131,11 @@ where
             encode::combinators::FromError::new(TwoByteInteger::new(self.keep_alive)),
             &self.properties,
             &self.client_identifier,
-            self.will.as_ref().map(|will| {
-                (
-                    &will.properties,
-                    &will.topic,
-                    BinaryData::new(&will.payload),
-                )
-            }),
-            &self.user_name,
-            self.password
+            self.will
                 .as_ref()
-                .map(AsRef::as_ref)
-                .map(BinaryData::new),
+                .map(|will| (&will.properties, &will.topic, &will.payload)),
+            &self.user_name,
+            &self.password,
         ))
         .encode(encoder)
     }

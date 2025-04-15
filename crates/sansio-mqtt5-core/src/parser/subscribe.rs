@@ -36,6 +36,7 @@ impl<'input> Subscribe<'input> {
             + FromExternalError<ByteInput, Utf8StringError>
             + FromExternalError<ByteInput, TopicError>
             + FromExternalError<ByteInput, TryFromIntError>
+            + FromExternalError<ByteInput, BinaryDataError>
             + AddContext<ByteInput, StrContext>,
         BitError: ParserError<(ByteInput, usize)>
             + ErrorConvert<ByteError>
@@ -86,7 +87,8 @@ impl<'input> SubscribeProperties<'input> {
             + FromExternalError<Input, UnknownFormatIndicatorError>
             + FromExternalError<Input, Utf8StringError>
             + FromExternalError<Input, TopicError>
-            + FromExternalError<Input, TryFromIntError>,
+            + FromExternalError<Input, TryFromIntError>
+            + FromExternalError<Input, BinaryDataError>,
     {
         combinator::trace(
             type_name::<Self>(),

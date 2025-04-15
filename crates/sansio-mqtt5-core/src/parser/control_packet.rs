@@ -17,6 +17,7 @@ impl<'input> ControlPacket<'input> {
             + FromExternalError<ByteInput, Utf8StringError>
             + FromExternalError<ByteInput, TopicError>
             + FromExternalError<ByteInput, TryFromIntError>
+            + FromExternalError<ByteInput, BinaryDataError>
             + AddContext<ByteInput, StrContext>,
         BitError: ParserError<(ByteInput, usize)>
             + FromExternalError<(ByteInput, usize), InvalidControlPacketTypeError>

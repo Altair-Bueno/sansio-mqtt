@@ -36,6 +36,7 @@ impl<'input> Property<'input> {
             + FromExternalError<Input, Utf8StringError>
             + FromExternalError<Input, TopicError>
             + FromExternalError<Input, TryFromIntError>
+            + FromExternalError<Input, BinaryDataError>
             + AddContext<Input, StrContext>,
     {
         combinator::trace(type_name::<Self>(), move |input: &mut Input| {
@@ -79,7 +80,7 @@ impl<'input> Property<'input> {
                 .parse_next(input),
                 PropertyType::CorrelationData => combinator::trace(
                     "CorrelationData",
-                    binary_data(parser_settings)
+                    BinaryData::parse(parser_settings)
                         .output_into()
                         .map(Property::CorrelationData),
                 )
@@ -137,7 +138,7 @@ impl<'input> Property<'input> {
                 .parse_next(input),
                 PropertyType::AuthenticationData => combinator::trace(
                     "authenticationData",
-                    binary_data(parser_settings)
+                    BinaryData::parse(parser_settings)
                         .output_into()
                         .map(Property::AuthenticationData),
                 )

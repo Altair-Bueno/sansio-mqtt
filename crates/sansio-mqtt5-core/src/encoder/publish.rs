@@ -77,7 +77,7 @@ where
                 packet_id.map(|x| TwoByteInteger::new(x.get())),
             ),
             &self.properties,
-            encode::combinators::FromError::new(self.payload.as_ref()),
+            encode::combinators::FromError::new(&self.payload),
         ))
         .encode(encoder)
     }

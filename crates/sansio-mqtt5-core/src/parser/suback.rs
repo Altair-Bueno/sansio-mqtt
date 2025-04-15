@@ -33,6 +33,7 @@ impl<'input> SubAck<'input> {
             + FromExternalError<ByteInput, Utf8StringError>
             + FromExternalError<ByteInput, TryFromIntError>
             + FromExternalError<ByteInput, TopicError>
+            + FromExternalError<ByteInput, BinaryDataError>
             + AddContext<ByteInput, StrContext>,
         BitError: ParserError<(ByteInput, usize)> + ErrorConvert<ByteError>,
     {
@@ -75,6 +76,7 @@ impl<'input> SubAckProperties<'input> {
             + FromExternalError<Input, UnknownFormatIndicatorError>
             + FromExternalError<Input, Utf8StringError>
             + FromExternalError<Input, TryFromIntError>
+            + FromExternalError<Input, BinaryDataError>
             + FromExternalError<Input, TopicError>,
     {
         combinator::trace(

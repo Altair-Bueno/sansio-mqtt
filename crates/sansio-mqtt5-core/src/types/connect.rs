@@ -8,7 +8,7 @@ pub struct Connect<'input> {
     pub client_identifier: Utf8String<'input>,
     pub will: Option<Will<'input>>,
     pub user_name: Option<Utf8String<'input>>,
-    pub password: Option<Cow<'input, [u8]>>,
+    pub password: Option<BinaryData<'input>>,
     pub keep_alive: u16,
     pub properties: ConnectProperties<'input>,
 }
@@ -24,7 +24,7 @@ impl From<ConnectHeaderFlags> for u8 {
 #[derive(Debug, PartialEq, Clone)]
 pub struct Will<'input> {
     pub topic: Topic<'input>,
-    pub payload: Cow<'input, [u8]>,
+    pub payload: BinaryData<'input>,
     pub qos: Qos,
     pub retain: bool,
     pub properties: WillProperties<'input>,
@@ -37,7 +37,7 @@ pub struct WillProperties<'input> {
     pub message_expiry_interval: Option<u32>,
     pub content_type: Option<Utf8String<'input>>,
     pub response_topic: Option<Topic<'input>>,
-    pub correlation_data: Option<Cow<'input, [u8]>>,
+    pub correlation_data: Option<BinaryData<'input>>,
     pub user_properties: Vec<(Utf8String<'input>, Utf8String<'input>)>,
 }
 

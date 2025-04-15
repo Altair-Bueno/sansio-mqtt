@@ -1,9 +1,9 @@
+use encode::combinators::LengthPrefix;
+
 use super::*;
 
 pub type TwoByteInteger = encode::combinators::BE<u16>;
 pub type FourByteInteger = encode::combinators::BE<u32>;
-pub type BinaryData<'input> =
-    encode::combinators::LengthPrefix<&'input [u8], TwoByteInteger, EncodeError>;
 
 pub struct VariableByteInteger(pub u64);
 
@@ -41,6 +41,31 @@ where
     }
 }
 
+impl<E: ByteEncoder> Encodable<E> for Payload<'_>
+where
+    EncodeError: From<E::Error>,
+{
+    type Error = EncodeError;
+
+    fn encode(&self, encoder: &mut E) -> Result<(), Self::Error> {
+        let bytes: &[u8] = self.as_ref();
+        bytes.encode(encoder)?;
+        Ok(())
+    }
+}
+
+impl<E: ByteEncoder> Encodable<E> for BinaryData<'_>
+where
+    EncodeError: From<E::Error>,
+{
+    type Error = EncodeError;
+
+    fn encode(&self, encoder: &mut E) -> Result<(), Self::Error> {
+        let bytes: &[u8] = self.as_ref();
+        LengthPrefix::<_, TwoByteInteger, _>::new(bytes).encode(encoder)
+    }
+}
+
 impl<E: ByteEncoder> Encodable<E> for Utf8String<'_>
 where
     EncodeError: From<E::Error>,
@@ -48,7 +73,8 @@ where
     type Error = EncodeError;
 
     fn encode(&self, encoder: &mut E) -> Result<(), Self::Error> {
-        BinaryData::new(self.as_bytes()).encode(encoder)
+        let bytes: &[u8] = self.as_bytes();
+        LengthPrefix::<_, TwoByteInteger, _>::new(bytes).encode(encoder)
     }
 }
 impl<E: ByteEncoder> Encodable<E> for Topic<'_>

@@ -347,7 +347,7 @@ fn assert_that_parsing_an_invalid_field_on_unsuback_fails(
         password: None,
         will: Some(Will {
             topic: Utf8String::try_from("topic").unwrap().try_into().unwrap(),
-            payload: [4, 3, 2, 1][..].into(),
+            payload: BinaryData::try_from(&[4, 3, 2, 1]).unwrap(),
             qos: Qos::ExactlyOnce,
             retain: true,
             properties: WillProperties {
@@ -356,7 +356,7 @@ fn assert_that_parsing_an_invalid_field_on_unsuback_fails(
                 message_expiry_interval: Some(4321),
                 content_type: Utf8String::try_from("test").ok(),
                 response_topic: Utf8String::try_from("topic").unwrap().try_into().ok(),
-                correlation_data: Some([1, 2, 3, 4][..].into()),
+                correlation_data: BinaryData::try_from(&[1, 2, 3, 4]).ok(),
                 user_properties: vec! [(
                     Utf8String::try_from("test").unwrap(),
                     Utf8String::try_from("test").unwrap(),
@@ -372,7 +372,7 @@ fn assert_that_parsing_an_invalid_field_on_unsuback_fails(
             request_problem_information: Some(true),
             authentication: Some(AuthenticationKind::WithData {
                 method: Utf8String::try_from("test").unwrap(),
-                data: [1, 2, 3, 4][..].into(),
+                data: BinaryData::try_from(&[1, 2, 3, 4]).unwrap(),
             }),
             user_properties: vec! [(
                 Utf8String::try_from("test").unwrap(),
@@ -423,7 +423,7 @@ fn assert_that_parsing_an_invalid_field_on_unsuback_fails(
         password: None,
         will: Some(Will {
             topic: Utf8String::try_from("topic").unwrap().try_into().unwrap(),
-            payload: [][..].into(),
+            payload: BinaryData::try_from(&[]).unwrap(),
             qos: Qos::ExactlyOnce,
             retain: true,
             properties: WillProperties {
@@ -432,7 +432,7 @@ fn assert_that_parsing_an_invalid_field_on_unsuback_fails(
                 message_expiry_interval: Some(4321),
                 content_type: Utf8String::try_from("test").ok(),
                 response_topic: Utf8String::try_from("topic").unwrap().try_into().ok(),
-                correlation_data: Some([1, 2, 3, 4][..].into()),
+                correlation_data: BinaryData::try_from(&[1, 2, 3, 4]).ok(),
                 user_properties: vec! [(
                     Utf8String::try_from("test").unwrap(),
                     Utf8String::try_from("test").unwrap(),
@@ -448,7 +448,7 @@ fn assert_that_parsing_an_invalid_field_on_unsuback_fails(
             request_problem_information: Some(true),
             authentication: Some(AuthenticationKind::WithData {
                 method: Utf8String::try_from("test").unwrap(),
-                data: [1, 2, 3, 4][..].into(),
+                data: BinaryData::try_from(&[1, 2, 3, 4]).unwrap(),
             }),
             user_properties: vec! [(
                 Utf8String::try_from("test").unwrap(),
@@ -493,7 +493,7 @@ fn assert_that_parsing_an_invalid_field_on_unsuback_fails(
         password: None,
         will: Some(Will {
             topic: Utf8String::try_from("topic").unwrap().try_into().unwrap(),
-            payload: [4, 3, 2, 1][..].into(),
+            payload: BinaryData::try_from(&[4, 3, 2, 1]).unwrap(),
             qos: Qos::ExactlyOnce,
             retain: true,
             properties: WillProperties::default(),
@@ -507,7 +507,7 @@ fn assert_that_parsing_an_invalid_field_on_unsuback_fails(
             request_problem_information: Some(true),
             authentication: Some(AuthenticationKind::WithData {
                 method: Utf8String::try_from("test").unwrap(),
-                data: [1, 2, 3, 4][..].into(),
+                data: BinaryData::try_from(&[1, 2, 3, 4]).unwrap(),
             }),
             user_properties: vec! [(
                 Utf8String::try_from("test").unwrap(),
@@ -723,7 +723,7 @@ fn assert_that_parsing_an_invalid_field_on_unsuback_fails(
             server_reference: Some(Utf8String::try_from("test").unwrap()),
             authentication: Some(AuthenticationKind::WithData {
                 method: Utf8String::try_from("test").unwrap(),
-                data: [1, 2, 3, 4][..].into(),
+                data: BinaryData::try_from(&[1, 2, 3, 4]).unwrap(),
             }),
         },
     })
@@ -782,7 +782,7 @@ fn assert_that_parsing_an_invalid_field_on_unsuback_fails(
             server_reference: Some(Utf8String::try_from("test").unwrap()),
             authentication: Some(AuthenticationKind::WithData {
                 method: Utf8String::try_from("test").unwrap(),
-                data: [1, 2, 3, 4][..].into(),
+                data: BinaryData::try_from(&[1, 2, 3, 4]).unwrap(),
             }),
         },
     })
@@ -814,13 +814,13 @@ fn assert_that_parsing_an_invalid_field_on_unsuback_fails(
         },
         retain: true,
         topic: Utf8String::try_from("test").unwrap().try_into().unwrap(),
-        payload: [116, 101, 115, 116][..].into(),
+        payload: Payload::from(&[116, 101, 115, 116]),
         properties: PublishProperties {
             payload_format_indicator: Some(FormatIndicator::Utf8),
             message_expiry_interval: Some(4321),
             topic_alias: NonZero::new(100),
             response_topic: Utf8String::try_from("topic").unwrap().try_into().ok(),
-            correlation_data: Some([1, 2, 3, 4][..].into()),
+            correlation_data: BinaryData::try_from(&[1, 2, 3, 4]).ok(),
             user_properties: vec! [
                 (
                     Utf8String::try_from("test").unwrap(),
@@ -859,5 +859,8 @@ fn assert_that_different_packets_can_be_decoded_and_encoded(
     let re_decoded_packet = ControlPacket::parse::<_, ContextError, ContextError>(&settings)
         .parse(&encoded_packet_buffer[..])
         .unwrap();
-    assert_eq!(re_decoded_packet, expected_packet);
+    assert_eq!(
+        re_decoded_packet, expected_packet,
+        "The re-decoded packet should be equal to the expected packet"
+    );
 }

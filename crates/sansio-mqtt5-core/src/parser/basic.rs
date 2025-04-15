@@ -57,24 +57,44 @@ where
     .parse_next(input)
 }
 
-#[inline]
-pub fn binary_data<'settings, 'input, Input, Error>(
-    parser_settings: &'settings Settings,
-) -> impl Parser<Input, Input::Slice, Error> + use<'input, 'settings, Input, Error>
-where
-    Input: StreamIsPartial + Stream<Token = u8>,
-    Error: ParserError<Input> + AddContext<Input, StrContext>,
-{
-    combinator::trace(
-        "binary_data",
-        binary::length_take(two_byte_integer_len_with_limits(
-            parser_settings.max_bytes_binary_data,
-        )),
-    )
-    .context(StrContext::Label("binary_data"))
-    .context(StrContext::Expected(StrContextValue::Description(
-        "a length prefixed slice of binary data",
-    )))
+impl<'input> Payload<'input> {
+    #[inline]
+    pub fn parse<Input, Error>(_: &Settings) -> impl Parser<Input, Self, Error>
+    where
+        Input: StreamIsPartial + Stream<Token = u8, Slice = &'input [u8]>,
+        Error: ParserError<Input>
+            + FromExternalError<Input, BinaryDataError>
+            + AddContext<Input, StrContext>,
+    {
+        combinator::trace(type_name::<Self>(), token::rest.output_into())
+            .context(StrContext::Label(type_name::<Self>()))
+            .context(StrContext::Expected(StrContextValue::Description(
+                "the message payload",
+            )))
+    }
+}
+
+impl<'input> BinaryData<'input> {
+    #[inline]
+    pub fn parse<Input, Error>(parser_settings: &Settings) -> impl Parser<Input, Self, Error>
+    where
+        Input: StreamIsPartial + Stream<Token = u8, Slice = &'input [u8]>,
+        Error: ParserError<Input>
+            + FromExternalError<Input, BinaryDataError>
+            + AddContext<Input, StrContext>,
+    {
+        combinator::trace(
+            type_name::<Self>(),
+            binary::length_take(two_byte_integer_len_with_limits(
+                parser_settings.max_bytes_binary_data,
+            ))
+            .try_map(Self::try_from),
+        )
+        .context(StrContext::Label(type_name::<Self>()))
+        .context(StrContext::Expected(StrContextValue::Description(
+            "a length prefixed slice of binary data",
+        )))
+    }
 }
 
 #[inline]

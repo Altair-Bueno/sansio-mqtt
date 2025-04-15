@@ -1,9 +1,24 @@
 use super::*;
 
 #[nutype::nutype(
+    derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, AsRef, Deref, Hash, Borrow, From, Into, Default),
+    default = Default::default()
+)]
+pub struct Payload<'input>(Cow<'input, [u8]>);
+
+#[nutype::nutype(
+    validate(predicate = BinaryData::is_valid),
+    // new_unchecked,
+    derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord,AsRef,Deref, Hash, Borrow, TryFrom, Into),
+    default = Default::default()
+)]
+pub struct BinaryData<'input>(Cow<'input, [u8]>);
+
+#[nutype::nutype(
     validate(predicate = Utf8String::is_valid),
     // new_unchecked,
     derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord,AsRef,Deref, Hash, Display, Borrow, TryFrom, Into),
+    default = Default::default()
 )]
 pub struct Utf8String<'input>(Cow<'input, str>);
 
@@ -11,13 +26,21 @@ pub struct Utf8String<'input>(Cow<'input, str>);
     validate(predicate = Topic::is_valid),
     // new_unchecked,
     derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord,AsRef,Deref, Hash, Display, Borrow, TryFrom, Into),
+    default = Default::default()
 )]
 pub struct Topic<'input>(Utf8String<'input>);
 
-impl<'input> Utf8String<'input> {
+impl BinaryData<'_> {
+    #[inline]
+    fn is_valid(s: &Cow<'_, [u8]>) -> bool {
+        s.len() <= u16::MAX as usize
+    }
+}
+
+impl Utf8String<'_> {
     #[inline]
     fn is_valid(s: &Cow<'_, str>) -> bool {
-        !s.as_ref().chars().any(Self::is_invalid_character)
+        s.len() <= u16::MAX as usize && !s.as_ref().chars().any(Self::is_invalid_character)
     }
 
     #[inline]
@@ -36,10 +59,58 @@ impl<'input> Utf8String<'input> {
     }
 }
 
-impl<'input> Topic<'input> {
+impl Topic<'_> {
     #[inline(always)]
     fn is_valid(s: &Utf8String<'_>) -> bool {
         !s.contains(['#', '+'])
+    }
+}
+
+impl From<Vec<u8>> for Payload<'static> {
+    #[inline]
+    fn from(value: Vec<u8>) -> Self {
+        Self::new(value.into())
+    }
+}
+
+impl<'input> From<&'input [u8]> for Payload<'input> {
+    #[inline]
+    fn from(value: &'input [u8]) -> Self {
+        Self::new(value.into())
+    }
+}
+
+impl<'input, const SIZE: usize> From<&'input [u8; SIZE]> for Payload<'input> {
+    #[inline]
+    fn from(value: &'input [u8; SIZE]) -> Self {
+        Self::new((&value[..] as &[u8]).into())
+    }
+}
+
+impl TryFrom<Vec<u8>> for BinaryData<'static> {
+    type Error = BinaryDataError;
+
+    #[inline]
+    fn try_from(value: Vec<u8>) -> Result<Self, Self::Error> {
+        Self::try_new(value.into())
+    }
+}
+
+impl<'input> TryFrom<&'input [u8]> for BinaryData<'input> {
+    type Error = BinaryDataError;
+
+    #[inline]
+    fn try_from(value: &'input [u8]) -> Result<Self, Self::Error> {
+        Self::try_new(value.into())
+    }
+}
+
+impl<'input, const SIZE: usize> TryFrom<&'input [u8; SIZE]> for BinaryData<'input> {
+    type Error = BinaryDataError;
+
+    #[inline]
+    fn try_from(value: &'input [u8; SIZE]) -> Result<Self, Self::Error> {
+        (&value[..] as &[u8]).try_into()
     }
 }
 

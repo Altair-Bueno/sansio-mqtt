@@ -37,7 +37,7 @@ where
             }
             Property::CorrelationData(value) => {
                 PropertyType::CorrelationData.encode(encoder)?;
-                BinaryData::new(value.as_ref()).encode(encoder)?;
+                value.encode(encoder)?;
             }
             Property::SubscriptionIdentifier(value) => {
                 PropertyType::SubscriptionIdentifier.encode(encoder)?;
@@ -61,7 +61,7 @@ where
             }
             Property::AuthenticationData(value) => {
                 PropertyType::AuthenticationData.encode(encoder)?;
-                BinaryData::new(value.as_ref()).encode(encoder)?;
+                value.encode(encoder)?;
             }
             Property::RequestProblemInformation(value) => {
                 PropertyType::RequestProblemInformation.encode(encoder)?;

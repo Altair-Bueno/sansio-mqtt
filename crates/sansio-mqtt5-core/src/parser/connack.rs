@@ -32,6 +32,7 @@ impl<'input> ConnAck<'input> {
             + FromExternalError<ByteInput, Utf8StringError>
             + FromExternalError<ByteInput, TopicError>
             + FromExternalError<ByteInput, TryFromIntError>
+            + FromExternalError<ByteInput, BinaryDataError>
             + AddContext<ByteInput, StrContext>,
         BitError: ParserError<(ByteInput, usize)> + ErrorConvert<ByteError>,
     {
@@ -88,7 +89,8 @@ impl<'input> ConnAckProperties<'input> {
             + FromExternalError<Input, UnknownFormatIndicatorError>
             + FromExternalError<Input, Utf8StringError>
             + FromExternalError<Input, TryFromIntError>
-            + FromExternalError<Input, TopicError>,
+            + FromExternalError<Input, TopicError>
+            + FromExternalError<Input, BinaryDataError>,
     {
         combinator::trace(
             type_name::<Self>(),

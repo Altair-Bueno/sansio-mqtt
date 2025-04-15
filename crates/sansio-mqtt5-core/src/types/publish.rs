@@ -5,11 +5,8 @@ use super::*;
 pub struct Publish<'input> {
     pub kind: PublishKind,
     pub retain: bool,
-
-    pub payload: Cow<'input, [u8]>,
-
+    pub payload: Payload<'input>,
     pub topic: Topic<'input>,
-
     pub properties: PublishProperties<'input>,
 }
 
@@ -64,7 +61,7 @@ pub struct PublishProperties<'input> {
 
     pub response_topic: Option<Topic<'input>>,
 
-    pub correlation_data: Option<Cow<'input, [u8]>>,
+    pub correlation_data: Option<BinaryData<'input>>,
 
     pub user_properties: Vec<(Utf8String<'input>, Utf8String<'input>)>,
     pub subscription_identifier: Option<NonZero<u64>>,

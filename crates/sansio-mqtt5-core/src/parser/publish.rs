@@ -52,6 +52,7 @@ impl<'input> Publish<'input> {
             + FromExternalError<ByteInput, Utf8StringError>
             + FromExternalError<ByteInput, TopicError>
             + FromExternalError<ByteInput, TryFromIntError>
+            + FromExternalError<ByteInput, BinaryDataError>
             + AddContext<ByteInput, StrContext>,
         BitError: ParserError<(ByteInput, usize)> + ErrorConvert<ByteError>,
     {
@@ -72,8 +73,7 @@ impl<'input> Publish<'input> {
                 }
             };
             let properties = PublishProperties::parse(parser_settings).parse_next(input)?;
-            let payload =
-                combinator::trace("payload", token::rest.output_into()).parse_next(input)?;
+            let payload = Payload::parse(parser_settings).parse_next(input)?;
             Ok(Publish {
                 kind,
                 retain,
@@ -101,7 +101,8 @@ impl<'input> PublishProperties<'input> {
             + FromExternalError<Input, UnknownFormatIndicatorError>
             + FromExternalError<Input, Utf8StringError>
             + FromExternalError<Input, TopicError>
-            + FromExternalError<Input, TryFromIntError>,
+            + FromExternalError<Input, TryFromIntError>
+            + FromExternalError<Input, BinaryDataError>,
     {
         combinator::trace(
             type_name::<Self>(),

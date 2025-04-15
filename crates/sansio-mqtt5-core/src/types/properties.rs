@@ -8,14 +8,14 @@ pub enum Property<'input> {
     MessageExpiryInterval(u32),
     ContentType(Utf8String<'input>),
     ResponseTopic(Topic<'input>),
-    CorrelationData(Cow<'input, [u8]>),
+    CorrelationData(BinaryData<'input>),
     // It is a Protocol Error if the Subscription Identifier has a value of 0.
     SubscriptionIdentifier(NonZero<u64>),
     SessionExpiryInterval(u32),
     AssignedClientIdentifier(Utf8String<'input>),
     ServerKeepAlive(u16),
     AuthenticationMethod(Utf8String<'input>),
-    AuthenticationData(Cow<'input, [u8]>),
+    AuthenticationData(BinaryData<'input>),
     RequestProblemInformation(bool),
     WillDelayInterval(u32),
     RequestResponseInformation(bool),
@@ -42,13 +42,13 @@ pub enum AuthenticationKind<'input> {
     },
     WithData {
         method: Utf8String<'input>,
-        data: Cow<'input, [u8]>,
+        data: BinaryData<'input>,
     },
 }
 
 impl<'input> AuthenticationKind<'input> {
     pub fn try_from_parts(
-        (method, data): (Option<Utf8String<'input>>, Option<Cow<'input, [u8]>>),
+        (method, data): (Option<Utf8String<'input>>, Option<BinaryData<'input>>),
     ) -> Result<Option<Self>, MissingAuthenticationMethodError> {
         match (method, data) {
             (None, None) => Ok(None),

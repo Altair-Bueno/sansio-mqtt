@@ -51,6 +51,7 @@ impl<'input> Connect<'input> {
             + FromExternalError<ByteInput, Utf8StringError>
             + FromExternalError<ByteInput, TopicError>
             + FromExternalError<ByteInput, TryFromIntError>
+            + FromExternalError<ByteInput, BinaryDataError>
             + AddContext<ByteInput, StrContext>,
         BitError: ParserError<(ByteInput, usize)>
             + ErrorConvert<ByteError>
@@ -90,8 +91,8 @@ impl<'input> Connect<'input> {
                         will_flag,
                         (
                             WillProperties::parse(parser_settings),
-                            Topic::parse(parser_settings).map(Into::into),
-                            self::binary_data(parser_settings).map(Into::into),
+                            Topic::parse(parser_settings),
+                            BinaryData::parse(parser_settings),
                         )
                             .map(|(properties, topic, payload)| Will {
                                 properties,
@@ -113,7 +114,7 @@ impl<'input> Connect<'input> {
                     "password",
                     combinator::cond(
                         password_flag,
-                        self::binary_data(parser_settings).map(Into::into),
+                        BinaryData::parse(parser_settings).map(Into::into),
                     ),
                 ),
                 combinator::eof,
@@ -167,7 +168,8 @@ impl<'input> ConnectProperties<'input> {
             + FromExternalError<Input, UnknownFormatIndicatorError>
             + FromExternalError<Input, Utf8StringError>
             + FromExternalError<Input, TryFromIntError>
-            + FromExternalError<Input, TopicError>,
+            + FromExternalError<Input, TopicError>
+            + FromExternalError<Input, BinaryDataError>,
     {
         combinator::trace(
             type_name::<Self>(),
@@ -319,7 +321,8 @@ impl<'input> WillProperties<'input> {
             + FromExternalError<Input, UnknownFormatIndicatorError>
             + FromExternalError<Input, Utf8StringError>
             + FromExternalError<Input, TopicError>
-            + FromExternalError<Input, TryFromIntError>,
+            + FromExternalError<Input, TryFromIntError>
+            + FromExternalError<Input, BinaryDataError>,
     {
         combinator::trace(
             type_name::<Self>(),
