@@ -2,7 +2,7 @@ use super::*;
 
 impl SubscribeHeaderFlags {
     #[inline]
-    pub fn parse<Input, Error>(input: &mut (Input, usize)) -> ModalResult<Self, Error>
+    pub fn parse<Input, Error>(input: &mut (Input, usize)) -> Result<Self, Error>
     where
         Input: Stream<Token = u8> + StreamIsPartial + Clone,
         Error: ParserError<(Input, usize)> + AddContext<(Input, usize), StrContext>,
@@ -23,8 +23,7 @@ impl<'input> Subscribe<'input> {
     #[inline]
     pub fn parse<'settings, ByteInput, ByteError, BitError>(
         parser_settings: &'settings Settings,
-    ) -> impl ModalParser<ByteInput, Self, ByteError>
-           + use<'input, 'settings, ByteInput, ByteError, BitError>
+    ) -> impl Parser<ByteInput, Self, ByteError> + use<'input, 'settings, ByteInput, ByteError, BitError>
     where
         ByteInput: StreamIsPartial + Stream<Token = u8, Slice = &'input [u8]> + Clone + UpdateSlice,
         ByteError: ParserError<ByteInput>
@@ -36,6 +35,7 @@ impl<'input> Subscribe<'input> {
             + FromExternalError<ByteInput, UnknownFormatIndicatorError>
             + FromExternalError<ByteInput, MQTTStringError>
             + FromExternalError<ByteInput, PublishTopicError>
+            + FromExternalError<ByteInput, TryFromIntError>
             + AddContext<ByteInput, StrContext>,
         BitError: ParserError<(ByteInput, usize)>
             + ErrorConvert<ByteError>
@@ -47,7 +47,7 @@ impl<'input> Subscribe<'input> {
         combinator::trace(
             type_name::<Self>(),
             (
-                combinator::trace("Packet ID", two_byte_integer.verify_map(NonZero::new)),
+                combinator::trace("Packet ID", two_byte_integer.try_map(TryInto::try_into)),
                 SubscribeProperties::parse(parser_settings),
                 combinator::trace(
                     "subscriptions",
@@ -61,7 +61,7 @@ impl<'input> Subscribe<'input> {
                 .map(
                     move |(packet_id, properties, (subscriptions, _))| Subscribe {
                         packet_id,
-                        subscriptions: Vec1::try_from_vec(subscriptions)
+                        subscriptions: Vec::try_into(subscriptions)
                             .expect("subscriptions length is guaranteed to be at least 1"),
                         properties,
                     },
@@ -74,7 +74,7 @@ impl<'input> SubscribeProperties<'input> {
     #[inline]
     pub fn parse<'settings, Input, Error>(
         parser_settings: &'settings Settings,
-    ) -> impl ModalParser<Input, Self, Error> + use<'input, 'settings, Input, Error>
+    ) -> impl Parser<Input, Self, Error> + use<'input, 'settings, Input, Error>
     where
         Input: Stream<Token = u8, Slice = &'input [u8]> + UpdateSlice + StreamIsPartial + Clone,
         Error: ParserError<Input>
@@ -85,7 +85,8 @@ impl<'input> SubscribeProperties<'input> {
             + FromExternalError<Input, PropertiesError>
             + FromExternalError<Input, UnknownFormatIndicatorError>
             + FromExternalError<Input, MQTTStringError>
-            + FromExternalError<Input, PublishTopicError>,
+            + FromExternalError<Input, PublishTopicError>
+            + FromExternalError<Input, TryFromIntError>,
     {
         combinator::trace(
             type_name::<Self>(),

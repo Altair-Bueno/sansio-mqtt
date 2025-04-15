@@ -5,6 +5,7 @@
 use encode::Encodable;
 use encode::EncodableSize;
 use sansio_mqtt5_core::*;
+use std::num::NonZero;
 use winnow::error::ContextError;
 use winnow::Parser;
 

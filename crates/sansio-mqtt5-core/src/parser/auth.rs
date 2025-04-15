@@ -2,7 +2,7 @@ use super::*;
 
 impl AuthHeaderFlags {
     #[inline]
-    pub fn parse<Input, Error>(input: &mut (Input, usize)) -> ModalResult<Self, Error>
+    pub fn parse<Input, Error>(input: &mut (Input, usize)) -> Result<Self, Error>
     where
         Input: Stream<Token = u8> + StreamIsPartial + Clone,
         Error: ParserError<(Input, usize)> + AddContext<(Input, usize), StrContext>,
@@ -20,8 +20,7 @@ impl<'input> Auth<'input> {
     #[inline]
     pub fn parse<'settings, ByteInput, ByteError, BitError>(
         parser_settings: &'settings Settings,
-    ) -> impl ModalParser<ByteInput, Self, ByteError>
-           + use<'input, 'settings, ByteInput, ByteError, BitError>
+    ) -> impl Parser<ByteInput, Self, ByteError> + use<'input, 'settings, ByteInput, ByteError, BitError>
     where
         ByteInput: StreamIsPartial + Stream<Token = u8, Slice = &'input [u8]> + Clone + UpdateSlice,
         ByteError: ParserError<ByteInput>
@@ -33,6 +32,7 @@ impl<'input> Auth<'input> {
             + FromExternalError<ByteInput, InvalidReasonCode>
             + FromExternalError<ByteInput, MQTTStringError>
             + FromExternalError<ByteInput, PublishTopicError>
+            + FromExternalError<ByteInput, TryFromIntError>
             + AddContext<ByteInput, StrContext>,
         BitError: ParserError<(ByteInput, usize)> + ErrorConvert<ByteError>,
     {
@@ -62,7 +62,7 @@ impl<'input> AuthProperties<'input> {
     #[inline]
     pub fn parse<'settings, Input, Error>(
         parser_settings: &'settings Settings,
-    ) -> impl ModalParser<Input, Self, Error> + use<'input, 'settings, Input, Error>
+    ) -> impl Parser<Input, Self, Error> + use<'input, 'settings, Input, Error>
     where
         Input: Stream<Token = u8, Slice = &'input [u8]> + UpdateSlice + StreamIsPartial + Clone,
         Error: ParserError<Input>
@@ -73,7 +73,8 @@ impl<'input> AuthProperties<'input> {
             + FromExternalError<Input, PropertiesError>
             + FromExternalError<Input, UnknownFormatIndicatorError>
             + FromExternalError<Input, MQTTStringError>
-            + FromExternalError<Input, PublishTopicError>,
+            + FromExternalError<Input, PublishTopicError>
+            + FromExternalError<Input, TryFromIntError>,
     {
         combinator::trace(
             type_name::<Self>(),

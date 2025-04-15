@@ -4,8 +4,7 @@ impl<'input> ControlPacket<'input> {
     #[inline]
     pub fn parse<'settings, ByteInput, ByteError, BitError>(
         parser_settings: &'settings Settings,
-    ) -> impl ModalParser<ByteInput, Self, ByteError>
-           + use<'input, 'settings, ByteInput, ByteError, BitError>
+    ) -> impl Parser<ByteInput, Self, ByteError> + use<'input, 'settings, ByteInput, ByteError, BitError>
     where
         ByteInput: StreamIsPartial + Stream<Token = u8, Slice = &'input [u8]> + Clone + UpdateSlice,
         ByteError: ParserError<ByteInput>
@@ -17,6 +16,7 @@ impl<'input> ControlPacket<'input> {
             + FromExternalError<ByteInput, InvalidReasonCode>
             + FromExternalError<ByteInput, MQTTStringError>
             + FromExternalError<ByteInput, PublishTopicError>
+            + FromExternalError<ByteInput, TryFromIntError>
             + AddContext<ByteInput, StrContext>,
         BitError: ParserError<(ByteInput, usize)>
             + FromExternalError<(ByteInput, usize), InvalidControlPacketTypeError>

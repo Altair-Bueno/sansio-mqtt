@@ -2,7 +2,7 @@ use super::*;
 
 impl PropertyType {
     #[inline]
-    pub fn parse<Input, Error>(input: &mut Input) -> ModalResult<Self, Error>
+    pub fn parse<Input, Error>(input: &mut Input) -> Result<Self, Error>
     where
         Input: Stream<Token = u8> + StreamIsPartial,
         Error: ParserError<Input>
@@ -25,7 +25,7 @@ impl<'input> Property<'input> {
     #[inline]
     pub fn parse<'settings, Input, Error>(
         parser_settings: &'settings Settings,
-    ) -> impl ModalParser<Input, Self, Error> + use<'input, 'settings, Input, Error>
+    ) -> impl Parser<Input, Self, Error> + use<'input, 'settings, Input, Error>
     where
         Input: Stream<Token = u8, Slice = &'input [u8]> + StreamIsPartial + Clone,
         Error: ParserError<Input>
@@ -35,6 +35,7 @@ impl<'input> Property<'input> {
             + FromExternalError<Input, UnknownFormatIndicatorError>
             + FromExternalError<Input, MQTTStringError>
             + FromExternalError<Input, PublishTopicError>
+            + FromExternalError<Input, TryFromIntError>
             + AddContext<Input, StrContext>,
     {
         combinator::trace(type_name::<Self>(), move |input: &mut Input| {
@@ -90,7 +91,7 @@ impl<'input> Property<'input> {
                 PropertyType::SubscriptionIdentifier => combinator::trace(
                     "SubscriptionIdentifier",
                     self::variable_byte_integer
-                        .verify_map(NonZero::new)
+                        .try_map(TryInto::try_into)
                         .map(Property::SubscriptionIdentifier),
                 )
                 .context(StrContext::Label("SubscriptionIdentifier"))
@@ -206,7 +207,7 @@ impl<'input> Property<'input> {
                 PropertyType::ReceiveMaximum => combinator::trace(
                     "ReceiveMaximum",
                     two_byte_integer
-                        .verify_map(NonZero::new)
+                        .try_map(TryInto::try_into)
                         .map(Property::ReceiveMaximum),
                 )
                 .context(StrContext::Label("ReceiveMaximum"))
@@ -226,7 +227,7 @@ impl<'input> Property<'input> {
                 PropertyType::TopicAlias => combinator::trace(
                     "TopicAlias",
                     two_byte_integer
-                        .verify_map(NonZero::new)
+                        .try_map(TryInto::try_into)
                         .map(Property::TopicAlias),
                 )
                 .parse_next(input),
@@ -263,7 +264,7 @@ impl<'input> Property<'input> {
                 PropertyType::MaximumPacketSize => combinator::trace(
                     "MaximumPacketSize",
                     four_byte_integer
-                        .verify_map(NonZero::new)
+                        .try_map(TryInto::try_into)
                         .map(Property::MaximumPacketSize),
                 )
                 .context(StrContext::Label("MaximumPacketSize"))

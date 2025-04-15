@@ -3,7 +3,7 @@ use super::*;
 #[inline]
 pub fn flags<Input, BitError, ByteError>(
     input: &mut Input,
-) -> ModalResult<(bool, bool, bool, Qos, bool, bool), ByteError>
+) -> Result<(bool, bool, bool, Qos, bool, bool), ByteError>
 where
     BitError: ParserError<(Input, usize)>
         + ErrorConvert<ByteError>
@@ -38,8 +38,7 @@ impl<'input> Connect<'input> {
     #[inline]
     pub fn parse<'settings, ByteInput, ByteError, BitError>(
         parser_settings: &'settings Settings,
-    ) -> impl ModalParser<ByteInput, Self, ByteError>
-           + use<'input, 'settings, ByteInput, ByteError, BitError>
+    ) -> impl Parser<ByteInput, Self, ByteError> + use<'input, 'settings, ByteInput, ByteError, BitError>
     where
         ByteInput: StreamIsPartial + Stream<Token = u8, Slice = &'input [u8]> + Clone + UpdateSlice,
         ByteError: ParserError<ByteInput>
@@ -51,6 +50,7 @@ impl<'input> Connect<'input> {
             + FromExternalError<ByteInput, UnknownFormatIndicatorError>
             + FromExternalError<ByteInput, MQTTStringError>
             + FromExternalError<ByteInput, PublishTopicError>
+            + FromExternalError<ByteInput, TryFromIntError>
             + AddContext<ByteInput, StrContext>,
         BitError: ParserError<(ByteInput, usize)>
             + ErrorConvert<ByteError>
@@ -137,7 +137,7 @@ impl<'input> Connect<'input> {
 
 impl ConnectHeaderFlags {
     #[inline]
-    pub fn parse<Input, Error>(input: &mut (Input, usize)) -> ModalResult<Self, Error>
+    pub fn parse<Input, Error>(input: &mut (Input, usize)) -> Result<Self, Error>
     where
         Input: Stream<Token = u8> + StreamIsPartial + Clone,
         Error: ParserError<(Input, usize)> + AddContext<(Input, usize), StrContext>,
@@ -155,7 +155,7 @@ impl<'input> ConnectProperties<'input> {
     #[inline]
     pub fn parse<'settings, Input, Error>(
         parser_settings: &'settings Settings,
-    ) -> impl ModalParser<Input, Self, Error> + use<'input, 'settings, Input, Error>
+    ) -> impl Parser<Input, Self, Error> + use<'input, 'settings, Input, Error>
     where
         Input: Stream<Token = u8, Slice = &'input [u8]> + UpdateSlice + StreamIsPartial + Clone,
         Error: ParserError<Input>
@@ -166,6 +166,7 @@ impl<'input> ConnectProperties<'input> {
             + FromExternalError<Input, PropertiesError>
             + FromExternalError<Input, UnknownFormatIndicatorError>
             + FromExternalError<Input, MQTTStringError>
+            + FromExternalError<Input, TryFromIntError>
             + FromExternalError<Input, PublishTopicError>,
     {
         combinator::trace(
@@ -306,7 +307,7 @@ impl<'input> WillProperties<'input> {
     #[inline]
     pub fn parse<'settings, Input, Error>(
         parser_settings: &'settings Settings,
-    ) -> impl ModalParser<Input, Self, Error> + use<'input, 'settings, Input, Error>
+    ) -> impl Parser<Input, Self, Error> + use<'input, 'settings, Input, Error>
     where
         Input: Stream<Token = u8, Slice = &'input [u8]> + UpdateSlice + StreamIsPartial + Clone,
         Error: ParserError<Input>
@@ -317,7 +318,8 @@ impl<'input> WillProperties<'input> {
             + FromExternalError<Input, PropertiesError>
             + FromExternalError<Input, UnknownFormatIndicatorError>
             + FromExternalError<Input, MQTTStringError>
-            + FromExternalError<Input, PublishTopicError>,
+            + FromExternalError<Input, PublishTopicError>
+            + FromExternalError<Input, TryFromIntError>,
     {
         combinator::trace(
             type_name::<Self>(),

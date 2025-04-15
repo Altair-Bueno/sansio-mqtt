@@ -42,12 +42,12 @@ pub use subscribe::*;
 pub use unsuback::*;
 pub use unsubscribe::*;
 
-pub use beef::Cow;
+use beef::Cow;
 use std::borrow::Borrow;
-pub use std::num::NonZero;
+use std::num::NonZero;
 use strum::Display;
 use strum::EnumDiscriminants;
 use strum::EnumIter;
 use strum::IntoEnumIterator;
 use thiserror::Error;
-pub use vec1::Vec1;
+use vec1::Vec1;

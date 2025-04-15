@@ -1,7 +1,7 @@
 use super::*;
 impl SubAckHeaderFlags {
     #[inline]
-    pub fn parse<Input, Error>(input: &mut (Input, usize)) -> ModalResult<Self, Error>
+    pub fn parse<Input, Error>(input: &mut (Input, usize)) -> Result<Self, Error>
     where
         Input: Stream<Token = u8> + StreamIsPartial + Clone,
         Error: ParserError<(Input, usize)> + AddContext<(Input, usize), StrContext>,
@@ -19,8 +19,7 @@ impl<'input> SubAck<'input> {
     #[inline]
     pub fn parse<'settings, ByteInput, ByteError, BitError>(
         parser_settings: &'settings Settings,
-    ) -> impl ModalParser<ByteInput, Self, ByteError>
-           + use<'input, 'settings, ByteInput, ByteError, BitError>
+    ) -> impl Parser<ByteInput, Self, ByteError> + use<'input, 'settings, ByteInput, ByteError, BitError>
     where
         ByteInput: StreamIsPartial + Stream<Token = u8, Slice = &'input [u8]> + Clone + UpdateSlice,
         ByteError: ParserError<ByteInput>
@@ -32,6 +31,7 @@ impl<'input> SubAck<'input> {
             + FromExternalError<ByteInput, UnknownFormatIndicatorError>
             + FromExternalError<ByteInput, InvalidReasonCode>
             + FromExternalError<ByteInput, MQTTStringError>
+            + FromExternalError<ByteInput, TryFromIntError>
             + FromExternalError<ByteInput, PublishTopicError>
             + AddContext<ByteInput, StrContext>,
         BitError: ParserError<(ByteInput, usize)> + ErrorConvert<ByteError>,
@@ -39,7 +39,7 @@ impl<'input> SubAck<'input> {
         combinator::trace(
             type_name::<Self>(),
             (
-                combinator::trace("Packet ID", two_byte_integer.verify_map(NonZero::new)),
+                combinator::trace("Packet ID", two_byte_integer.try_map(TryInto::try_into)),
                 SubAckProperties::parse(parser_settings),
                 combinator::trace(
                     "reason codes",
@@ -63,7 +63,7 @@ impl<'input> SubAckProperties<'input> {
     #[inline]
     pub fn parse<'settings, Input, Error>(
         parser_settings: &'settings Settings,
-    ) -> impl ModalParser<Input, Self, Error> + use<'input, 'settings, Input, Error>
+    ) -> impl Parser<Input, Self, Error> + use<'input, 'settings, Input, Error>
     where
         Input: Stream<Token = u8, Slice = &'input [u8]> + UpdateSlice + StreamIsPartial + Clone,
         Error: ParserError<Input>
@@ -74,6 +74,7 @@ impl<'input> SubAckProperties<'input> {
             + FromExternalError<Input, PropertiesError>
             + FromExternalError<Input, UnknownFormatIndicatorError>
             + FromExternalError<Input, MQTTStringError>
+            + FromExternalError<Input, TryFromIntError>
             + FromExternalError<Input, PublishTopicError>,
     {
         combinator::trace(

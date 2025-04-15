@@ -9,10 +9,10 @@ rust-version = "1.83.0"
 
 [workspace.dependencies]
 thiserror = "2"
-winnow = "0.6.24"
+winnow = "0.7.0"
 strum = "0.27.0"
 beef = "0.5.2"
-nutype = "0.5.1"
+nutype = "0.6.1"
 vec1 = "1.12.1"
 encode = "0.2.2"
 rstest = "0.25.0"

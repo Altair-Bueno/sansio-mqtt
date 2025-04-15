@@ -23,6 +23,7 @@ mod unsubscribe;
 
 use super::types::*;
 use core::any::type_name;
+use core::num::TryFromIntError;
 use core::str;
 use core::str::Utf8Error;
 use winnow::binary;

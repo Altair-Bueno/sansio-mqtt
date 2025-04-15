@@ -1,7 +1,7 @@
 use super::*;
 impl PubAckHeaderFlags {
     #[inline]
-    pub fn parse<Input, Error>(input: &mut (Input, usize)) -> ModalResult<Self, Error>
+    pub fn parse<Input, Error>(input: &mut (Input, usize)) -> Result<Self, Error>
     where
         Input: Stream<Token = u8> + StreamIsPartial + Clone,
         Error: ParserError<(Input, usize)> + AddContext<(Input, usize), StrContext>,
@@ -19,8 +19,7 @@ impl<'input> PubAck<'input> {
     #[inline]
     pub fn parse<'settings, ByteInput, ByteError, BitError>(
         parser_settings: &'settings Settings,
-    ) -> impl ModalParser<ByteInput, Self, ByteError>
-           + use<'input, 'settings, ByteInput, ByteError, BitError>
+    ) -> impl Parser<ByteInput, Self, ByteError> + use<'input, 'settings, ByteInput, ByteError, BitError>
     where
         ByteInput: StreamIsPartial + Stream<Token = u8, Slice = &'input [u8]> + Clone + UpdateSlice,
         ByteError: ParserError<ByteInput>
@@ -33,13 +32,14 @@ impl<'input> PubAck<'input> {
             + FromExternalError<ByteInput, InvalidReasonCode>
             + FromExternalError<ByteInput, MQTTStringError>
             + FromExternalError<ByteInput, PublishTopicError>
+            + FromExternalError<ByteInput, TryFromIntError>
             + AddContext<ByteInput, StrContext>,
         BitError: ParserError<(ByteInput, usize)> + ErrorConvert<ByteError>,
     {
         combinator::trace(
             type_name::<Self>(),
             (
-                combinator::trace("Packet ID", two_byte_integer.verify_map(NonZero::new)),
+                combinator::trace("Packet ID", two_byte_integer.try_map(TryInto::try_into)),
                 // The Reason Code and Property Length can be omitted if the Reason Code is 0x00 (Success) and there are no Properties. In this case the PUBREC has a Remaining Length of 2.
                 combinator::alt((
                     (
@@ -67,7 +67,7 @@ impl<'input> PubAckProperties<'input> {
     #[inline]
     pub fn parse<'settings, Input, Error>(
         parser_settings: &'settings Settings,
-    ) -> impl ModalParser<Input, Self, Error> + use<'input, 'settings, Input, Error>
+    ) -> impl Parser<Input, Self, Error> + use<'input, 'settings, Input, Error>
     where
         Input: Stream<Token = u8, Slice = &'input [u8]> + UpdateSlice + StreamIsPartial + Clone,
         Error: ParserError<Input>
@@ -78,7 +78,8 @@ impl<'input> PubAckProperties<'input> {
             + FromExternalError<Input, PropertiesError>
             + FromExternalError<Input, UnknownFormatIndicatorError>
             + FromExternalError<Input, MQTTStringError>
-            + FromExternalError<Input, PublishTopicError>,
+            + FromExternalError<Input, PublishTopicError>
+            + FromExternalError<Input, TryFromIntError>,
     {
         combinator::trace(
             type_name::<Self>(),

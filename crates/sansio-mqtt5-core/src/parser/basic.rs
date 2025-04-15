@@ -5,7 +5,7 @@ pub use binary::be_u32 as four_byte_integer;
 #[inline]
 pub fn two_byte_integer_len_with_limits<'input, Input, Error>(
     limit: u16,
-) -> impl ModalParser<Input, u16, Error>
+) -> impl Parser<Input, u16, Error>
 where
     Input: StreamIsPartial + Stream<Token = u8>,
     Error: ParserError<Input> + AddContext<Input, StrContext>,
@@ -18,7 +18,7 @@ where
 #[inline]
 pub fn variable_byte_integer_len_with_limits<'input, Input, Error>(
     limit: u64,
-) -> impl ModalParser<Input, u64, Error>
+) -> impl Parser<Input, u64, Error>
 where
     Input: StreamIsPartial + Stream<Token = u8>,
     Error: ParserError<Input> + AddContext<Input, StrContext>,
@@ -29,7 +29,7 @@ where
 }
 
 #[inline]
-pub fn variable_byte_integer<'input, Input, Error>(input: &mut Input) -> ModalResult<u64, Error>
+pub fn variable_byte_integer<'input, Input, Error>(input: &mut Input) -> Result<u64, Error>
 where
     Input: StreamIsPartial + Stream<Token = u8>,
     Error: ParserError<Input> + AddContext<Input, StrContext>,
@@ -41,7 +41,7 @@ where
             let encoded_byte = token::any.parse_next(input)?;
             value += (encoded_byte & 127) as u64 * multiplier;
             if multiplier > 128 * 128 * 128 {
-                return Err(ErrMode::Cut(Error::from_input(input)));
+                return Err(Error::from_input(input));
             }
             multiplier *= 128;
             if encoded_byte & 128 == 0 {
@@ -60,7 +60,7 @@ where
 #[inline]
 pub fn binary_data<'settings, 'input, Input, Error>(
     parser_settings: &'settings Settings,
-) -> impl ModalParser<Input, Input::Slice, Error> + use<'input, 'settings, Input, Error>
+) -> impl Parser<Input, Input::Slice, Error> + use<'input, 'settings, Input, Error>
 where
     Input: StreamIsPartial + Stream<Token = u8>,
     Error: ParserError<Input> + AddContext<Input, StrContext>,
@@ -80,7 +80,7 @@ where
 #[inline]
 pub fn string_pair<'settings, 'input, Input, Error>(
     parser_settings: &'settings Settings,
-) -> impl ModalParser<Input, (MQTTString<'input>, MQTTString<'input>), Error>
+) -> impl Parser<Input, (MQTTString<'input>, MQTTString<'input>), Error>
        + use<'input, 'settings, Input, Error>
 where
     Input: StreamIsPartial + Stream<Token = u8, Slice = &'input [u8]>,
@@ -101,7 +101,7 @@ where
 
 impl<'input> MQTTString<'input> {
     #[inline]
-    pub fn parse<Input, Error>(parser_settings: &Settings) -> impl ModalParser<Input, Self, Error>
+    pub fn parse<Input, Error>(parser_settings: &Settings) -> impl Parser<Input, Self, Error>
     where
         Input: StreamIsPartial + Stream<Token = u8, Slice = &'input [u8]>,
         Error: ParserError<Input>
@@ -127,7 +127,7 @@ impl<'input> MQTTString<'input> {
 
 impl<'input> PublishTopic<'input> {
     #[inline]
-    pub fn parse<Input, Error>(parser_settings: &Settings) -> impl ModalParser<Input, Self, Error>
+    pub fn parse<Input, Error>(parser_settings: &Settings) -> impl Parser<Input, Self, Error>
     where
         Input: StreamIsPartial + Stream<Token = u8, Slice = &'input [u8]>,
         Error: ParserError<Input>
@@ -149,7 +149,7 @@ impl<'input> PublishTopic<'input> {
 
 impl ControlPacketType {
     #[inline]
-    pub fn parse<Input, Error>(input: &mut (Input, usize)) -> ModalResult<Self, Error>
+    pub fn parse<Input, Error>(input: &mut (Input, usize)) -> Result<Self, Error>
     where
         Input: Stream<Token = u8> + StreamIsPartial + Clone,
         Error: ParserError<(Input, usize)>
@@ -170,7 +170,7 @@ impl ControlPacketType {
 
 impl Qos {
     #[inline]
-    pub fn parse<Input, Error>(input: &mut (Input, usize)) -> ModalResult<Self, Error>
+    pub fn parse<Input, Error>(input: &mut (Input, usize)) -> Result<Self, Error>
     where
         Input: Stream<Token = u8> + StreamIsPartial + Clone,
         Error: ParserError<(Input, usize)>
@@ -190,7 +190,7 @@ impl Qos {
 }
 impl FormatIndicator {
     #[inline]
-    pub fn parse<'input, Input, Error>(input: &mut Input) -> ModalResult<Self, Error>
+    pub fn parse<'input, Input, Error>(input: &mut Input) -> Result<Self, Error>
     where
         Input: StreamIsPartial + Stream<Token = u8, Slice = &'input [u8]>,
         Error: ParserError<Input>
@@ -207,7 +207,7 @@ impl FormatIndicator {
 }
 impl RetainHandling {
     #[inline]
-    pub fn parse<Input, Error>(input: &mut (Input, usize)) -> ModalResult<Self, Error>
+    pub fn parse<Input, Error>(input: &mut (Input, usize)) -> Result<Self, Error>
     where
         Input: Stream<Token = u8> + StreamIsPartial + Clone,
         Error: ParserError<(Input, usize)>
@@ -230,8 +230,7 @@ impl<'input> Subscription<'input> {
     #[inline]
     pub fn parse<'settings, ByteInput, ByteError, BitError>(
         parser_settings: &'settings Settings,
-    ) -> impl ModalParser<ByteInput, Self, ByteError>
-           + use<'input, 'settings, ByteInput, ByteError, BitError>
+    ) -> impl Parser<ByteInput, Self, ByteError> + use<'input, 'settings, ByteInput, ByteError, BitError>
     where
         ByteInput: StreamIsPartial + Stream<Token = u8, Slice = &'input [u8]> + Clone + UpdateSlice,
         ByteError: ParserError<ByteInput>
@@ -279,7 +278,7 @@ macro_rules! impl_parser_for_reason_code {
     ($name:ty) => {
         impl $name {
             #[inline]
-            pub fn parse<Input, Error>(input: &mut Input) -> ModalResult<Self, Error>
+            pub fn parse<Input, Error>(input: &mut Input) -> Result<Self, Error>
             where
                 Input: Stream<Token = u8> + StreamIsPartial + Clone,
                 Error: ParserError<Input>

@@ -74,7 +74,7 @@ where
         encode::combinators::LengthPrefix::<_, VariableByteInteger, Self::Error>::new((
             &self.topic,
             encode::combinators::FromError::<_, Self::Error>::new(
-                packet_id.map(NonZero::get).map(TwoByteInteger::new),
+                packet_id.map(|x| TwoByteInteger::new(x.get())),
             ),
             &self.properties,
             encode::combinators::FromError::new(self.payload.as_ref()),
