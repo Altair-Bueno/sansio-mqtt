@@ -193,16 +193,6 @@ fn assert_that_parsing_an_invalid_field_on_connect_fails(
         0,    // flags
         5, // return code as character
 ])]
-fn assert_that_parsing_an_invalid_field_on_connect_fails(
-    settings: Settings,
-    #[case] input: Vec<u8>,
-) {
-    ControlPacket::parse::<_, ContextError, ContextError>(&settings)
-        .parse(&input[..])
-        .unwrap_err();
-}
-
-#[rstest::rstest]
 #[case::invalid_header_flag_bits_must_be_0x0(
     vec! [
         33, 2, // header
