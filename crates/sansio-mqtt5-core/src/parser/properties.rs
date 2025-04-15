@@ -33,6 +33,8 @@ impl<'input> Property<'input> {
             + FromExternalError<Input, InvalidQosError>
             + FromExternalError<Input, InvalidPropertyTypeError>
             + FromExternalError<Input, UnknownFormatIndicatorError>
+            + FromExternalError<Input, MQTTStringError>
+            + FromExternalError<Input, PublishTopicError>
             + AddContext<Input, StrContext>,
     {
         combinator::trace(type_name::<Self>(), move |input: &mut Input| {

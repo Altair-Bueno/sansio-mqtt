@@ -38,7 +38,8 @@ impl<'input> Connect<'input> {
     #[inline]
     pub fn parse<'settings, ByteInput, ByteError, BitError>(
         parser_settings: &'settings Settings,
-    ) -> impl ModalParser<ByteInput, Self, ByteError> + use<'input, 'settings, ByteInput, ByteError, BitError>
+    ) -> impl ModalParser<ByteInput, Self, ByteError>
+           + use<'input, 'settings, ByteInput, ByteError, BitError>
     where
         ByteInput: StreamIsPartial + Stream<Token = u8, Slice = &'input [u8]> + Clone + UpdateSlice,
         ByteError: ParserError<ByteInput>
@@ -48,6 +49,8 @@ impl<'input> Connect<'input> {
             + FromExternalError<ByteInput, InvalidPropertyTypeError>
             + FromExternalError<ByteInput, PropertiesError>
             + FromExternalError<ByteInput, UnknownFormatIndicatorError>
+            + FromExternalError<ByteInput, MQTTStringError>
+            + FromExternalError<ByteInput, PublishTopicError>
             + AddContext<ByteInput, StrContext>,
         BitError: ParserError<(ByteInput, usize)>
             + ErrorConvert<ByteError>
@@ -161,7 +164,9 @@ impl<'input> ConnectProperties<'input> {
             + FromExternalError<Input, InvalidQosError>
             + FromExternalError<Input, InvalidPropertyTypeError>
             + FromExternalError<Input, PropertiesError>
-            + FromExternalError<Input, UnknownFormatIndicatorError>,
+            + FromExternalError<Input, UnknownFormatIndicatorError>
+            + FromExternalError<Input, MQTTStringError>
+            + FromExternalError<Input, PublishTopicError>,
     {
         combinator::trace(
             type_name::<Self>(),
@@ -310,7 +315,9 @@ impl<'input> WillProperties<'input> {
             + FromExternalError<Input, InvalidQosError>
             + FromExternalError<Input, InvalidPropertyTypeError>
             + FromExternalError<Input, PropertiesError>
-            + FromExternalError<Input, UnknownFormatIndicatorError>,
+            + FromExternalError<Input, UnknownFormatIndicatorError>
+            + FromExternalError<Input, MQTTStringError>
+            + FromExternalError<Input, PublishTopicError>,
     {
         combinator::trace(
             type_name::<Self>(),

@@ -2,26 +2,28 @@ use std::ops::Deref;
 
 use super::*;
 
-#[derive(Debug, PartialEq, Clone, Hash, PartialOrd, Eq, Ord)]
+#[nutype::nutype(
+    validate(predicate = MQTTString::is_valid),
+    // new_unchecked,
+    derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord,AsRef,Deref, Hash, Display, Borrow, TryFrom, Into),
+)]
 pub struct MQTTString<'input>(Cow<'input, str>);
+
+#[nutype::nutype(
+    validate(predicate = PublishTopic::is_valid),
+    // new_unchecked,
+    derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord,AsRef,Deref, Hash, Display, Borrow, TryFrom, Into),
+)]
+pub struct PublishTopic<'input>(MQTTString<'input>);
 
 impl<'input> MQTTString<'input> {
     #[inline]
-    pub fn new<S>(value: S) -> Option<Self>
-    where
-        S: Into<Cow<'input, str>>,
-    {
-        let value = value.into();
-        Self::is_valid(&value).then_some(Self(value))
-    }
-
-    #[inline(always)]
-    pub fn is_valid(s: impl AsRef<str>) -> bool {
+    fn is_valid(s: &Cow<'_, str>) -> bool {
         !s.as_ref().chars().any(Self::is_invalid_character)
     }
 
-    #[inline(always)]
-    pub fn is_invalid_character(c: char) -> bool {
+    #[inline]
+    fn is_invalid_character(c: char) -> bool {
         matches!(
             c,
             // Control characters
@@ -36,107 +38,32 @@ impl<'input> MQTTString<'input> {
     }
 }
 
-impl<'s> From<MQTTString<'s>> for Cow<'s, str> {
-    #[inline]
-    fn from(MQTTString(value): MQTTString<'s>) -> Self {
-        value
-    }
-}
-
-impl Deref for MQTTString<'_> {
-    type Target = str;
-
-    #[inline]
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl Borrow<str> for MQTTString<'_> {
-    #[inline]
-    fn borrow(&self) -> &str {
-        &self.0
-    }
-}
-
-impl AsRef<str> for MQTTString<'_> {
-    #[inline]
-    fn as_ref(&self) -> &str {
-        &self.0
-    }
-}
-
-#[derive(Debug, PartialEq, Clone, Hash, PartialOrd, Eq, Ord)]
-pub struct PublishTopic<'input>(MQTTString<'input>);
-
 impl<'input> PublishTopic<'input> {
-    #[inline]
-    pub fn new<S>(value: S) -> Option<Self>
-    where
-        S: Into<Cow<'input, str>>,
-    {
-        let value = MQTTString::new(value)?;
-        value.try_into().ok()
-    }
-
     #[inline(always)]
-    pub fn is_valid(s: &MQTTString<'_>) -> bool {
+    fn is_valid(s: &MQTTString<'_>) -> bool {
         !s.contains(['#', '+'])
     }
 }
 
-impl<'input> TryFrom<MQTTString<'input>> for PublishTopic<'input> {
-    type Error = ();
+impl TryFrom<String> for MQTTString<'static> {
+    type Error = MQTTStringError;
 
     #[inline]
-    fn try_from(value: MQTTString<'input>) -> Result<Self, Self::Error> {
-        if Self::is_valid(&value) {
-            Ok(Self(value))
-        } else {
-            Err(())
-        }
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        Self::try_new(value.into())
     }
 }
 
-impl<'s> From<PublishTopic<'s>> for MQTTString<'s> {
-    #[inline]
-    fn from(PublishTopic(value): PublishTopic<'s>) -> Self {
-        value
-    }
-}
-
-impl Deref for PublishTopic<'_> {
-    type Target = str;
+impl<'input> TryFrom<&'input str> for MQTTString<'input> {
+    type Error = MQTTStringError;
 
     #[inline]
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl Borrow<str> for PublishTopic<'_> {
-    #[inline]
-    fn borrow(&self) -> &str {
-        &self.0
-    }
-}
-
-impl AsRef<str> for PublishTopic<'_> {
-    #[inline]
-    fn as_ref(&self) -> &str {
-        &self.0
-    }
-}
-
-impl<'s> AsRef<MQTTString<'s>> for PublishTopic<'s> {
-    #[inline]
-    fn as_ref(&self) -> &MQTTString<'s> {
-        &self.0
+    fn try_from(value: &'input str) -> Result<Self, Self::Error> {
+        Self::try_new(value.into())
     }
 }
 
 #[derive(Debug, PartialEq, Clone, Copy, EnumIter, Hash, PartialOrd, Eq, Ord)]
-
 pub enum RetainHandling {
     SendRetained = 0,
     SendRetainedIfSubscriptionDoesNotExist = 1,
@@ -144,14 +71,12 @@ pub enum RetainHandling {
 }
 
 #[derive(Debug, PartialEq, Clone, Copy, EnumIter, Hash, PartialOrd, Eq, Ord)]
-
 pub enum FormatIndicator {
     Unspecified = 0,
     Utf8 = 1,
 }
 
 #[derive(Debug, PartialEq, Clone, Copy, EnumIter, Hash, PartialOrd, Eq, Ord)]
-
 pub enum Qos {
     AtMostOnce = 0,
     AtLeastOnce = 1,
@@ -159,14 +84,12 @@ pub enum Qos {
 }
 
 #[derive(Debug, PartialEq, Clone, Copy, EnumIter, Hash, PartialOrd, Eq, Ord)]
-
 pub enum MaximumQoS {
     AtMostOnce = 0,
     AtLeastOnce = 1,
 }
 
 #[derive(Debug, PartialEq, Clone, Copy, EnumIter, Hash, PartialOrd, Eq, Ord)]
-
 pub enum GuaranteedQoS {
     AtLeastOnce = 1,
     ExactlyOnce = 2,

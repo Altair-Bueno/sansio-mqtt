@@ -84,7 +84,10 @@ pub fn string_pair<'settings, 'input, Input, Error>(
        + use<'input, 'settings, Input, Error>
 where
     Input: StreamIsPartial + Stream<Token = u8, Slice = &'input [u8]>,
-    Error: ParserError<Input> + FromExternalError<Input, Utf8Error> + AddContext<Input, StrContext>,
+    Error: ParserError<Input>
+        + FromExternalError<Input, Utf8Error>
+        + AddContext<Input, StrContext>
+        + FromExternalError<Input, MQTTStringError>,
 {
     combinator::trace(
         "string_pair",
@@ -103,6 +106,7 @@ impl<'input> MQTTString<'input> {
         Input: StreamIsPartial + Stream<Token = u8, Slice = &'input [u8]>,
         Error: ParserError<Input>
             + FromExternalError<Input, Utf8Error>
+            + FromExternalError<Input, MQTTStringError>
             + AddContext<Input, StrContext>,
     {
         combinator::trace(
@@ -111,7 +115,8 @@ impl<'input> MQTTString<'input> {
                 parser_settings.max_bytes_string,
             ))
             .try_map(str::from_utf8)
-            .verify_map(Self::new),
+            .output_into()
+            .try_map(Self::try_new),
         )
         .context(StrContext::Label(type_name::<Self>()))
         .context(StrContext::Expected(StrContextValue::Description(
@@ -127,11 +132,13 @@ impl<'input> PublishTopic<'input> {
         Input: StreamIsPartial + Stream<Token = u8, Slice = &'input [u8]>,
         Error: ParserError<Input>
             + FromExternalError<Input, Utf8Error>
+            + FromExternalError<Input, MQTTStringError>
+            + FromExternalError<Input, PublishTopicError>
             + AddContext<Input, StrContext>,
     {
         combinator::trace(
             type_name::<Self>(),
-            MQTTString::parse(parser_settings).verify_map(|s| s.try_into().ok()),
+            MQTTString::parse(parser_settings).try_map(Self::try_from),
         )
         .context(StrContext::Label(type_name::<Self>()))
         .context(StrContext::Expected(StrContextValue::Description(
@@ -229,7 +236,8 @@ impl<'input> Subscription<'input> {
         ByteInput: StreamIsPartial + Stream<Token = u8, Slice = &'input [u8]> + Clone + UpdateSlice,
         ByteError: ParserError<ByteInput>
             + FromExternalError<ByteInput, Utf8Error>
-            + AddContext<ByteInput, StrContext>,
+            + AddContext<ByteInput, StrContext>
+            + FromExternalError<ByteInput, MQTTStringError>,
         BitError: ParserError<(ByteInput, usize)>
             + ErrorConvert<ByteError>
             + FromExternalError<(ByteInput, usize), InvalidQosError>

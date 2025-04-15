@@ -4,8 +4,7 @@
 
 use encode::Encodable;
 use encode::EncodableSize;
-use sansio_mqtt5_core::parser::Settings;
-use sansio_mqtt5_core::types::*;
+use sansio_mqtt5_core::*;
 use winnow::error::ContextError;
 use winnow::Parser;
 
@@ -461,7 +460,7 @@ fn invalid_publish_packet_due_to_repeated_subscription_identifiers_property() {
             dup: true,
         },
         retain: true,
-        topic: PublishTopic::new("test").unwrap(),
+        topic: MQTTString::try_from("test").unwrap().try_into().unwrap(),
         payload: [116, 101, 115, 116][..].into(),
         properties: PublishProperties {
             payload_format_indicator: Some(FormatIndicator::Unspecified),
@@ -511,15 +510,15 @@ fn invalid_publish_packet_due_to_repeated_subscription_identifiers_property() {
         4, 3, 2, 1, // Will payload
     ],
     ControlPacket::Connect(Connect {
-        protocol_name: MQTTString::new("MQTT").unwrap(),
+        protocol_name: MQTTString::try_from("MQTT").unwrap(),
         protocol_version: 5,
         clean_start: true,
-        client_identifier: MQTTString::new("test").unwrap(),
+        client_identifier: MQTTString::try_from("test").unwrap(),
         keep_alive: 30,
         user_name: None,
         password: None,
         will: Some(Will {
-            topic: PublishTopic::new("topic").unwrap(),
+            topic: MQTTString::try_from("topic").unwrap().try_into().unwrap(),
             payload: [4, 3, 2, 1][..].into(),
             qos: Qos::ExactlyOnce,
             retain: true,
@@ -527,12 +526,12 @@ fn invalid_publish_packet_due_to_repeated_subscription_identifiers_property() {
                 will_delay_interval: Some(1234),
                 payload_format_indicator: Some(FormatIndicator::Unspecified),
                 message_expiry_interval: Some(4321),
-                content_type: MQTTString::new("test"),
-                response_topic: PublishTopic::new("topic"),
+                content_type: MQTTString::try_from("test").ok(),
+                response_topic: MQTTString::try_from("topic").unwrap().try_into().ok(),
                 correlation_data: Some([1, 2, 3, 4][..].into()),
                 user_properties: vec! [(
-                    MQTTString::new("test").unwrap(),
-                    MQTTString::new("test").unwrap(),
+                    MQTTString::try_from("test").unwrap(),
+                    MQTTString::try_from("test").unwrap(),
                 )],
             },
         }),
@@ -544,12 +543,12 @@ fn invalid_publish_packet_due_to_repeated_subscription_identifiers_property() {
             request_response_information: Some(true),
             request_problem_information: Some(true),
             authentication: Some(AuthenticationKind::WithData {
-                method: MQTTString::new("test").unwrap(),
+                method: MQTTString::try_from("test").unwrap(),
                 data: [1, 2, 3, 4][..].into(),
             }),
             user_properties: vec! [(
-                MQTTString::new("test").unwrap(),
-                MQTTString::new("test").unwrap(),
+                MQTTString::try_from("test").unwrap(),
+                MQTTString::try_from("test").unwrap(),
             )],
         },
     })
@@ -587,15 +586,15 @@ fn invalid_publish_packet_due_to_repeated_subscription_identifiers_property() {
         0, 0, // Will payload length
     ],
     ControlPacket::Connect(Connect {
-        protocol_name: MQTTString::new("MQTT").unwrap(),
+        protocol_name: MQTTString::try_from("MQTT").unwrap(),
         protocol_version: 5,
         clean_start: true,
-        client_identifier: MQTTString::new("test").unwrap(),
+        client_identifier: MQTTString::try_from("test").unwrap(),
         keep_alive: 30,
         user_name: None,
         password: None,
         will: Some(Will {
-            topic: PublishTopic::new("topic").unwrap(),
+            topic: MQTTString::try_from("topic").unwrap().try_into().unwrap(),
             payload: [][..].into(),
             qos: Qos::ExactlyOnce,
             retain: true,
@@ -603,12 +602,12 @@ fn invalid_publish_packet_due_to_repeated_subscription_identifiers_property() {
                 will_delay_interval: Some(1234),
                 payload_format_indicator: Some(FormatIndicator::Unspecified),
                 message_expiry_interval: Some(4321),
-                content_type: MQTTString::new("test"),
-                response_topic: PublishTopic::new("topic"),
+                content_type: MQTTString::try_from("test").ok(),
+                response_topic: MQTTString::try_from("topic").unwrap().try_into().ok(),
                 correlation_data: Some([1, 2, 3, 4][..].into()),
                 user_properties: vec! [(
-                    MQTTString::new("test").unwrap(),
-                    MQTTString::new("test").unwrap(),
+                    MQTTString::try_from("test").unwrap(),
+                    MQTTString::try_from("test").unwrap(),
                 )],
             },
         }),
@@ -620,12 +619,12 @@ fn invalid_publish_packet_due_to_repeated_subscription_identifiers_property() {
             request_response_information: Some(true),
             request_problem_information: Some(true),
             authentication: Some(AuthenticationKind::WithData {
-                method: MQTTString::new("test").unwrap(),
+                method: MQTTString::try_from("test").unwrap(),
                 data: [1, 2, 3, 4][..].into(),
             }),
             user_properties: vec! [(
-                MQTTString::new("test").unwrap(),
-                MQTTString::new("test").unwrap(),
+                MQTTString::try_from("test").unwrap(),
+                MQTTString::try_from("test").unwrap(),
             )],
         },
     })
@@ -657,15 +656,15 @@ fn invalid_publish_packet_due_to_repeated_subscription_identifiers_property() {
         4, 3, 2, 1, // Will payload
     ],
     ControlPacket::Connect(Connect {
-        protocol_name: MQTTString::new("MQTT").unwrap(),
+        protocol_name: MQTTString::try_from("MQTT").unwrap(),
         protocol_version: 5,
         clean_start: true,
-        client_identifier: MQTTString::new("test").unwrap(),
+        client_identifier: MQTTString::try_from("test").unwrap(),
         keep_alive: 30,
         user_name: None,
         password: None,
         will: Some(Will {
-            topic: PublishTopic::new("topic").unwrap(),
+            topic: MQTTString::try_from("topic").unwrap().try_into().unwrap(),
             payload: [4, 3, 2, 1][..].into(),
             qos: Qos::ExactlyOnce,
             retain: true,
@@ -679,12 +678,12 @@ fn invalid_publish_packet_due_to_repeated_subscription_identifiers_property() {
             request_response_information: Some(true),
             request_problem_information: Some(true),
             authentication: Some(AuthenticationKind::WithData {
-                method: MQTTString::new("test").unwrap(),
+                method: MQTTString::try_from("test").unwrap(),
                 data: [1, 2, 3, 4][..].into(),
             }),
             user_properties: vec! [(
-                MQTTString::new("test").unwrap(),
-                MQTTString::new("test").unwrap(),
+                MQTTString::try_from("test").unwrap(),
+                MQTTString::try_from("test").unwrap(),
             )],
         },
     })
@@ -702,10 +701,10 @@ fn invalid_publish_packet_due_to_repeated_subscription_identifiers_property() {
         0, 0, // Client ID length
     ],
     ControlPacket::Connect(Connect {
-        protocol_name: MQTTString::new("MQTT").unwrap(),
+        protocol_name: MQTTString::try_from("MQTT").unwrap(),
         protocol_version: 5,
         clean_start: true,
-        client_identifier: MQTTString::new("").unwrap(),
+        client_identifier: MQTTString::try_from("").unwrap(),
         keep_alive: 60,
         user_name: None,
         password: None,
@@ -734,10 +733,10 @@ fn invalid_publish_packet_due_to_repeated_subscription_identifiers_property() {
         240, 159, 156, 132, // 🜄 (utf-8: 0xf09f9c84)
     ],
     ControlPacket::Connect(Connect {
-        protocol_name: MQTTString::new("MQTT").unwrap(),
+        protocol_name: MQTTString::try_from("MQTT").unwrap(),
         protocol_version: 5,
         clean_start: true,
-        client_identifier: MQTTString::new("Ŧėśt🜄").unwrap(),
+        client_identifier: MQTTString::try_from("Ŧėśt🜄").unwrap(),
         keep_alive: 30,
         user_name: None,
         password: None,
@@ -881,21 +880,21 @@ fn invalid_publish_packet_due_to_repeated_subscription_identifiers_property() {
             maximum_qos: Some(MaximumQoS::AtLeastOnce),
             retain_available: Some(true),
             maximum_packet_size: NonZero::new(100),
-            assigned_client_identifier: Some(MQTTString::new("test").unwrap()),
+            assigned_client_identifier: Some(MQTTString::try_from("test").unwrap()),
             topic_alias_maximum: Some(456),
-            reason_string: Some(MQTTString::new("test").unwrap()),
+            reason_string: Some(MQTTString::try_from("test").unwrap()),
             user_properties: vec! [(
-                MQTTString::new("test").unwrap(),
-                MQTTString::new("test").unwrap(),
+                MQTTString::try_from("test").unwrap(),
+                MQTTString::try_from("test").unwrap(),
             )],
             wildcard_subscription_available: Some(true),
             subscription_identifiers_available: Some(true),
             shared_subscription_available: Some(false),
             server_keep_alive: Some(1234),
-            response_information: Some(MQTTString::new("test").unwrap()),
-            server_reference: Some(MQTTString::new("test").unwrap()),
+            response_information: Some(MQTTString::try_from("test").unwrap()),
+            server_reference: Some(MQTTString::try_from("test").unwrap()),
             authentication: Some(AuthenticationKind::WithData {
-                method: MQTTString::new("test").unwrap(),
+                method: MQTTString::try_from("test").unwrap(),
                 data: [1, 2, 3, 4][..].into(),
             }),
         },
@@ -934,27 +933,27 @@ fn invalid_publish_packet_due_to_repeated_subscription_identifiers_property() {
             maximum_qos: Some(MaximumQoS::AtLeastOnce),
             retain_available: Some(true),
             maximum_packet_size: NonZero::new(100),
-            assigned_client_identifier: Some(MQTTString::new("test").unwrap()),
+            assigned_client_identifier: Some(MQTTString::try_from("test").unwrap()),
             topic_alias_maximum: Some(456),
-            reason_string: Some(MQTTString::new("test").unwrap()),
+            reason_string: Some(MQTTString::try_from("test").unwrap()),
             user_properties: vec! [
                 (
-                    MQTTString::new("test").unwrap(),
-                    MQTTString::new("test").unwrap(),
+                    MQTTString::try_from("test").unwrap(),
+                    MQTTString::try_from("test").unwrap(),
                 ),
                 (
-                    MQTTString::new("test").unwrap(),
-                    MQTTString::new("test").unwrap(),
+                    MQTTString::try_from("test").unwrap(),
+                    MQTTString::try_from("test").unwrap(),
                 ),
             ],
             wildcard_subscription_available: Some(true),
             subscription_identifiers_available: Some(true),
             shared_subscription_available: Some(false),
             server_keep_alive: Some(1234),
-            response_information: Some(MQTTString::new("test").unwrap()),
-            server_reference: Some(MQTTString::new("test").unwrap()),
+            response_information: Some(MQTTString::try_from("test").unwrap()),
+            server_reference: Some(MQTTString::try_from("test").unwrap()),
             authentication: Some(AuthenticationKind::WithData {
-                method: MQTTString::new("test").unwrap(),
+                method: MQTTString::try_from("test").unwrap(),
                 data: [1, 2, 3, 4][..].into(),
             }),
         },
@@ -986,30 +985,30 @@ fn invalid_publish_packet_due_to_repeated_subscription_identifiers_property() {
             dup: true,
         },
         retain: true,
-        topic: PublishTopic::new("test").unwrap(),
+        topic: MQTTString::try_from("test").unwrap().try_into().unwrap(),
         payload: [116, 101, 115, 116][..].into(),
         properties: PublishProperties {
             payload_format_indicator: Some(FormatIndicator::Utf8),
             message_expiry_interval: Some(4321),
             topic_alias: NonZero::new(100),
-            response_topic: PublishTopic::new("topic"),
+            response_topic: MQTTString::try_from("topic").unwrap().try_into().ok(),
             correlation_data: Some([1, 2, 3, 4][..].into()),
             user_properties: vec! [
                 (
-                    MQTTString::new("test").unwrap(),
-                    MQTTString::new("test").unwrap(),
+                    MQTTString::try_from("test").unwrap(),
+                    MQTTString::try_from("test").unwrap(),
                 ),
                 (
-                    MQTTString::new("test").unwrap(),
-                    MQTTString::new("test").unwrap(),
+                    MQTTString::try_from("test").unwrap(),
+                    MQTTString::try_from("test").unwrap(),
                 ),
                 (
-                    MQTTString::new("test").unwrap(),
-                    MQTTString::new("test").unwrap(),
+                    MQTTString::try_from("test").unwrap(),
+                    MQTTString::try_from("test").unwrap(),
                 ),
             ],
             subscription_identifier: NonZero::new(120),
-            content_type: MQTTString::new("test"),
+            content_type: MQTTString::try_from("test").ok(),
         },
     })
 )]

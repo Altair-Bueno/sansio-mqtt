@@ -32,6 +32,8 @@ impl<'input> PubComp<'input> {
             + FromExternalError<ByteInput, PropertiesError>
             + FromExternalError<ByteInput, UnknownFormatIndicatorError>
             + FromExternalError<ByteInput, InvalidReasonCode>
+            + FromExternalError<ByteInput, MQTTStringError>
+            + FromExternalError<ByteInput, PublishTopicError>
             + AddContext<ByteInput, StrContext>,
         BitError: ParserError<(ByteInput, usize)> + ErrorConvert<ByteError>,
     {
@@ -75,7 +77,9 @@ impl<'input> PubCompProperties<'input> {
             + FromExternalError<Input, InvalidQosError>
             + FromExternalError<Input, InvalidPropertyTypeError>
             + FromExternalError<Input, PropertiesError>
-            + FromExternalError<Input, UnknownFormatIndicatorError>,
+            + FromExternalError<Input, UnknownFormatIndicatorError>
+            + FromExternalError<Input, MQTTStringError>
+            + FromExternalError<Input, PublishTopicError>,
     {
         combinator::trace(
             type_name::<Self>(),
