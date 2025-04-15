@@ -8,11 +8,14 @@ edition = "2021"
 rust-version = "1.83.0"
 
 [workspace.dependencies]
-thiserror = "2"
-winnow = "0.7.0"
-strum = "0.27.0"
-beef = "0.5.2"
+sansio-mqtt-v5-types = { path = "crates/sansio-mqtt-v5-types", default-features = false }
+sansio-mqtt-v5-client = { path = "crates/sansio-mqtt-v5-client", default-features = false }
+
+thiserror = { version = "2", default-features = false }
+winnow = { version = "0.7.0", default-features = false }
+strum = { version = "0.27.0", default-features = false }
+beef = { version = "0.5.2", default-features = false }
 nutype = { version = "0.6.1", default-features = false }
-vec1 = "1.12.1"
-encode = "0.2.2"
-rstest = "0.25.0"
+vec1 = { version = "1.12.1", default-features = false }
+encode = { version = "0.2.2", default-features = false }
+rstest = { version = "0.25.0", default-features = false }

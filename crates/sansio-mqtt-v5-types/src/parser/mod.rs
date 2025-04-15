@@ -34,8 +34,6 @@ use winnow::prelude::*;
 use winnow::stream::*;
 use winnow::token;
 
-// TODO: improve error reporting and context
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Settings {
     pub max_bytes_string: u16,
@@ -47,12 +45,18 @@ pub struct Settings {
 
 impl Settings {
     #[inline]
-    pub fn new() -> Self {
-        Self::default()
+    pub const fn new() -> Self {
+        Self {
+            max_bytes_string: 5 * 1024,       // 5 KiB
+            max_bytes_binary_data: 5 * 1024,  // 5 KiB
+            max_remaining_bytes: 1024 * 1024, // 1 MiB
+            max_subscriptions_len: 32,        // 32 subscriptions
+            max_user_properties_len: 32,      // 32 properties
+        }
     }
 
     #[inline]
-    pub fn unlimited() -> Self {
+    pub const fn unlimited() -> Self {
         Self {
             max_bytes_string: u16::MAX,
             max_bytes_binary_data: u16::MAX,
@@ -66,12 +70,6 @@ impl Settings {
 impl Default for Settings {
     #[inline]
     fn default() -> Self {
-        Self {
-            max_bytes_string: 5 * 1024,       // 5 KiB
-            max_bytes_binary_data: 5 * 1024,  // 5 KiB
-            max_remaining_bytes: 1024 * 1024, // 1 MiB
-            max_subscriptions_len: 32,        // 32 subscriptions
-            max_user_properties_len: 32,      // 32 properties
-        }
+        Self::new()
     }
 }

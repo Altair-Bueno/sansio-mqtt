@@ -1,5 +1,5 @@
 [package]
-name = "sansio-mqtt5-core"
+name = "sansio-mqtt-v5-types"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -7,12 +7,12 @@ rust-version.workspace = true
 [features]
 
 [dependencies]
-winnow = { workspace = true }
+winnow = { workspace = true, features = ["alloc"] }
 strum = { workspace = true, features = ["derive"] }
 beef = { workspace = true }
 thiserror = { workspace = true }
 vec1 = { workspace = true }
-encode = { workspace = true }
+encode = { workspace = true, features = ["alloc"] }
 nutype = { workspace = true, features = ["new_unchecked"] }
 
 [dev-dependencies]

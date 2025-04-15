@@ -1,0 +1,8 @@
+[package]
+name = "sansio-mqtt-v5-client"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+sansio-mqtt-v5-types = { workspace = true, default-features = false }
