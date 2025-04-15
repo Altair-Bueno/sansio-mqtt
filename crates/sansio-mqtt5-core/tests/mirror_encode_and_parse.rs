@@ -193,7 +193,7 @@ fn assert_that_parsing_an_invalid_field_on_connect_fails(
         0,    // flags
         5, // return code as character
 ])]
-fn assert_that_parsing_an_invalid_field_on_conect_fails(
+fn assert_that_parsing_an_invalid_field_on_connect_fails(
     settings: Settings,
     #[case] input: Vec<u8>,
 ) {
