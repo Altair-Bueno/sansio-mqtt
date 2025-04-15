@@ -9,194 +9,87 @@ use std::num::NonZero;
 use winnow::error::ContextError;
 use winnow::Parser;
 
-#[test]
-#[should_panic]
-fn invalid_variable_byte_integer() {
-    let input = [16, 255, 255, 255, 255];
-    let settings = Settings::default();
-
-    ControlPacket::parse::<_, ContextError, ContextError>(&settings)
-        .parse(&input[..])
-        .unwrap();
+#[rstest::fixture]
+fn settings() -> Settings {
+    Settings::default()
 }
 
-#[test]
-#[should_panic]
-fn invalid_variable_byte_integer2() {
-    let input = [16, 255, 255, 255, 128];
-    let settings = Settings::default();
-
+#[rstest::rstest]
+#[case(vec! [16, 255, 255, 255, 255])]
+#[case(vec! [16, 255, 255, 255, 128])]
+#[case(vec! [16, 255, 255, 255, 255, 1])]
+#[case(vec! [16, 255, 255, 255, 255, 127])]
+#[case(vec! [16, 255, 255, 255, 255, 128])]
+#[case(vec! [16, 255, 255, 255, 255, 255, 1])]
+fn assert_that_parsing_fails_with_invalid_variable_byte_integers(
+    settings: Settings,
+    #[case] input: Vec<u8>,
+) {
     ControlPacket::parse::<_, ContextError, ContextError>(&settings)
         .parse(&input[..])
-        .unwrap();
+        .unwrap_err();
 }
 
-#[test]
-#[should_panic]
-fn invalid_variable_byte_integer3() {
-    let input = [16, 255, 255, 255, 255, 1];
-    let settings = Settings::default();
-
-    ControlPacket::parse::<_, ContextError, ContextError>(&settings)
-        .parse(&input[..])
-        .unwrap();
-}
-
-#[test]
-#[should_panic]
-fn invalid_variable_byte_integer4() {
-    let input = [16, 255, 255, 255, 255, 127];
-    let settings = Settings::default();
-
-    ControlPacket::parse::<_, ContextError, ContextError>(&settings)
-        .parse(&input[..])
-        .unwrap();
-}
-
-#[test]
-#[should_panic]
-fn invalid_variable_byte_integer5() {
-    let input = [16, 255, 255, 255, 255, 128];
-    let settings = Settings::default();
-
-    ControlPacket::parse::<_, ContextError, ContextError>(&settings)
-        .parse(&input[..])
-        .unwrap();
-}
-
-#[test]
-#[should_panic]
-fn invalid_variable_byte_integer6() {
-    let input = [16, 255, 255, 255, 255, 255, 1];
-    let settings = Settings::default();
-
-    ControlPacket::parse::<_, ContextError, ContextError>(&settings)
-        .parse(&input[..])
-        .unwrap();
-}
-
-#[test]
-#[should_panic]
-fn invalid_connect_protocol_id() {
-    let input = [16, 4, 0, 6, 77, 81];
-    let settings = Settings::default();
-    ControlPacket::parse::<_, ContextError, ContextError>(&settings)
-        .parse(&input[..])
-        .unwrap();
-}
-
-#[test]
-#[should_panic]
-fn invalid_connect_missing_protocol_version() {
-    let input = [
-        16, 8, // Header
-        0, 6, // Protocol ID length
-        77, 81, 73, 115, 100, 112, // Protocol ID
-    ];
-    let settings = Settings::default();
-    ControlPacket::parse::<_, ContextError, ContextError>(&settings)
-        .parse(&input[..])
-        .unwrap();
-}
-
-#[test]
-#[should_panic]
-fn invalid_connect_missing_keep_alive() {
-    let input = [
-        16, 10, // Header
-        0, 6, // Protocol ID length
-        77, 81, 73, 115, 100, 112, // Protocol ID
-        3,   // Protocol version
-        246, // Connect flags
-    ];
-    let settings = Settings::default();
-    ControlPacket::parse::<_, ContextError, ContextError>(&settings)
-        .parse(&input[..])
-        .unwrap();
-}
-
-#[test]
-#[should_panic]
-fn invalid_connect_missing_client_id() {
-    let input = [
-        16, 10, // Header
-        0, 6, // Protocol ID length
-        77, 81, 73, 115, 100, 112, // Protocol ID
-        3,   // Protocol version
-        246, // Connect flags
-        0, 30, // Keepalive
-    ];
-    let settings = Settings::default();
-    ControlPacket::parse::<_, ContextError, ContextError>(&settings)
-        .parse(&input[..])
-        .unwrap();
-}
-
-#[test]
-#[should_panic]
-fn invalid_connect_missing_will_topic() {
-    let input = [
-        16, 16, // Header
-        0, 6, // Protocol ID length
-        77, 81, 73, 115, 100, 112, // Protocol ID
-        3,   // Protocol version
-        246, // Connect flags
-        0, 30, // Keepalive
-        0, 2, // Will topic length
-        0, 0, // Will topic
-    ];
-    let settings = Settings::default();
-    ControlPacket::parse::<_, ContextError, ContextError>(&settings)
-        .parse(&input[..])
-        .unwrap();
-}
-#[test]
-#[should_panic]
-fn invalid_connect_missing_will_payload() {
-    let input = [
-        16, 23, // Header
-        0, 6, // Protocol ID length
-        77, 81, 73, 115, 100, 112, // Protocol ID
-        3,   // Protocol version
-        246, // Connect flags
-        0, 30, // Keepalive
-        0, 5, // Will topic length
-        116, 111, 112, 105, 99, // Will topic
-        0, 2, // Will payload length
-        0, 0, // Will payload
-    ];
-    let settings = Settings::default();
-    ControlPacket::parse::<_, ContextError, ContextError>(&settings)
-        .parse(&input[..])
-        .unwrap();
-}
-#[test]
-#[should_panic]
-fn invalid_username_on_connect() {
-    let input = [
-        16, 32, // Header
-        0, 6, // Protocol ID length
-        77, 81, 73, 115, 100, 112, // Protocol ID
-        3,   // Protocol version
-        246, // Connect flags
-        0, 30, // Keepalive
-        0, 5, // Will topic length
-        116, 111, 112, 105, 99, // Will topic
-        0, 7, // Will payload length
-        112, 97, 121, 108, 111, 97, 100, // Will payload
-        0, 2, // Username length
-        0, 0, // Username
-    ];
-    let settings = Settings::default();
-    ControlPacket::parse::<_, ContextError, ContextError>(&settings)
-        .parse(&input[..])
-        .unwrap();
-}
-
-#[test]
-#[should_panic]
-fn invalid_connect_missing_password() {
-    let input = [
+#[rstest::rstest]
+#[case::protocol_id(vec! [16, 4, 0, 6, 77, 81])]
+#[case::missing_protocol_version(vec! [
+    16, 8, // Header
+    0, 6, // Protocol ID length
+    77, 81, 73, 115, 100, 112, // Protocol ID
+])]
+#[case::missing_keep_alive(vec! [
+    16, 10, // Header
+    0, 6, // Protocol ID length
+    77, 81, 73, 115, 100, 112, // Protocol ID
+    3,   // Protocol version
+    246, // Connect flags
+])]
+#[case::missing_client_id(vec! [
+    16, 10, // Header
+    0, 6, // Protocol ID length
+    77, 81, 73, 115, 100, 112, // Protocol ID
+    3,   // Protocol version
+    246, // Connect flags
+    0, 30, // Keepalive
+])]
+#[case::missing_will_topic(vec! [
+    16, 16, // Header
+    0, 6, // Protocol ID length
+    77, 81, 73, 115, 100, 112, // Protocol ID
+    3,   // Protocol version
+    246, // Connect flags
+    0, 30, // Keepalive
+    0, 2, // Will topic length
+    0, 0, // Will topic
+])]
+#[case::missing_will_payload(vec! [
+    16, 23, // Header
+    0, 6, // Protocol ID length
+    77, 81, 73, 115, 100, 112, // Protocol ID
+    3,   // Protocol version
+    246, // Connect flags
+    0, 30, // Keepalive
+    0, 5, // Will topic length
+    116, 111, 112, 105, 99, // Will topic
+    0, 2, // Will payload length
+    0, 0, // Will payload
+])]
+#[case::invalid_username(vec! [
+    16, 32, // Header
+    0, 6, // Protocol ID length
+    77, 81, 73, 115, 100, 112, // Protocol ID
+    3,   // Protocol version
+    246, // Connect flags
+    0, 30, // Keepalive
+    0, 5, // Will topic length
+    116, 111, 112, 105, 99, // Will topic
+    0, 7, // Will payload length
+    112, 97, 121, 108, 111, 97, 100, // Will payload
+    0, 2, // Username length
+    0, 0, // Username
+])]
+#[case::missing_password(
+    vec! [
         16, 42, // Header
         0, 6, // Protocol ID length
         77, 81, 73, 115, 100, 112, // Protocol ID
@@ -211,105 +104,60 @@ fn invalid_connect_missing_password() {
         117, 115, 101, 114, 110, 97, 109, 101, // Username
         0, 2, // Password length
         0, 0, // Password
-    ];
-    let settings = Settings::default();
-    ControlPacket::parse::<_, ContextError, ContextError>(&settings)
-        .parse(&input[..])
-        .unwrap();
-}
-
-#[test]
-#[should_panic]
-fn invalid_header_flags_bits_on_connect() {
-    let input = [
+    ]
+)]
+#[case::header_flags_bits(
+    vec! [
         18, 10, // Header
         0, 4, // Protocol ID length
         0x4d, 0x51, 0x54, 0x54, // Protocol ID
         3,    // Protocol version
         2,    // Connect flags
         0, 30, // Keepalive
-    ];
-    let settings = Settings::default();
-
-    ControlPacket::parse::<_, ContextError, ContextError>(&settings)
-        .parse(&input[..])
-        .unwrap();
-}
-#[test]
-#[should_panic]
-fn invalid_connect_flag_bit_0_must_be_0() {
-    let input = [
+    ]
+)]
+#[case::flag_bit_0_must_be_0(
+    vec! [
         16, 10, // Header
         0, 4, // Protocol ID length
         0x4d, 0x51, 0x54, 0x54, // Protocol ID
         3,    // Protocol version
         3,    // Connect flags
         0, 30, // Keepalive
-    ];
-    let settings = Settings::default();
-
-    ControlPacket::parse::<_, ContextError, ContextError>(&settings)
-        .parse(&input[..])
-        .unwrap();
-}
-
-#[test]
-#[should_panic]
-fn invalid_publish_will_retain_flag_must_be_zero_when_will_flag_is_zero() {
-    let input = [
+    ]
+)]
+#[case::publish_will_retain_flag_must_be_zero_when_will_flag_is_zero(
+    vec! [
         16, 10, // Header
         0, 4, // Protocol ID length
         0x4d, 0x51, 0x54, 0x54, // Protocol ID
         3,    // Protocol version
         0x22, // Connect flags
         0, 30, // Keepalive
-    ];
-    let settings = Settings::default();
-
-    ControlPacket::parse::<_, ContextError, ContextError>(&settings)
-        .parse(&input[..])
-        .unwrap();
-}
-
-#[test]
-#[should_panic]
-fn invalid_invalid_will_qos_must_be_zero_when_will_flag_is_zero() {
-    let input = [
+    ]
+)]
+#[case::will_qos_must_be_zero_when_will_flag_is_zero(
+    vec! [
         16, 10, // Header
         0, 4, // Protocol ID length
         0x4d, 0x51, 0x54, 0x54, // Protocol ID
         3,    // Protocol version
         0x12, // Connect flags
         0, 30, // Keepalive
-    ];
-    let settings = Settings::default();
-
-    ControlPacket::parse::<_, ContextError, ContextError>(&settings)
-        .parse(&input[..])
-        .unwrap();
-}
-#[test]
-#[should_panic]
-fn invalid_publish_will_qos_must_be_zero_when_will_flag_is_set_to_zero() {
-    let input = [
+    ]
+)]
+#[case::will_qos_must_be_zero_when_will_flag_is_set_to_zero(
+    vec! [
         16, 10, // Header
         0, 4, // Protocol ID length
         0x4d, 0x51, 0x54, 0x54, // Protocol ID
         3,    // Protocol version
         0xa,  // Connect flags
         0, 30, // Keepalive
-    ];
-    let settings = Settings::default();
-
-    ControlPacket::parse::<_, ContextError, ContextError>(&settings)
-        .parse(&input[..])
-        .unwrap();
-}
-
-#[test]
-#[should_panic]
-fn invalid_connect_packet_too_short() {
-    let input = [
+    ]
+)]
+#[case::packet_too_short(
+    vec! [
         16, // Header
         8,  // Packet length
         0, 4, // Protocol ID length
@@ -320,130 +168,60 @@ fn invalid_connect_packet_too_short() {
         0, // Property Length
         0, 0, // Properties
            // No payload
-    ];
-    let settings = Settings::default();
-
+    ]
+)]
+fn assert_that_parsing_an_invalid_field_on_connect_fails(
+    settings: Settings,
+    #[case] input: Vec<u8>,
+) {
     ControlPacket::parse::<_, ContextError, ContextError>(&settings)
         .parse(&input[..])
-        .unwrap();
+        .unwrap_err();
 }
 
-#[test]
-#[should_panic]
-fn invalid_subscribe_no_payload() {
-    let input = [
-        130, // Header
-        0,   // Packet length
-    ];
-    let settings = Settings::default();
-
-    ControlPacket::parse::<_, ContextError, ContextError>(&settings)
-        .parse(&input[..])
-        .unwrap();
-}
-
-#[test]
-#[should_panic]
-fn invalid_suback_no_payload() {
-    let input = [
-        144, // Header
-        0,   // Packet length
-    ];
-    let settings = Settings::default();
-
-    ControlPacket::parse::<_, ContextError, ContextError>(&settings)
-        .parse(&input[..])
-        .unwrap();
-}
-
-#[test]
-#[should_panic]
-fn invalid_unsubscribe_no_payload() {
-    let input = [
-        162, // Header
-        0,   // Packet length
-    ];
-    let settings = Settings::default();
-
-    ControlPacket::parse::<_, ContextError, ContextError>(&settings)
-        .parse(&input[..])
-        .unwrap();
-}
-
-#[test]
-#[should_panic]
-fn invalid_unsuback_v5_no_payload() {
-    let input = [
-        176, // Header
-        0,   // Packet length
-    ];
-    let settings = Settings::default();
-
-    ControlPacket::parse::<_, ContextError, ContextError>(&settings)
-        .parse(&input[..])
-        .unwrap();
-}
-
-#[test]
-#[should_panic]
-fn invalid_unsuback_v3_payload_length_must_be_2() {
-    let input = [
-        176, // Header
-        1,   // Packet length
-        1,
-    ];
-    let settings = Settings::default();
-
-    ControlPacket::parse::<_, ContextError, ContextError>(&settings)
-        .parse(&input[..])
-        .unwrap();
-}
-
-#[test]
-#[should_panic]
-fn invalid_header_flag_bits_must_be_0x0_for_connack_packet() {
-    let input = [
-        33, 2, // header
-        0, // flags
-        5, // return code
-    ];
-    let settings = Settings::default();
-    ControlPacket::parse::<_, ContextError, ContextError>(&settings)
-        .parse(&input[..])
-        .unwrap();
-}
-#[test]
-#[should_panic]
-fn invalid_connack_flags_bits_7_1_must_be_set_to_0() {
-    let input = [
+#[rstest::rstest]
+#[case::flags_bits_7_1_must_be_set_to_0(
+    vec! [
         32, 2, // header
         2, // flags
         5, // return code
-    ];
-    let settings = Settings::default();
-    ControlPacket::parse::<_, ContextError, ContextError>(&settings)
-        .parse(&input[..])
-        .unwrap();
-}
-
-#[test]
-#[should_panic]
-fn invalid_return_code() {
-    let input = [
+    ]
+)]
+#[case::invalid_return_code(
+    vec! [
         32, 2,    // header
         0,    // flags
-        b'5', // return code as character
-    ];
-    let settings = Settings::default();
+        5, // return code as character
+])]
+fn assert_that_parsing_an_invalid_field_on_conect_fails(
+    settings: Settings,
+    #[case] input: Vec<u8>,
+) {
     ControlPacket::parse::<_, ContextError, ContextError>(&settings)
         .parse(&input[..])
-        .unwrap();
+        .unwrap_err();
 }
 
-#[test]
-#[should_panic]
-fn invalid_publish_packet_due_to_repeated_subscription_identifiers_property() {
-    let input = [
+#[rstest::rstest]
+#[case::invalid_header_flag_bits_must_be_0x0(
+    vec! [
+        33, 2, // header
+        0, // flags
+        5, // return code
+    ]
+)]
+fn assert_that_parsing_an_invalid_field_on_connack_fails(
+    settings: Settings,
+    #[case] input: Vec<u8>,
+) {
+    ControlPacket::parse::<_, ContextError, ContextError>(&settings)
+        .parse(&input[..])
+        .unwrap_err();
+}
+
+#[rstest::rstest]
+#[case::to_repeated_subscription_identifiers_property(
+    vec! [
         61, 22, // Header
         0, 4, // Topic length
         116, 101, 115, 116, // Topic (test)
@@ -453,27 +231,86 @@ fn invalid_publish_packet_due_to_repeated_subscription_identifiers_property() {
         11, 1, // subscriptionIdentifier
         11, 255, 255, 255, 127, // subscriptionIdentifier (max value)
         116, 101, 115, 116, // Payload (test)
-    ];
-    let packet = ControlPacket::Publish(Publish {
-        kind: PublishKind::Repetible {
-            packet_id: NonZero::new(10).unwrap(),
-            qos: GuaranteedQoS::ExactlyOnce,
-            dup: true,
-        },
-        retain: true,
-        topic: MQTTString::try_from("test").unwrap().try_into().unwrap(),
-        payload: [116, 101, 115, 116][..].into(),
-        properties: PublishProperties {
-            payload_format_indicator: Some(FormatIndicator::Unspecified),
-            subscription_identifier: NonZero::new(u64::MAX),
-            ..Default::default()
-        },
-    });
-    let settings = Settings::default();
-    let result = ControlPacket::parse::<_, ContextError, ContextError>(&settings)
+    ]
+)]
+fn assert_that_parsing_an_invalid_field_on_publish_fails(
+    settings: Settings,
+    #[case] input: Vec<u8>,
+) {
+    ControlPacket::parse::<_, ContextError, ContextError>(&settings)
         .parse(&input[..])
-        .unwrap();
-    assert_eq!(result, packet);
+        .unwrap_err();
+}
+
+#[rstest::rstest]
+#[case::no_payload(
+    vec! [
+        130, // Header
+        0,   // Packet length
+    ]
+)]
+fn assert_that_parsing_an_invalid_field_on_subscribe_fails(
+    settings: Settings,
+    #[case] input: Vec<u8>,
+) {
+    ControlPacket::parse::<_, ContextError, ContextError>(&settings)
+        .parse(&input[..])
+        .unwrap_err();
+}
+
+#[rstest::rstest]
+#[case::no_payload(
+    vec! [
+        144, // Header
+        0,   // Packet length
+    ]
+)]
+fn assert_that_parsing_an_invalid_field_on_suback_fails(
+    settings: Settings,
+    #[case] input: Vec<u8>,
+) {
+    ControlPacket::parse::<_, ContextError, ContextError>(&settings)
+        .parse(&input[..])
+        .unwrap_err();
+}
+
+#[rstest::rstest]
+#[case::no_payload(
+    vec! [
+        162, // Header
+        0,   // Packet length
+    ]
+)]
+fn assert_that_parsing_an_invalid_field_on_unsubscribe_fails(
+    settings: Settings,
+    #[case] input: Vec<u8>,
+) {
+    ControlPacket::parse::<_, ContextError, ContextError>(&settings)
+        .parse(&input[..])
+        .unwrap_err();
+}
+
+#[rstest::rstest]
+#[case::no_payload(
+    vec! [
+        176, // Header
+        0,   // Packet length
+    ]
+)]
+#[case::no_properties(
+    vec! [
+        176, // Header
+        1,   // Packet length
+        1,
+    ]
+)]
+fn assert_that_parsing_an_invalid_field_on_unsuback_fails(
+    settings: Settings,
+    #[case] input: Vec<u8>,
+) {
+    ControlPacket::parse::<_, ContextError, ContextError>(&settings)
+        .parse(&input[..])
+        .unwrap_err();
 }
 
 #[rstest::rstest]
@@ -1014,10 +851,10 @@ fn invalid_publish_packet_due_to_repeated_subscription_identifiers_property() {
     })
 )]
 fn assert_that_different_packets_can_be_decoded_and_encoded(
+    settings: Settings,
     #[case] encoded_packet_buffer: Vec<u8>,
     #[case] expected_packet: ControlPacket,
 ) {
-    let settings = Settings::default();
     let decoded_packet = ControlPacket::parse::<_, ContextError, ContextError>(&settings)
         .parse(&*encoded_packet_buffer)
         .unwrap();
