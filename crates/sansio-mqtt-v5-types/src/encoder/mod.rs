@@ -23,4 +23,4 @@ use super::types::*;
 use basic::*;
 use encode::ByteEncoder;
 use encode::Encodable;
-use error::EncodeError;
+pub use error::EncodeError;
