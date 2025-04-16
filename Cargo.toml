@@ -10,7 +10,12 @@ rust-version = "1.83.0"
 [workspace.dependencies]
 sansio-mqtt-v5-types = { path = "crates/sansio-mqtt-v5-types", default-features = false }
 sansio-mqtt-v5-client = { path = "crates/sansio-mqtt-v5-client", default-features = false }
+sansio-mqtt-v5-client-tcp-std = { path = "crates/sansio-mqtt-v5-client-tcp-std", default-features = false }
 
+tracing = "0.1.41"
+tokio = { version = "1", default-features = false }
+bytes = { version = "1", default-features = false }
+bon = { version = "3.6.1", default-features = false }
 thiserror = { version = "2", default-features = false }
 winnow = { version = "0.7.0", default-features = false }
 strum = { version = "0.27.0", default-features = false }

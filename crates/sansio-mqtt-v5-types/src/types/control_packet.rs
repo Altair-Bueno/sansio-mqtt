@@ -3,36 +3,36 @@ use super::*;
 #[derive(Debug, PartialEq, Clone, EnumDiscriminants)]
 #[strum_discriminants(derive(Hash, EnumIter, Display))]
 #[strum_discriminants(name(ControlPacketType))]
-pub enum ControlPacket<'input> {
+pub enum ControlPacket {
     Reserved(Reserved),
 
-    Connect(Connect<'input>),
+    Connect(Connect),
 
-    ConnAck(ConnAck<'input>),
+    ConnAck(ConnAck),
 
-    Publish(Publish<'input>),
+    Publish(Publish),
 
-    PubAck(PubAck<'input>),
+    PubAck(PubAck),
 
-    PubRec(PubRec<'input>),
+    PubRec(PubRec),
 
-    PubRel(PubRel<'input>),
+    PubRel(PubRel),
 
-    PubComp(PubComp<'input>),
+    PubComp(PubComp),
 
-    Subscribe(Subscribe<'input>),
+    Subscribe(Subscribe),
 
-    SubAck(SubAck<'input>),
+    SubAck(SubAck),
 
-    Unsubscribe(Unsubscribe<'input>),
+    Unsubscribe(Unsubscribe),
 
-    UnsubAck(UnsubAck<'input>),
+    UnsubAck(UnsubAck),
     PingReq(PingReq),
     PingResp(PingResp),
 
-    Disconnect(Disconnect<'input>),
+    Disconnect(Disconnect),
 
-    Auth(Auth<'input>),
+    Auth(Auth),
 }
 
 #[derive(Debug, PartialEq, Clone, Copy, Error)]

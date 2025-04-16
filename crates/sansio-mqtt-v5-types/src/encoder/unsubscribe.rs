@@ -1,6 +1,6 @@
 use super::*;
 
-impl<E> Encodable<E> for UnsubscribeProperties<'_>
+impl<E> Encodable<E> for UnsubscribeProperties
 where
     E: ByteEncoder,
     EncodeError: From<E::Error>,
@@ -20,7 +20,7 @@ where
     }
 }
 
-impl<E> Encodable<E> for Unsubscribe<'_>
+impl<E> Encodable<E> for Unsubscribe
 where
     E: ByteEncoder,
     EncodeError: From<E::Error>,

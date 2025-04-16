@@ -21,9 +21,9 @@ impl PropertyType {
     }
 }
 
-impl<'input> Property<'input> {
+impl Property {
     #[inline]
-    pub fn parse<'settings, Input, Error>(
+    pub fn parse<'input, 'settings, Input, Error>(
         parser_settings: &'settings Settings,
     ) -> impl Parser<Input, Self, Error> + use<'input, 'settings, Input, Error>
     where

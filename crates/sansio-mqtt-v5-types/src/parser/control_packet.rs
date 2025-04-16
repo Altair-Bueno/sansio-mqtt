@@ -1,8 +1,8 @@
 use super::*;
 
-impl<'input> ControlPacket<'input> {
+impl ControlPacket {
     #[inline]
-    pub fn parse<'settings, ByteInput, ByteError, BitError>(
+    pub fn parse<'input, 'settings, ByteInput, ByteError, BitError>(
         parser_settings: &'settings Settings,
     ) -> impl Parser<ByteInput, Self, ByteError> + use<'input, 'settings, ByteInput, ByteError, BitError>
     where

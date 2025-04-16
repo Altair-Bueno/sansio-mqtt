@@ -1,6 +1,6 @@
 use super::*;
 
-impl<E> Encodable<E> for ConnAckProperties<'_>
+impl<E> Encodable<E> for ConnAckProperties
 where
     E: ByteEncoder,
     EncodeError: From<E::Error>,
@@ -88,7 +88,7 @@ where
     }
 }
 
-impl<E> Encodable<E> for ConnAck<'_>
+impl<E> Encodable<E> for ConnAck
 where
     E: ByteEncoder,
     EncodeError: From<E::Error>,

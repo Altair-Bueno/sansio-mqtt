@@ -2,10 +2,10 @@ use super::*;
 
 #[derive(Debug, PartialEq, Clone)]
 
-pub struct Subscribe<'input> {
+pub struct Subscribe {
     pub packet_id: NonZero<u16>,
-    pub subscriptions: Vec1<Subscription<'input>>,
-    pub properties: SubscribeProperties<'input>,
+    pub subscriptions: Vec1<Subscription>,
+    pub properties: SubscribeProperties,
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -20,8 +20,8 @@ impl From<SubscribeHeaderFlags> for u8 {
 
 #[derive(Debug, PartialEq, Clone)]
 
-pub struct Subscription<'input> {
-    pub topic_filter: Utf8String<'input>,
+pub struct Subscription {
+    pub topic_filter: Utf8String,
     pub qos: Qos,
     pub no_local: bool,
     pub retain_as_published: bool,
@@ -30,8 +30,8 @@ pub struct Subscription<'input> {
 
 #[derive(Debug, PartialEq, Clone, Default)]
 
-pub struct SubscribeProperties<'input> {
+pub struct SubscribeProperties {
     pub subscription_identifier: Option<NonZero<u64>>,
 
-    pub user_properties: Vec<(Utf8String<'input>, Utf8String<'input>)>,
+    pub user_properties: Vec<(Utf8String, Utf8String)>,
 }

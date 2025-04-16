@@ -1,6 +1,6 @@
 use super::*;
 
-impl<E> Encodable<E> for UnsubAckProperties<'_>
+impl<E> Encodable<E> for UnsubAckProperties
 where
     E: ByteEncoder,
     EncodeError: From<E::Error>,
@@ -24,7 +24,7 @@ where
     }
 }
 
-impl<E> Encodable<E> for UnsubAck<'_>
+impl<E> Encodable<E> for UnsubAck
 where
     E: ByteEncoder,
     EncodeError: From<E::Error>,

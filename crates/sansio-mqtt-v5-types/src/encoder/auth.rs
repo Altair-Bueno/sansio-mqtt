@@ -1,6 +1,6 @@
 use super::*;
 
-impl<E> Encodable<E> for AuthProperties<'_>
+impl<E> Encodable<E> for AuthProperties
 where
     E: ByteEncoder,
     EncodeError: From<E::Error>,
@@ -35,7 +35,7 @@ where
     }
 }
 
-impl<E> Encodable<E> for Auth<'_>
+impl<E> Encodable<E> for Auth
 where
     E: ByteEncoder,
     EncodeError: From<E::Error>,

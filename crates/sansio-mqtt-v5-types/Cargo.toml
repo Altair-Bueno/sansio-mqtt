@@ -9,7 +9,7 @@ rust-version.workspace = true
 [dependencies]
 winnow = { workspace = true, features = ["alloc"] }
 strum = { workspace = true, features = ["derive"] }
-beef = { workspace = true }
+bytes = { workspace = true }
 thiserror = { workspace = true }
 vec1 = { workspace = true }
 encode = { workspace = true, features = ["alloc"] }

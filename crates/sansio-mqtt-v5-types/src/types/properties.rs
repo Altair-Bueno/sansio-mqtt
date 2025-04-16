@@ -3,32 +3,32 @@ use super::*;
 #[derive(Debug, PartialEq, Clone, EnumDiscriminants)]
 #[strum_discriminants(derive(Hash, EnumIter, Display))]
 #[strum_discriminants(name(PropertyType))]
-pub enum Property<'input> {
+pub enum Property {
     PayloadFormatIndicator(FormatIndicator),
     MessageExpiryInterval(u32),
-    ContentType(Utf8String<'input>),
-    ResponseTopic(Topic<'input>),
-    CorrelationData(BinaryData<'input>),
+    ContentType(Utf8String),
+    ResponseTopic(Topic),
+    CorrelationData(BinaryData),
     // It is a Protocol Error if the Subscription Identifier has a value of 0.
     SubscriptionIdentifier(NonZero<u64>),
     SessionExpiryInterval(u32),
-    AssignedClientIdentifier(Utf8String<'input>),
+    AssignedClientIdentifier(Utf8String),
     ServerKeepAlive(u16),
-    AuthenticationMethod(Utf8String<'input>),
-    AuthenticationData(BinaryData<'input>),
+    AuthenticationMethod(Utf8String),
+    AuthenticationData(BinaryData),
     RequestProblemInformation(bool),
     WillDelayInterval(u32),
     RequestResponseInformation(bool),
-    ResponseInformation(Utf8String<'input>),
-    ServerReference(Utf8String<'input>),
-    ReasonString(Utf8String<'input>),
+    ResponseInformation(Utf8String),
+    ServerReference(Utf8String),
+    ReasonString(Utf8String),
     // It is a Protocol Error to include the Receive Maximum value more than once or for it to have the value 0.
     ReceiveMaximum(NonZero<u16>),
     TopicAliasMaximum(u16),
     TopicAlias(NonZero<u16>),
     MaximumQoS(MaximumQoS),
     RetainAvailable(bool),
-    UserProperty(Utf8String<'input>, Utf8String<'input>),
+    UserProperty(Utf8String, Utf8String),
     MaximumPacketSize(NonZero<u32>),
     WildcardSubscriptionAvailable(bool),
     SubscriptionIdentifiersAvailable(bool),
@@ -36,19 +36,19 @@ pub enum Property<'input> {
 }
 
 #[derive(Debug, PartialEq, Clone)]
-pub enum AuthenticationKind<'input> {
+pub enum AuthenticationKind {
     WithoutData {
-        method: Utf8String<'input>,
+        method: Utf8String,
     },
     WithData {
-        method: Utf8String<'input>,
-        data: BinaryData<'input>,
+        method: Utf8String,
+        data: BinaryData,
     },
 }
 
-impl<'input> AuthenticationKind<'input> {
+impl AuthenticationKind {
     pub fn try_from_parts(
-        (method, data): (Option<Utf8String<'input>>, Option<BinaryData<'input>>),
+        (method, data): (Option<Utf8String>, Option<BinaryData>),
     ) -> Result<Option<Self>, MissingAuthenticationMethodError> {
         match (method, data) {
             (None, None) => Ok(None),

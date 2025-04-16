@@ -1,6 +1,6 @@
 use super::*;
 
-impl<E> Encodable<E> for ControlPacket<'_>
+impl<E> Encodable<E> for ControlPacket
 where
     E: ByteEncoder,
     EncodeError: From<E::Error>,

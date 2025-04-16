@@ -11,7 +11,7 @@ where
     }
 }
 
-impl<E: ByteEncoder> Encodable<E> for Property<'_>
+impl<E: ByteEncoder> Encodable<E> for Property
 where
     EncodeError: From<E::Error>,
 {

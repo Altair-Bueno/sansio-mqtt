@@ -15,9 +15,9 @@ impl PingReqHeaderFlags {
     }
 }
 
-impl<'input> PingReq {
+impl PingReq {
     #[inline]
-    pub fn parse<'settings, ByteInput, ByteError, BitError>(
+    pub fn parse<'input, 'settings, ByteInput, ByteError, BitError>(
         _parser_settings: &'settings Settings,
     ) -> impl Parser<ByteInput, Self, ByteError> + use<'input, 'settings, ByteInput, ByteError, BitError>
     where

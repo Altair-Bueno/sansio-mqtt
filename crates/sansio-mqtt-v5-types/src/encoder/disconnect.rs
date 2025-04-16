@@ -1,6 +1,6 @@
 use super::*;
 
-impl<E> Encodable<E> for DisconnectProperties<'_>
+impl<E> Encodable<E> for DisconnectProperties
 where
     E: ByteEncoder,
     EncodeError: From<E::Error>,
@@ -30,7 +30,7 @@ where
     }
 }
 
-impl<E> Encodable<E> for Disconnect<'_>
+impl<E> Encodable<E> for Disconnect
 where
     E: ByteEncoder,
     EncodeError: From<E::Error>,

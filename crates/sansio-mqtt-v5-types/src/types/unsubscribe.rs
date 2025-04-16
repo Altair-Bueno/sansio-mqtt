@@ -2,10 +2,10 @@ use super::*;
 
 #[derive(Debug, PartialEq, Clone)]
 
-pub struct Unsubscribe<'input> {
+pub struct Unsubscribe {
     pub packet_id: NonZero<u16>,
-    pub properties: UnsubscribeProperties<'input>,
-    pub topics: Vec1<Utf8String<'input>>,
+    pub properties: UnsubscribeProperties,
+    pub topics: Vec1<Utf8String>,
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -20,6 +20,6 @@ impl From<UnsubscribeHeaderFlags> for u8 {
 
 #[derive(Debug, PartialEq, Clone, Default)]
 
-pub struct UnsubscribeProperties<'input> {
-    pub user_properties: Vec<(Utf8String<'input>, Utf8String<'input>)>,
+pub struct UnsubscribeProperties {
+    pub user_properties: Vec<(Utf8String, Utf8String)>,
 }

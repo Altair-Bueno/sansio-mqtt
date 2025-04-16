@@ -41,7 +41,7 @@ where
     }
 }
 
-impl<E: ByteEncoder> Encodable<E> for Payload<'_>
+impl<E: ByteEncoder> Encodable<E> for Payload
 where
     EncodeError: From<E::Error>,
 {
@@ -54,7 +54,7 @@ where
     }
 }
 
-impl<E: ByteEncoder> Encodable<E> for BinaryData<'_>
+impl<E: ByteEncoder> Encodable<E> for BinaryData
 where
     EncodeError: From<E::Error>,
 {
@@ -66,7 +66,7 @@ where
     }
 }
 
-impl<E: ByteEncoder> Encodable<E> for Utf8String<'_>
+impl<E: ByteEncoder> Encodable<E> for Utf8String
 where
     EncodeError: From<E::Error>,
 {
@@ -77,7 +77,7 @@ where
         LengthPrefix::<_, TwoByteInteger, _>::new(bytes).encode(encoder)
     }
 }
-impl<E: ByteEncoder> Encodable<E> for Topic<'_>
+impl<E: ByteEncoder> Encodable<E> for Topic
 where
     EncodeError: From<E::Error>,
 {
@@ -96,7 +96,7 @@ impl<E: ByteEncoder> Encodable<E> for FormatIndicator {
     }
 }
 
-impl<E: ByteEncoder> Encodable<E> for Subscription<'_>
+impl<E: ByteEncoder> Encodable<E> for Subscription
 where
     EncodeError: From<E::Error>,
 {

@@ -1,6 +1,6 @@
 use super::*;
 
-impl<E> Encodable<E> for SubAckProperties<'_>
+impl<E> Encodable<E> for SubAckProperties
 where
     E: ByteEncoder,
     EncodeError: From<E::Error>,
@@ -24,7 +24,7 @@ where
     }
 }
 
-impl<E> Encodable<E> for SubAck<'_>
+impl<E> Encodable<E> for SubAck
 where
     E: ByteEncoder,
     EncodeError: From<E::Error>,

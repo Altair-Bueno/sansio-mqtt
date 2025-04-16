@@ -1,6 +1,6 @@
 use super::*;
 
-impl<E> Encodable<E> for PubCompProperties<'_>
+impl<E> Encodable<E> for PubCompProperties
 where
     E: ByteEncoder,
     EncodeError: From<E::Error>,
@@ -24,7 +24,7 @@ where
     }
 }
 
-impl<E> Encodable<E> for PubComp<'_>
+impl<E> Encodable<E> for PubComp
 where
     E: ByteEncoder,
     EncodeError: From<E::Error>,

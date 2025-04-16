@@ -16,9 +16,9 @@ impl PubCompHeaderFlags {
     }
 }
 
-impl<'input> PubComp<'input> {
+impl PubComp {
     #[inline]
-    pub fn parse<'settings, ByteInput, ByteError, BitError>(
+    pub fn parse<'input, 'settings, ByteInput, ByteError, BitError>(
         parser_settings: &'settings Settings,
     ) -> impl Parser<ByteInput, Self, ByteError> + use<'input, 'settings, ByteInput, ByteError, BitError>
     where
@@ -65,9 +65,9 @@ impl<'input> PubComp<'input> {
     }
 }
 
-impl<'input> PubCompProperties<'input> {
+impl PubCompProperties {
     #[inline]
-    pub fn parse<'settings, Input, Error>(
+    pub fn parse<'input, 'settings, Input, Error>(
         parser_settings: &'settings Settings,
     ) -> impl Parser<Input, Self, Error> + use<'input, 'settings, Input, Error>
     where

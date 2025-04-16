@@ -1,6 +1,6 @@
 use super::*;
 
-impl<E> Encodable<E> for PublishProperties<'_>
+impl<E> Encodable<E> for PublishProperties
 where
     E: ByteEncoder,
     EncodeError: From<E::Error>,
@@ -43,7 +43,7 @@ where
     }
 }
 
-impl<E> Encodable<E> for Publish<'_>
+impl<E> Encodable<E> for Publish
 where
     E: ByteEncoder,
     EncodeError: From<E::Error>,

@@ -19,9 +19,9 @@ impl UnsubscribeHeaderFlags {
     }
 }
 
-impl<'input> Unsubscribe<'input> {
+impl Unsubscribe {
     #[inline]
-    pub fn parse<'settings, ByteInput, ByteError, BitError>(
+    pub fn parse<'input, 'settings, ByteInput, ByteError, BitError>(
         parser_settings: &'settings Settings,
     ) -> impl Parser<ByteInput, Self, ByteError> + use<'input, 'settings, ByteInput, ByteError, BitError>
     where
@@ -64,9 +64,9 @@ impl<'input> Unsubscribe<'input> {
     }
 }
 
-impl<'input> UnsubscribeProperties<'input> {
+impl UnsubscribeProperties {
     #[inline]
-    pub fn parse<'settings, Input, Error>(
+    pub fn parse<'input, 'settings, Input, Error>(
         parser_settings: &'settings Settings,
     ) -> impl Parser<Input, Self, Error> + use<'input, 'settings, Input, Error>
     where

@@ -34,9 +34,9 @@ impl PublishHeaderFlags {
     }
 }
 
-impl<'input> Publish<'input> {
+impl Publish {
     #[inline]
-    pub fn parse<'settings, ByteInput, ByteError, BitError>(
+    pub fn parse<'input, 'settings, ByteInput, ByteError, BitError>(
         parser_settings: &'settings Settings,
         header_flags: PublishHeaderFlags,
     ) -> impl Parser<ByteInput, Self, ByteError> + use<'input, 'settings, ByteInput, ByteError, BitError>
@@ -85,9 +85,9 @@ impl<'input> Publish<'input> {
     }
 }
 
-impl<'input> PublishProperties<'input> {
+impl PublishProperties {
     #[inline]
-    pub fn parse<'settings, Input, Error>(
+    pub fn parse<'input, 'settings, Input, Error>(
         parser_settings: &'settings Settings,
     ) -> impl Parser<Input, Self, Error> + use<'input, 'settings, Input, Error>
     where

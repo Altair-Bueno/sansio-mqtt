@@ -42,7 +42,7 @@ pub use subscribe::*;
 pub use unsuback::*;
 pub use unsubscribe::*;
 
-use beef::Cow;
+use bytes::Bytes;
 use std::borrow::Borrow;
 use std::num::NonZero;
 use strum::Display;

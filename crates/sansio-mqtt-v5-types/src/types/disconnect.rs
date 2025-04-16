@@ -2,9 +2,9 @@ use super::*;
 
 #[derive(Debug, PartialEq, Clone)]
 
-pub struct Disconnect<'input> {
+pub struct Disconnect {
     pub reason_code: DisconnectReasonCode,
-    pub properties: DisconnectProperties<'input>,
+    pub properties: DisconnectProperties,
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -19,17 +19,17 @@ impl From<DisconnectHeaderFlags> for u8 {
 
 #[derive(Debug, PartialEq, Clone, Default)]
 
-pub struct DisconnectProperties<'input> {
+pub struct DisconnectProperties {
     pub session_expiry_interval: Option<u32>,
 
-    pub reason_string: Option<Utf8String<'input>>,
+    pub reason_string: Option<Utf8String>,
 
-    pub user_properties: Vec<(Utf8String<'input>, Utf8String<'input>)>,
+    pub user_properties: Vec<(Utf8String, Utf8String)>,
 
-    pub server_reference: Option<Utf8String<'input>>,
+    pub server_reference: Option<Utf8String>,
 }
 
-impl DisconnectProperties<'_> {
+impl DisconnectProperties {
     pub fn is_empty(&self) -> bool {
         self.session_expiry_interval.is_none()
             && self.reason_string.is_none()

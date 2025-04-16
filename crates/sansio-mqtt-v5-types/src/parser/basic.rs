@@ -57,26 +57,33 @@ where
     .parse_next(input)
 }
 
-impl<'input> Payload<'input> {
+impl Payload {
     #[inline]
-    pub fn parse<Input, Error>(_: &Settings) -> impl Parser<Input, Self, Error>
+    pub fn parse<'input, Input, Error>(
+        _: &Settings,
+    ) -> impl Parser<Input, Self, Error> + use<'input, Input, Error>
     where
         Input: StreamIsPartial + Stream<Token = u8, Slice = &'input [u8]>,
         Error: ParserError<Input>
             + FromExternalError<Input, BinaryDataError>
             + AddContext<Input, StrContext>,
     {
-        combinator::trace(type_name::<Self>(), token::rest.output_into())
-            .context(StrContext::Label(type_name::<Self>()))
-            .context(StrContext::Expected(StrContextValue::Description(
-                "the message payload",
-            )))
+        combinator::trace(
+            type_name::<Self>(),
+            token::rest.map(|s| Self::new(bytes::Bytes::copy_from_slice(s))),
+        )
+        .context(StrContext::Label(type_name::<Self>()))
+        .context(StrContext::Expected(StrContextValue::Description(
+            "the message payload",
+        )))
     }
 }
 
-impl<'input> BinaryData<'input> {
+impl BinaryData {
     #[inline]
-    pub fn parse<Input, Error>(parser_settings: &Settings) -> impl Parser<Input, Self, Error>
+    pub fn parse<'input, Input, Error>(
+        parser_settings: &Settings,
+    ) -> impl Parser<Input, Self, Error> + use<'input, Input, Error>
     where
         Input: StreamIsPartial + Stream<Token = u8, Slice = &'input [u8]>,
         Error: ParserError<Input>
@@ -88,7 +95,7 @@ impl<'input> BinaryData<'input> {
             binary::length_take(two_byte_integer_len_with_limits(
                 parser_settings.max_bytes_binary_data,
             ))
-            .try_map(Self::try_from),
+            .try_map(|s| Self::try_new(bytes::Bytes::copy_from_slice(s))),
         )
         .context(StrContext::Label(type_name::<Self>()))
         .context(StrContext::Expected(StrContextValue::Description(
@@ -98,10 +105,9 @@ impl<'input> BinaryData<'input> {
 }
 
 #[inline]
-pub fn string_pair<'settings, 'input, Input, Error>(
+pub fn string_pair<'input, 'settings, Input, Error>(
     parser_settings: &'settings Settings,
-) -> impl Parser<Input, (Utf8String<'input>, Utf8String<'input>), Error>
-       + use<'input, 'settings, Input, Error>
+) -> impl Parser<Input, (Utf8String, Utf8String), Error> + use<'input, 'settings, Input, Error>
 where
     Input: StreamIsPartial + Stream<Token = u8, Slice = &'input [u8]>,
     Error: ParserError<Input>
@@ -119,9 +125,11 @@ where
     .context(StrContext::Label("string_pair"))
 }
 
-impl<'input> Utf8String<'input> {
+impl Utf8String {
     #[inline]
-    pub fn parse<Input, Error>(parser_settings: &Settings) -> impl Parser<Input, Self, Error>
+    pub fn parse<'input, Input, Error>(
+        parser_settings: &Settings,
+    ) -> impl Parser<Input, Self, Error> + use<'input, Input, Error>
     where
         Input: StreamIsPartial + Stream<Token = u8, Slice = &'input [u8]>,
         Error: ParserError<Input>
@@ -134,9 +142,7 @@ impl<'input> Utf8String<'input> {
             binary::length_take(two_byte_integer_len_with_limits(
                 parser_settings.max_bytes_string,
             ))
-            .try_map(str::from_utf8)
-            .output_into()
-            .try_map(Self::try_new),
+            .try_map(|b| Self::try_new(bytes::Bytes::copy_from_slice(b))),
         )
         .context(StrContext::Label(type_name::<Self>()))
         .context(StrContext::Expected(StrContextValue::Description(
@@ -145,9 +151,11 @@ impl<'input> Utf8String<'input> {
     }
 }
 
-impl<'input> Topic<'input> {
+impl Topic {
     #[inline]
-    pub fn parse<Input, Error>(parser_settings: &Settings) -> impl Parser<Input, Self, Error>
+    pub fn parse<'input, Input, Error>(
+        parser_settings: &Settings,
+    ) -> impl Parser<Input, Self, Error> + use<'input, Input, Error>
     where
         Input: StreamIsPartial + Stream<Token = u8, Slice = &'input [u8]>,
         Error: ParserError<Input>
@@ -246,9 +254,9 @@ impl RetainHandling {
     }
 }
 
-impl<'input> Subscription<'input> {
+impl Subscription {
     #[inline]
-    pub fn parse<'settings, ByteInput, ByteError, BitError>(
+    pub fn parse<'input, 'settings, ByteInput, ByteError, BitError>(
         parser_settings: &'settings Settings,
     ) -> impl Parser<ByteInput, Self, ByteError> + use<'input, 'settings, ByteInput, ByteError, BitError>
     where

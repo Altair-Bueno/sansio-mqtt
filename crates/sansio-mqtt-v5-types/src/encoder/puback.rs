@@ -1,6 +1,6 @@
 use super::*;
 
-impl<E> Encodable<E> for PubAckProperties<'_>
+impl<E> Encodable<E> for PubAckProperties
 where
     E: ByteEncoder,
     EncodeError: From<E::Error>,
@@ -24,7 +24,7 @@ where
     }
 }
 
-impl<E> Encodable<E> for PubAck<'_>
+impl<E> Encodable<E> for PubAck
 where
     E: ByteEncoder,
     EncodeError: From<E::Error>,

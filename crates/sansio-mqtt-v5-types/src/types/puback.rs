@@ -2,10 +2,10 @@ use super::*;
 
 #[derive(Debug, PartialEq, Clone)]
 
-pub struct PubAck<'input> {
+pub struct PubAck {
     pub packet_id: NonZero<u16>,
     pub reason_code: PubAckReasonCode,
-    pub properties: PubAckProperties<'input>,
+    pub properties: PubAckProperties,
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -20,13 +20,13 @@ impl From<PubAckHeaderFlags> for u8 {
 
 #[derive(Debug, PartialEq, Clone, Default)]
 
-pub struct PubAckProperties<'input> {
-    pub reason_string: Option<Utf8String<'input>>,
+pub struct PubAckProperties {
+    pub reason_string: Option<Utf8String>,
 
-    pub user_properties: Vec<(Utf8String<'input>, Utf8String<'input>)>,
+    pub user_properties: Vec<(Utf8String, Utf8String)>,
 }
 
-impl PubAckProperties<'_> {
+impl PubAckProperties {
     pub fn is_empty(&self) -> bool {
         self.reason_string.is_none() && self.user_properties.is_empty()
     }

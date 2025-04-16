@@ -1,6 +1,6 @@
 use super::*;
 
-impl<E> Encodable<E> for ConnectProperties<'_>
+impl<E> Encodable<E> for ConnectProperties
 where
     E: ByteEncoder,
     EncodeError: From<E::Error>,
@@ -59,7 +59,7 @@ where
         .encode(encoder)
     }
 }
-impl<E> Encodable<E> for WillProperties<'_>
+impl<E> Encodable<E> for WillProperties
 where
     E: ByteEncoder,
     EncodeError: From<E::Error>,
@@ -102,7 +102,7 @@ where
     }
 }
 
-impl<E> Encodable<E> for Connect<'_>
+impl<E> Encodable<E> for Connect
 where
     E: ByteEncoder,
     EncodeError: From<E::Error>,

@@ -2,12 +2,12 @@ use super::*;
 
 #[derive(Debug, PartialEq, Clone)]
 
-pub struct Publish<'input> {
+pub struct Publish {
     pub kind: PublishKind,
     pub retain: bool,
-    pub payload: Payload<'input>,
-    pub topic: Topic<'input>,
-    pub properties: PublishProperties<'input>,
+    pub payload: Payload,
+    pub topic: Topic,
+    pub properties: PublishProperties,
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -54,17 +54,17 @@ pub enum PublishHeaderFlagsKind {
 
 #[derive(Debug, PartialEq, Clone, Default)]
 
-pub struct PublishProperties<'input> {
+pub struct PublishProperties {
     pub payload_format_indicator: Option<FormatIndicator>,
     pub message_expiry_interval: Option<u32>,
     pub topic_alias: Option<NonZero<u16>>,
 
-    pub response_topic: Option<Topic<'input>>,
+    pub response_topic: Option<Topic>,
 
-    pub correlation_data: Option<BinaryData<'input>>,
+    pub correlation_data: Option<BinaryData>,
 
-    pub user_properties: Vec<(Utf8String<'input>, Utf8String<'input>)>,
+    pub user_properties: Vec<(Utf8String, Utf8String)>,
     pub subscription_identifier: Option<NonZero<u64>>,
 
-    pub content_type: Option<Utf8String<'input>>,
+    pub content_type: Option<Utf8String>,
 }

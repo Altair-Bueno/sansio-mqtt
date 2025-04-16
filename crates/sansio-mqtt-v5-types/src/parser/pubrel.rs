@@ -18,9 +18,9 @@ impl PubRelHeaderFlags {
     }
 }
 
-impl<'input> PubRel<'input> {
+impl PubRel {
     #[inline]
-    pub fn parse<'settings, ByteInput, ByteError, BitError>(
+    pub fn parse<'input, 'settings, ByteInput, ByteError, BitError>(
         parser_settings: &'settings Settings,
     ) -> impl Parser<ByteInput, Self, ByteError> + use<'input, 'settings, ByteInput, ByteError, BitError>
     where
@@ -67,9 +67,9 @@ impl<'input> PubRel<'input> {
     }
 }
 
-impl<'input> PubRelProperties<'input> {
+impl PubRelProperties {
     #[inline]
-    pub fn parse<'settings, Input, Error>(
+    pub fn parse<'input, 'settings, Input, Error>(
         parser_settings: &'settings Settings,
     ) -> impl Parser<Input, Self, Error> + use<'input, 'settings, Input, Error>
     where

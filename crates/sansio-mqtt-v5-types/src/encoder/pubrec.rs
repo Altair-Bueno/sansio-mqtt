@@ -1,6 +1,6 @@
 use super::*;
 
-impl<E> Encodable<E> for PubRecProperties<'_>
+impl<E> Encodable<E> for PubRecProperties
 where
     E: ByteEncoder,
     EncodeError: From<E::Error>,
@@ -24,7 +24,7 @@ where
     }
 }
 
-impl<E> Encodable<E> for PubRec<'_>
+impl<E> Encodable<E> for PubRec
 where
     E: ByteEncoder,
     EncodeError: From<E::Error>,

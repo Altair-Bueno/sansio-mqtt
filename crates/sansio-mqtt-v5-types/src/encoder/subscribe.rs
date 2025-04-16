@@ -1,6 +1,6 @@
 use super::*;
 
-impl<E> Encodable<E> for SubscribeProperties<'_>
+impl<E> Encodable<E> for SubscribeProperties
 where
     E: ByteEncoder,
     EncodeError: From<E::Error>,
@@ -27,7 +27,7 @@ where
     }
 }
 
-impl<E> Encodable<E> for Subscribe<'_>
+impl<E> Encodable<E> for Subscribe
 where
     E: ByteEncoder,
     EncodeError: From<E::Error>,
