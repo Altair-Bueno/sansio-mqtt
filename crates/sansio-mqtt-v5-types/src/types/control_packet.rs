@@ -1,7 +1,7 @@
 use super::*;
 
 #[derive(Debug, PartialEq, Clone, EnumDiscriminants)]
-#[strum_discriminants(derive(Hash, EnumIter))]
+#[strum_discriminants(derive(Hash, EnumIter, Display))]
 #[strum_discriminants(name(ControlPacketType))]
 pub enum ControlPacket<'input> {
     Reserved(Reserved),
