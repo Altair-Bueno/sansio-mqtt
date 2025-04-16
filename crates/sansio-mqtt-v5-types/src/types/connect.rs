@@ -9,7 +9,7 @@ pub struct Connect<'input> {
     pub will: Option<Will<'input>>,
     pub user_name: Option<Utf8String<'input>>,
     pub password: Option<BinaryData<'input>>,
-    pub keep_alive: u16,
+    pub keep_alive: Option<NonZero<u16>>,
     pub properties: ConnectProperties<'input>,
 }
 #[derive(Debug, PartialEq, Clone)]

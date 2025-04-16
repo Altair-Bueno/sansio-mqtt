@@ -128,7 +128,9 @@ where
             &self.protocol_name,
             encode::combinators::FromError::new(self.protocol_version),
             encode::combinators::FromError::new(flags),
-            encode::combinators::FromError::new(TwoByteInteger::new(self.keep_alive)),
+            encode::combinators::FromError::new(TwoByteInteger::new(
+                self.keep_alive.map(|x| x.get()).unwrap_or_default(),
+            )),
             &self.properties,
             &self.client_identifier,
             self.will

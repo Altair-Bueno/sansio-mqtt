@@ -4,7 +4,7 @@
 
 use encode::Encodable;
 use encode::EncodableSize;
-use sansio_mqtt5_core::*;
+use sansio_mqtt_v5_types::*;
 use std::num::NonZero;
 use winnow::error::ContextError;
 use winnow::Parser;
@@ -342,7 +342,7 @@ fn assert_that_parsing_an_invalid_field_on_unsuback_fails(
         protocol_version: 5,
         clean_start: true,
         client_identifier: Utf8String::try_from("test").unwrap(),
-        keep_alive: 30,
+        keep_alive: NonZero::new(30),
         user_name: None,
         password: None,
         will: Some(Will {
@@ -418,7 +418,7 @@ fn assert_that_parsing_an_invalid_field_on_unsuback_fails(
         protocol_version: 5,
         clean_start: true,
         client_identifier: Utf8String::try_from("test").unwrap(),
-        keep_alive: 30,
+        keep_alive: NonZero::new(30),
         user_name: None,
         password: None,
         will: Some(Will {
@@ -488,7 +488,7 @@ fn assert_that_parsing_an_invalid_field_on_unsuback_fails(
         protocol_version: 5,
         clean_start: true,
         client_identifier: Utf8String::try_from("test").unwrap(),
-        keep_alive: 30,
+        keep_alive: NonZero::new(30),
         user_name: None,
         password: None,
         will: Some(Will {
@@ -533,7 +533,7 @@ fn assert_that_parsing_an_invalid_field_on_unsuback_fails(
         protocol_version: 5,
         clean_start: true,
         client_identifier: Utf8String::try_from("").unwrap(),
-        keep_alive: 60,
+        keep_alive: NonZero::new(60),
         user_name: None,
         password: None,
         will: None,
@@ -565,7 +565,7 @@ fn assert_that_parsing_an_invalid_field_on_unsuback_fails(
         protocol_version: 5,
         clean_start: true,
         client_identifier: Utf8String::try_from("Ŧėśt🜄").unwrap(),
-        keep_alive: 30,
+        keep_alive: NonZero::new(30),
         user_name: None,
         password: None,
         will: None,

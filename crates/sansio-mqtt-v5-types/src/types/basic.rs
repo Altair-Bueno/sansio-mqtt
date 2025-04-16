@@ -9,7 +9,7 @@ pub struct Payload<'input>(Cow<'input, [u8]>);
 #[nutype::nutype(
     validate(predicate = BinaryData::is_valid),
     // new_unchecked,
-    derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord,AsRef,Deref, Hash, Borrow, TryFrom, Into),
+    derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord,AsRef,Deref, Hash, Borrow, TryFrom, Into, Default),
     default = Default::default()
 )]
 pub struct BinaryData<'input>(Cow<'input, [u8]>);
@@ -17,7 +17,7 @@ pub struct BinaryData<'input>(Cow<'input, [u8]>);
 #[nutype::nutype(
     validate(predicate = Utf8String::is_valid),
     // new_unchecked,
-    derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord,AsRef,Deref, Hash, Display, Borrow, TryFrom, Into),
+    derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord,AsRef,Deref, Hash, Display, Borrow, TryFrom, Into, Default),
     default = Default::default()
 )]
 pub struct Utf8String<'input>(Cow<'input, str>);
@@ -25,7 +25,7 @@ pub struct Utf8String<'input>(Cow<'input, str>);
 #[nutype::nutype(
     validate(predicate = Topic::is_valid),
     // new_unchecked,
-    derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord,AsRef,Deref, Hash, Display, Borrow, TryFrom, Into),
+    derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord,AsRef,Deref, Hash, Display, Borrow, TryFrom, Into, Default),
     default = Default::default()
 )]
 pub struct Topic<'input>(Utf8String<'input>);

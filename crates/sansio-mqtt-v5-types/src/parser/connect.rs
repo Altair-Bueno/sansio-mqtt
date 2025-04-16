@@ -1,3 +1,5 @@
+use std::num::NonZero;
+
 use super::*;
 
 #[inline]
@@ -78,7 +80,7 @@ impl<'input> Connect<'input> {
                         }
                     },
                 ),
-                combinator::trace("Keep alive", self::two_byte_integer),
+                combinator::trace("Keep alive", self::two_byte_integer.map(NonZero::new)),
                 ConnectProperties::parse(parser_settings),
                 combinator::trace("Client identifier", Utf8String::parse(parser_settings)),
             )
