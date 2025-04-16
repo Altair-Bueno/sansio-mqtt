@@ -1,6 +1,6 @@
 use super::*;
 
-#[derive(Debug, PartialEq, Clone, Copy, Default, EnumIter)]
+#[derive(Debug, PartialEq, Clone, Copy, Default, EnumIter, Display)]
 pub enum ConnectReasonCode {
     #[default]
     Success = 0x00,
@@ -27,7 +27,7 @@ pub enum ConnectReasonCode {
     ConnectionRateExceeded = 0x9F,
 }
 
-#[derive(Debug, PartialEq, Clone, Copy, Default, EnumIter)]
+#[derive(Debug, PartialEq, Clone, Copy, Default, EnumIter, Display)]
 pub enum ConnackReasonCode {
     #[default]
     Success = 0x00,
@@ -54,7 +54,7 @@ pub enum ConnackReasonCode {
     ConnectionRateExceeded = 0x9F,
 }
 
-#[derive(Debug, PartialEq, Clone, Copy, Default, EnumIter)]
+#[derive(Debug, PartialEq, Clone, Copy, Default, EnumIter, Display)]
 pub enum PublishReasonCode {
     #[default]
     Success = 0x00,
@@ -68,7 +68,7 @@ pub enum PublishReasonCode {
     PayloadFormatInvalid = 0x99,
 }
 
-#[derive(Debug, PartialEq, Clone, Copy, Default, EnumIter)]
+#[derive(Debug, PartialEq, Clone, Copy, Default, EnumIter, Display)]
 pub enum PubAckReasonCode {
     #[default]
     Success = 0x00,
@@ -82,7 +82,7 @@ pub enum PubAckReasonCode {
     PayloadFormatInvalid = 0x99,
 }
 
-#[derive(Debug, PartialEq, Clone, Copy, Default, EnumIter)]
+#[derive(Debug, PartialEq, Clone, Copy, Default, EnumIter, Display)]
 pub enum PubRecReasonCode {
     #[default]
     Success = 0x00,
@@ -96,21 +96,21 @@ pub enum PubRecReasonCode {
     PayloadFormatInvalid = 0x99,
 }
 
-#[derive(Debug, PartialEq, Clone, Copy, Default, EnumIter)]
+#[derive(Debug, PartialEq, Clone, Copy, Default, EnumIter, Display)]
 pub enum PubRelReasonCode {
     #[default]
     Success = 0x00,
     PacketIdentifierNotFound = 0x92,
 }
 
-#[derive(Debug, PartialEq, Clone, Copy, Default, EnumIter)]
+#[derive(Debug, PartialEq, Clone, Copy, Default, EnumIter, Display)]
 pub enum PubCompReasonCode {
     #[default]
     Success = 0x00,
     PacketIdentifierNotFound = 0x92,
 }
 
-#[derive(Debug, PartialEq, Clone, Copy, EnumIter)]
+#[derive(Debug, PartialEq, Clone, Copy, EnumIter, Display)]
 pub enum SubAckReasonCode {
     SuccessQoS0 = 0x00,
     SuccessQoS1 = 0x01,
@@ -132,7 +132,7 @@ pub enum SubAckReasonCode {
     WildcardSubscriptionsNotSupported = 0xA2,
 }
 
-#[derive(Debug, PartialEq, Clone, Copy, Default, EnumIter)]
+#[derive(Debug, PartialEq, Clone, Copy, Default, EnumIter, Display)]
 pub enum UnsubAckReasonCode {
     #[default]
     Success = 0x00,
@@ -146,7 +146,7 @@ pub enum UnsubAckReasonCode {
     PayloadFormatInvalid = 0x99,
 }
 
-#[derive(Debug, PartialEq, Clone, Copy, Default, EnumIter)]
+#[derive(Debug, PartialEq, Clone, Copy, Default, EnumIter, Display)]
 pub enum DisconnectReasonCode {
     #[default]
     NormalDisconnection = 0x00,
@@ -186,7 +186,7 @@ pub enum DisconnectReasonCode {
     WildcardSubscriptionsNotSupported = 0xA2,
 }
 
-#[derive(Debug, PartialEq, Clone, Copy, Default, EnumIter)]
+#[derive(Debug, PartialEq, Clone, Copy, Default, EnumIter, Display)]
 pub enum AuthReasonCode {
     #[default]
     Success = 0x00,
