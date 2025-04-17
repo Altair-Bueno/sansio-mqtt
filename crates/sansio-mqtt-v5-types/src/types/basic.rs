@@ -152,21 +152,24 @@ impl TryFrom<&'static str> for Utf8String {
     }
 }
 
-#[derive(Debug, PartialEq, Clone, Copy, EnumIter, Hash, PartialOrd, Eq, Ord)]
+#[derive(Debug, PartialEq, Clone, Copy, EnumIter, Hash, PartialOrd, Eq, Ord, Default)]
 pub enum RetainHandling {
+    #[default]
     SendRetained = 0,
     SendRetainedIfSubscriptionDoesNotExist = 1,
     DoNotSend = 2,
 }
 
-#[derive(Debug, PartialEq, Clone, Copy, EnumIter, Hash, PartialOrd, Eq, Ord)]
+#[derive(Debug, PartialEq, Clone, Copy, EnumIter, Hash, PartialOrd, Eq, Ord, Default)]
 pub enum FormatIndicator {
+    #[default]
     Unspecified = 0,
     Utf8 = 1,
 }
 
-#[derive(Debug, PartialEq, Clone, Copy, EnumIter, Hash, PartialOrd, Eq, Ord)]
+#[derive(Debug, PartialEq, Clone, Copy, EnumIter, Hash, PartialOrd, Eq, Ord, Default)]
 pub enum Qos {
+    #[default]
     AtMostOnce = 0,
     AtLeastOnce = 1,
     ExactlyOnce = 2,
