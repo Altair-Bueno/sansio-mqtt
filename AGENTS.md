@@ -3,18 +3,12 @@
 ## Index
 - [Purpose and Scope](#purpose-and-scope)
 - [Mandatory Checklist (MUST follow)](#mandatory-checklist-must-follow)
-- [Key Paths](#key-paths)
 - [Build and Tooling](#build-and-tooling)
 - [Architecture and Crates](#architecture-and-crates)
 - [Protocol and Spec Compliance](#protocol-and-spec-compliance)
 - [Error Handling and Invalid States](#error-handling-and-invalid-states)
 - [Contribution Workflow](#contribution-workflow)
-
-## Key Paths
-- `AGENTS.md` (repo root)
-- `Cargo.toml`
-- `crates/*`
-- `rust-toolchain.toml`
+- [Key Paths](#key-paths)
 
 ## Purpose and Scope
 - This repo implements sansio MQTT protocol components in Rust.
@@ -33,8 +27,7 @@
 
 ## Build and Tooling
 - Build system: Cargo.
-- Behavior changes: follow the TDD checklist item.
-- Tests are optional for non-behavior changes.
+- Tests: for behavior changes follow the TDD checklist item; for non-behavior changes they are optional.
 - Prefer editor LSP for Rust; if LSP is not configured, prompt the user to enable it.
 
 ## Architecture and Crates
@@ -50,9 +43,14 @@
 
 ## Error Handling and Invalid States
 - Prefer types that make invalid states unrepresentable.
-- Avoid runtime checks when types can encode constraints.
 
 ## Contribution Workflow
 - Keep changes minimal and atomic (see checklist).
 - Run required checks from the checklist before completion.
-- Default execution mode: subagent-driven.
+- Default execution mode: subagent-driven (use subagents for plan execution by default).
+
+## Key Paths
+- `AGENTS.md` (repo root)
+- `Cargo.toml`
+- `crates/*`
+- `rust-toolchain.toml`
