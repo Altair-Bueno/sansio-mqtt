@@ -3,15 +3,15 @@
 ## Index
 - [Purpose and Scope](#purpose-and-scope)
 - [Mandatory Checklist (MUST follow)](#mandatory-checklist-must-follow)
+- [Key Paths](#key-paths)
 - [Build and Tooling](#build-and-tooling)
 - [Architecture and Crates](#architecture-and-crates)
 - [Protocol and Spec Compliance](#protocol-and-spec-compliance)
 - [Error Handling and Invalid States](#error-handling-and-invalid-states)
 - [Contribution Workflow](#contribution-workflow)
-- [Key Paths](#key-paths)
 
 ## Key Paths
-- `AGENTS.md`
+- `AGENTS.md` (repo root)
 - `Cargo.toml`
 - `crates/*`
 - `rust-toolchain.toml`
@@ -33,7 +33,8 @@
 
 ## Build and Tooling
 - Build system: Cargo.
-- Tests are optional for non-behavior changes; for behavior changes, follow the TDD checklist item.
+- Behavior changes: follow the TDD checklist item.
+- Tests are optional for non-behavior changes.
 - Prefer editor LSP for Rust; if LSP is not configured, prompt the user to enable it.
 
 ## Architecture and Crates
@@ -43,7 +44,7 @@
 
 ## Protocol and Spec Compliance
 - MQTT v5.0 spec is authoritative for current behavior.
-- Before any implementation, you MUST read the MQTT v5.0 spec (hard gate, no exceptions): https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html
+- Spec gate applies (see checklist item).
 - Cite exact conformance statements using `[MQTT-x.x.x-y]` in code or docs when relevant.
 - Apply the same citation style for future MQTT versions.
 
