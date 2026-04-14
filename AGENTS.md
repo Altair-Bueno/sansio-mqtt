@@ -17,7 +17,7 @@
 
 ## Build and Tooling
 - Build system: Cargo.
-- Tests are optional unless required for the change; use TDD when feasible.
+- Tests are optional for non-behavior changes; for behavior changes, follow the TDD checklist item.
 - Prefer editor LSP for Rust; if LSP is not configured, prompt the user to enable it.
 
 ## Architecture and Crates
@@ -36,4 +36,4 @@
 
 ## Contribution Workflow
 - Keep changes minimal and atomic.
-- Run required formatting and linting before completion.
+- Run required checks from the checklist before completion.
