@@ -2,3 +2,4 @@
 .worktrees
 .vscode
 .zed
+Cargo.lock
