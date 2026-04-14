@@ -43,7 +43,7 @@ Key Paths:
 
 ## Protocol and Spec Compliance
 - MQTT v5.0 spec is authoritative for current behavior.
-- Before any implementation, review the MQTT v5.0 spec: https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html
+- Before any implementation, you MUST read the MQTT v5.0 spec (hard gate, no exceptions): https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html
 - Cite exact conformance statements using `[MQTT-x.x.x-y]` in code or docs when relevant.
 - Apply the same citation style for future MQTT versions.
 
