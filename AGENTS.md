@@ -2,7 +2,7 @@
 
 ## Purpose and Scope
 - This repo implements sansio MQTT protocol components in Rust.
-- Current focus: MQTT v5.0. Future MQTT versions are planned.
+- Current focus: MQTT v5.0; future MQTT versions are planned and should follow the same conventions.
 - Default stance: no_std-first; `alloc` allowed when required.
 
 ## Mandatory Checklist (MUST follow)
@@ -10,6 +10,8 @@
 - Type safety: encode invariants in types; avoid runtime checks when types can enforce.
 - No `unsafe`: enforce with `#![forbid(unsafe_code)]`.
 - no_std-first: use `alloc` only when required.
+- Required formatting: `cargo fmt`.
+- Required linting: `cargo clippy`.
 - Documentation: update when API behavior or constraints change.
 - Change atomicity: keep changes commit-ready as a single coherent unit.
 
@@ -18,11 +20,11 @@
 - Formatting is required: `cargo fmt`.
 - Linting is required: `cargo clippy`.
 - Tests are optional unless required for the change; use TDD when feasible.
-- Prefer editor LSP for Rust; if not configured, prompt the user to enable it.
+- Prefer editor LSP for Rust; if LSP is not configured, prompt the user to enable it.
 
 ## Architecture and Crates
 - Workspace layout: `crates/*`.
-- Crate naming convention: `sansio-mqtt-<version>-<scope>`.
+- Crate naming convention: `sansio-mqtt-<version>-<scope>` (crate naming).
 - Follow existing crate boundaries; add new crates using the naming convention.
 
 ## Protocol and Spec Compliance
