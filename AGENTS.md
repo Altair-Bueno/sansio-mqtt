@@ -6,7 +6,7 @@
 - Default stance: no_std-first; `alloc` allowed when required.
 
 ## Mandatory Checklist (MUST follow)
-- TDD: add/adjust tests before implementation where feasible; run tests after.
+- TDD: for behavior changes, add/adjust tests before implementation when feasible; run relevant tests after.
 - Type safety: encode invariants in types; avoid runtime checks when types can enforce.
 - No `unsafe`: enforce with `#![forbid(unsafe_code)]`.
 - no_std-first: use `alloc` only when required.
@@ -17,8 +17,6 @@
 
 ## Build and Tooling
 - Build system: Cargo.
-- Formatting is required: `cargo fmt`.
-- Linting is required: `cargo clippy`.
 - Tests are optional unless required for the change; use TDD when feasible.
 - Prefer editor LSP for Rust; if LSP is not configured, prompt the user to enable it.
 
