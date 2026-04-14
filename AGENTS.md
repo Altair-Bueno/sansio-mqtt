@@ -8,8 +8,9 @@
 - [Protocol and Spec Compliance](#protocol-and-spec-compliance)
 - [Error Handling and Invalid States](#error-handling-and-invalid-states)
 - [Contribution Workflow](#contribution-workflow)
+- [Key Paths](#key-paths)
 
-Key Paths:
+## Key Paths
 - `AGENTS.md`
 - `Cargo.toml`
 - `crates/*`
@@ -18,7 +19,6 @@ Key Paths:
 ## Purpose and Scope
 - This repo implements sansio MQTT protocol components in Rust.
 - Current focus: MQTT v5.0; future MQTT versions are planned and should follow the same conventions.
-- Default stance: no_std-first; `alloc` allowed when required.
 
 ## Mandatory Checklist (MUST follow)
 - Spec gate: MUST read the MQTT v5.0 spec before implementing anything: https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html
@@ -38,7 +38,7 @@ Key Paths:
 
 ## Architecture and Crates
 - Workspace layout: `crates/*`.
-- Crate naming convention: `sansio-mqtt-<version>-<scope>` (crate naming).
+- Crate naming convention: `sansio-mqtt-<mqtt-version>-<scope>` (crate naming).
 - Follow existing crate boundaries; add new crates using the naming convention.
 
 ## Protocol and Spec Compliance
@@ -52,6 +52,6 @@ Key Paths:
 - Avoid runtime checks when types can encode constraints.
 
 ## Contribution Workflow
-- Keep changes minimal and atomic.
+- Keep changes minimal and atomic (see checklist).
 - Run required checks from the checklist before completion.
 - Default execution mode: subagent-driven.
