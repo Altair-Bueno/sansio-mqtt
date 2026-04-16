@@ -1,8 +1,9 @@
 use std::io;
+use std::string::String;
 use std::time::Duration;
 
 use sansio_mqtt_v5_tokio::{
-    ConnectOptions, PublishRequest, Qos, SessionAction, SubscribeRequest, TokioClient,
+    Action, ConnectOptions, PublishRequest, Qos, SubscribeRequest, TokioClient,
 };
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
@@ -24,7 +25,10 @@ async fn connect_then_subscribe_and_receive_publish_event() {
         .expect("connect client");
 
     client
-        .subscribe(SubscribeRequest::single("a/#").expect("topic filter"))
+        .subscribe(SubscribeRequest {
+            topic_filter: String::from("a/#"),
+            ..SubscribeRequest::default()
+        })
         .await
         .expect("send subscribe");
 
@@ -35,13 +39,13 @@ async fn connect_then_subscribe_and_receive_publish_event() {
 
     assert!(matches!(
         subscribe_ack,
-        SessionAction::SubscribeAck {
+        Action::SubscribeAck {
             packet_id: 1,
             reason_codes
         } if reason_codes.as_slice() == [0x00]
     ));
 
-    let publish_request = publish_request("a/b", b"from-client", Qos::AtMost);
+    let publish_request = publish_request("a/b", b"from-client", Qos::AtMostOnce);
     client.publish(publish_request).await.expect("send publish");
 
     let inbound_publish = timeout(Duration::from_secs(1), session_rx.recv())
@@ -51,7 +55,7 @@ async fn connect_then_subscribe_and_receive_publish_event() {
 
     assert!(matches!(
         inbound_publish,
-        SessionAction::PublishReceived { topic, payload }
+        Action::PublishReceived { topic, payload }
             if topic.as_str() == "a/b" && payload.as_slice() == b"from-broker"
     ));
 

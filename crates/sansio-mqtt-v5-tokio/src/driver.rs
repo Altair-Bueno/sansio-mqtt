@@ -5,7 +5,7 @@ use std::time::Instant;
 
 use sansio::Protocol;
 use sansio_mqtt_v5_contract::{
-    ConnectOptions, ProtocolError, PublishRequest, SessionAction, SubscribeRequest,
+    Action, ConnectOptions, ProtocolError, PublishRequest, SubscribeRequest,
 };
 use sansio_mqtt_v5_protocol::{MqttProtocol, ProtocolEvent};
 use tokio::net::TcpStream;
@@ -25,7 +25,7 @@ impl TokioClient {
     pub async fn connect(
         addr: SocketAddr,
         options: ConnectOptions,
-    ) -> io::Result<(Self, mpsc::Receiver<SessionAction>)> {
+    ) -> io::Result<(Self, mpsc::Receiver<Action>)> {
         let stream = TcpStream::connect(addr).await?;
         let transport = transport::spawn(stream, CHANNEL_CAPACITY);
 
@@ -64,7 +64,7 @@ impl TokioClient {
 async fn run_driver(
     mut transport: transport::Transport,
     mut request_rx: mpsc::Receiver<ProtocolEvent>,
-    session_tx: mpsc::Sender<SessionAction>,
+    session_tx: mpsc::Sender<Action>,
     connect_options: ConnectOptions,
 ) -> io::Result<()> {
     let mut protocol = MqttProtocol::new();
@@ -125,7 +125,7 @@ async fn run_driver(
 async fn drain_protocol(
     protocol: &mut MqttProtocol,
     write_tx: &mpsc::Sender<Vec<u8>>,
-    session_tx: &mpsc::Sender<SessionAction>,
+    session_tx: &mpsc::Sender<Action>,
 ) -> io::Result<()> {
     while let Some(frame) = Protocol::poll_write(protocol) {
         write_tx

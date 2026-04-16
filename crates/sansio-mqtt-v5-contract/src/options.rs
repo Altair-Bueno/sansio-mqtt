@@ -1,30 +1,23 @@
 use alloc::string::String;
 use alloc::vec::Vec;
+use core::time::Duration;
 
-use crate::error::OptionsError;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum Qos {
-    #[default]
-    AtMost,
-    AtLeast,
-    Exactly,
-}
+use sansio_mqtt_v5_types::Qos;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ConnectOptions {
-    pub connect_timeout_ms: u32,
+    pub connect_timeout: Duration,
     pub clean_start: bool,
-    pub keep_alive_secs: Option<u16>,
+    pub keep_alive: Option<Duration>,
     pub client_id: String,
 }
 
 impl Default for ConnectOptions {
     fn default() -> Self {
         Self {
-            connect_timeout_ms: 10_000,
+            connect_timeout: Duration::from_secs(10),
             clean_start: false,
-            keep_alive_secs: None,
+            keep_alive: None,
             client_id: String::new(),
         }
     }
@@ -38,28 +31,10 @@ pub struct PublishRequest {
     pub retain: bool,
 }
 
-impl PublishRequest {
-    pub fn qos1(mut self) -> Self {
-        self.qos = Qos::AtLeast;
-        self
-    }
-
-    pub fn qos2(mut self) -> Self {
-        self.qos = Qos::Exactly;
-        self
-    }
-}
+impl PublishRequest {}
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct SubscribeRequest {
     pub topic_filter: String,
     pub qos: Qos,
-}
-
-impl SubscribeRequest {
-    pub fn single(topic_filter: &str) -> Result<Self, OptionsError> {
-        let mut value = Self::default();
-        value.topic_filter.push_str(topic_filter);
-        Ok(value)
-    }
 }

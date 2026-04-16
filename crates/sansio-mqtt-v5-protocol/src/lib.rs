@@ -16,10 +16,10 @@ use alloc::string::String;
 use alloc::vec::Vec;
 use sansio::Protocol;
 use sansio_mqtt_v5_contract::{
-    Action, ConnectOptions, Input, ProtocolError, PublishRequest, Qos, SessionAction,
-    SubscribeRequest,
+    Action, ConnectOptions, Input, ProtocolError, PublishRequest, SubscribeRequest,
 };
 use sansio_mqtt_v5_state_machine::StateMachine;
+use sansio_mqtt_v5_types::Qos;
 
 const TIMER_CAPACITY: usize = 8;
 const WRITE_QUEUE_CAPACITY: usize = 16;
@@ -28,7 +28,6 @@ const EVENT_QUEUE_CAPACITY: usize = 16;
 type Frame = Vec<u8>;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[allow(clippy::large_enum_variant)] // Request payloads are intentionally inline in owned event variants.
 pub enum ProtocolEvent {
     Connect(ConnectOptions),
     Publish(PublishRequest),
@@ -41,7 +40,7 @@ pub struct MqttProtocol {
     timers: TimerQueue<TIMER_CAPACITY>,
     machine: StateMachine,
     write_queue: VecDeque<Frame>,
-    event_queue: VecDeque<SessionAction>,
+    event_queue: VecDeque<Action>,
     now_ms: u32,
 }
 
@@ -82,11 +81,17 @@ impl MqttProtocol {
                     }
                     self.write_queue.push_back(bytes.clone());
                 }
-                Action::SessionAction(session_action) => {
+                Action::Connected
+                | Action::DisconnectedByRemote { .. }
+                | Action::DisconnectedByTimeout
+                | Action::DisconnectedByLocalRequest
+                | Action::DisconnectedByProtocolViolation
+                | Action::PublishReceived { .. }
+                | Action::SubscribeAck { .. } => {
                     if self.event_queue.len() >= EVENT_QUEUE_CAPACITY {
                         return Err(ProtocolError::UnexpectedPacket);
                     }
-                    self.event_queue.push_back(session_action.clone());
+                    self.event_queue.push_back(action.clone());
                 }
                 Action::ScheduleTimer { key, delay_ms } => {
                     let deadline = self.now_ms.wrapping_add(*delay_ms);
@@ -113,7 +118,7 @@ impl Default for MqttProtocol {
 impl Protocol<Frame, (), ProtocolEvent> for MqttProtocol {
     type Rout = ();
     type Wout = Frame;
-    type Eout = SessionAction;
+    type Eout = Action;
     type Error = ProtocolError;
     type Time = u32;
 
@@ -284,9 +289,9 @@ fn decode_suback(bytes: &[u8]) -> Result<Input<'static>, ProtocolError> {
 fn decode_publish(bytes: &[u8]) -> Result<Input<'static>, ProtocolError> {
     // [MQTT-3.3.1-1] QoS is encoded in bits 2 and 1 of the fixed header.
     let qos = match (bytes[0] >> 1) & 0x03 {
-        0 => Qos::AtMost,
-        1 => Qos::AtLeast,
-        2 => Qos::Exactly,
+        0 => Qos::AtMostOnce,
+        1 => Qos::AtLeastOnce,
+        2 => Qos::ExactlyOnce,
         _ => return Err(ProtocolError::DecodeError),
     };
 
@@ -319,8 +324,8 @@ fn decode_publish(bytes: &[u8]) -> Result<Input<'static>, ProtocolError> {
     let mut cursor = topic_end;
 
     let packet_id = match qos {
-        Qos::AtMost => None,
-        Qos::AtLeast | Qos::Exactly => {
+        Qos::AtMostOnce => None,
+        Qos::AtLeastOnce | Qos::ExactlyOnce => {
             let id = read_u16(bytes, cursor)?;
             cursor = cursor.checked_add(2).ok_or(ProtocolError::DecodeError)?;
             Some(id)

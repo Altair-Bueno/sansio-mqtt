@@ -8,3 +8,4 @@ rust-version.workspace = true
 sansio = { workspace = true, default-features = false }
 sansio-mqtt-v5-contract = { workspace = true, default-features = false }
 sansio-mqtt-v5-state-machine = { workspace = true, default-features = false }
+sansio-mqtt-v5-types = { workspace = true, default-features = false }

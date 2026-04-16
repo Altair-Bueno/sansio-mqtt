@@ -1,14 +1,16 @@
+use core::time::Duration;
 use std::string::String;
 use std::vec::Vec;
 
 use sansio::Protocol;
-use sansio_mqtt_v5_contract::{ConnectOptions, DisconnectReason, ProtocolError, SessionAction};
+use sansio_mqtt_v5_contract::{Action, ConnectOptions, ProtocolError, SubscribeRequest};
 use sansio_mqtt_v5_protocol::{MqttProtocol, ProtocolEvent};
+use sansio_mqtt_v5_types::Qos;
 
 fn connect_options(connect_timeout_ms: u32, keep_alive_secs: Option<u16>) -> ConnectOptions {
     ConnectOptions {
-        connect_timeout_ms,
-        keep_alive_secs,
+        connect_timeout: Duration::from_millis(u64::from(connect_timeout_ms)),
+        keep_alive: keep_alive_secs.map(|s| Duration::from_secs(u64::from(s))),
         ..ConnectOptions::default()
     }
 }
@@ -95,9 +97,7 @@ fn pingresp_timeout_emits_disconnect_bytes_and_session_event() {
     );
     assert_eq!(
         Protocol::poll_event(&mut protocol),
-        Some(SessionAction::Disconnected {
-            reason: DisconnectReason::Timeout,
-        })
+        Some(Action::DisconnectedByTimeout)
     );
     assert_eq!(Protocol::poll_timeout(&mut protocol), None);
 }
@@ -115,7 +115,7 @@ fn puback_read_dispatches_ack_timeout_cancel() {
     let topic = String::from("a/b");
     let publish = sansio_mqtt_v5_contract::PublishRequest {
         topic,
-        qos: sansio_mqtt_v5_contract::Qos::AtLeast,
+        qos: Qos::AtLeastOnce,
         ..sansio_mqtt_v5_contract::PublishRequest::default()
     };
     let _ = Protocol::handle_event(&mut protocol, ProtocolEvent::Publish(publish));
@@ -138,8 +138,10 @@ fn suback_read_dispatches_session_event() {
     let _ = Protocol::poll_write(&mut protocol);
     let _ = Protocol::handle_read(&mut protocol, bytes(&[0x20, 0x03, 0x00, 0x00, 0x00]));
 
-    let subscribe =
-        sansio_mqtt_v5_contract::SubscribeRequest::single("sensor/#").expect("valid topic filter");
+    let subscribe = SubscribeRequest {
+        topic_filter: String::from("sensor/#"),
+        ..SubscribeRequest::default()
+    };
     let _ = Protocol::handle_event(&mut protocol, ProtocolEvent::Subscribe(subscribe));
     let _ = Protocol::poll_write(&mut protocol);
 
@@ -148,7 +150,7 @@ fn suback_read_dispatches_session_event() {
     assert_eq!(result, Ok(()));
     assert_eq!(
         Protocol::poll_event(&mut protocol),
-        Some(SessionAction::SubscribeAck {
+        Some(Action::SubscribeAck {
             packet_id: 1,
             reason_codes: bytes(&[0x00]),
         })
@@ -182,7 +184,7 @@ fn qos1_publish_read_sends_puback_and_dispatches_publish_received() {
     let topic = String::from("a/b");
     assert_eq!(
         Protocol::poll_event(&mut protocol),
-        Some(SessionAction::PublishReceived {
+        Some(Action::PublishReceived {
             topic,
             payload: bytes(b"hi"),
         })
@@ -223,7 +225,7 @@ fn qos2_publish_read_enters_pubrec_flow() {
     let topic = String::from("a/b");
     assert_eq!(
         Protocol::poll_event(&mut protocol),
-        Some(SessionAction::PublishReceived {
+        Some(Action::PublishReceived {
             topic,
             payload: bytes(b"z"),
         })
@@ -252,8 +254,10 @@ fn suback_read_parses_multi_byte_property_length() {
     let _ = Protocol::poll_write(&mut protocol);
     let _ = Protocol::handle_read(&mut protocol, bytes(&[0x20, 0x03, 0x00, 0x00, 0x00]));
 
-    let subscribe =
-        sansio_mqtt_v5_contract::SubscribeRequest::single("sensor/#").expect("valid topic filter");
+    let subscribe = SubscribeRequest {
+        topic_filter: String::from("sensor/#"),
+        ..SubscribeRequest::default()
+    };
     let _ = Protocol::handle_event(&mut protocol, ProtocolEvent::Subscribe(subscribe));
     let _ = Protocol::poll_write(&mut protocol);
 
@@ -266,7 +270,7 @@ fn suback_read_parses_multi_byte_property_length() {
     assert_eq!(result, Ok(()));
     assert_eq!(
         Protocol::poll_event(&mut protocol),
-        Some(SessionAction::SubscribeAck {
+        Some(Action::SubscribeAck {
             packet_id: 1,
             reason_codes: bytes(&[0x00]),
         })

@@ -1,7 +1,9 @@
 use sansio_mqtt_v5_contract::{
-    Action, ConnectOptions, Input, PublishRequest, Qos, SessionAction, SubscribeRequest, TimerKey,
+    Action, ConnectOptions, Input, PublishRequest, SubscribeRequest, TimerKey,
 };
 use sansio_mqtt_v5_state_machine::StateMachine;
+use sansio_mqtt_v5_types::Qos;
+use std::string::String;
 
 const TOPIC: &str = "sensor/temp";
 const PAYLOAD: u8 = 0x2A;
@@ -16,7 +18,7 @@ fn connected_machine() -> StateMachine {
 
 fn publish_qos2() -> PublishRequest {
     let mut publish = PublishRequest {
-        qos: Qos::Exactly,
+        qos: Qos::ExactlyOnce,
         ..PublishRequest::default()
     };
     publish.topic = TOPIC.to_owned();
@@ -25,7 +27,10 @@ fn publish_qos2() -> PublishRequest {
 }
 
 fn subscribe_request() -> SubscribeRequest {
-    SubscribeRequest::single(FILTER).expect("valid topic filter")
+    SubscribeRequest {
+        topic_filter: String::from(FILTER),
+        ..SubscribeRequest::default()
+    }
 }
 
 fn suback_reason_codes(code: u8) -> Vec<u8> {
@@ -156,10 +161,10 @@ fn subscribe_and_suback_cancel_timer_and_emit_session_action() {
     );
     assert_eq!(
         suback_actions[1],
-        Action::SessionAction(SessionAction::SubscribeAck {
+        Action::SubscribeAck {
             packet_id: 1,
             reason_codes: suback_reason_codes(0x00),
-        })
+        }
     );
 }
 
@@ -175,10 +180,10 @@ fn suback_reason_codes_preserve_success_and_failure_values() {
     assert_eq!(success_actions.len(), 2);
     assert_eq!(
         success_actions[1],
-        Action::SessionAction(SessionAction::SubscribeAck {
+        Action::SubscribeAck {
             packet_id: 1,
             reason_codes: suback_reason_codes(0x01),
-        })
+        }
     );
 
     let mut failure_machine = connected_machine();
@@ -191,10 +196,10 @@ fn suback_reason_codes_preserve_success_and_failure_values() {
     assert_eq!(failure_actions.len(), 2);
     assert_eq!(
         failure_actions[1],
-        Action::SessionAction(SessionAction::SubscribeAck {
+        Action::SubscribeAck {
             packet_id: 1,
             reason_codes: suback_reason_codes(0x80),
-        })
+        }
     );
 }
 

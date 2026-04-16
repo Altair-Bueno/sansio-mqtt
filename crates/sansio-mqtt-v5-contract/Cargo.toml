@@ -5,3 +5,4 @@ edition.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+sansio-mqtt-v5-types = { workspace = true, default-features = false }

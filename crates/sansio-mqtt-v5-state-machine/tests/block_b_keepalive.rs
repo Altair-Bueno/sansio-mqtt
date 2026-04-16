@@ -1,16 +1,15 @@
-use sansio_mqtt_v5_contract::{
-    Action, ConnectOptions, DisconnectReason, Input, SessionAction, TimerKey,
-};
+use core::time::Duration;
+use sansio_mqtt_v5_contract::{Action, ConnectOptions, Input, TimerKey};
 use sansio_mqtt_v5_state_machine::StateMachine;
 
 fn connected_machine() -> StateMachine {
-    connect_with_keepalive(Some(60))
+    connect_with_keepalive(Some(Duration::from_secs(60)))
 }
 
-fn connect_with_keepalive(keep_alive_secs: Option<u16>) -> StateMachine {
+fn connect_with_keepalive(keep_alive: Option<Duration>) -> StateMachine {
     let mut machine = StateMachine::new_default();
     let _ = machine.handle(Input::UserConnect(ConnectOptions {
-        keep_alive_secs,
+        keep_alive,
         ..ConnectOptions::default()
     }));
     let _ = machine.handle(Input::PacketConnAck);
@@ -67,17 +66,12 @@ fn pingresp_timeout_disconnects_session() {
 
     assert_eq!(actions.len(), 2);
     assert!(matches!(&actions[0], Action::SendBytes(bytes) if bytes.as_slice() == [0xE0, 0x00]));
-    assert_eq!(
-        actions[1],
-        Action::SessionAction(SessionAction::Disconnected {
-            reason: DisconnectReason::Timeout,
-        })
-    );
+    assert_eq!(actions[1], Action::DisconnectedByTimeout);
 }
 
 #[test]
 fn reconnect_without_keepalive_does_not_schedule_stale_keepalive_timer() {
-    let mut machine = connect_with_keepalive(Some(3));
+    let mut machine = connect_with_keepalive(Some(Duration::from_secs(3)));
     let _ = machine.handle(Input::TimerFired(TimerKey::Keepalive));
     let _ = machine.handle(Input::TimerFired(TimerKey::PingRespTimeout));
 

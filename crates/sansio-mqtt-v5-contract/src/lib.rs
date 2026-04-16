@@ -9,8 +9,8 @@ mod input;
 mod options;
 mod timer;
 
-pub use action::{Action, SessionAction};
-pub use error::{DisconnectReason, OptionsError, ProtocolError};
+pub use action::Action;
+pub use error::ProtocolError;
 pub use input::Input;
-pub use options::{ConnectOptions, PublishRequest, Qos, SubscribeRequest};
+pub use options::{ConnectOptions, PublishRequest, SubscribeRequest};
 pub use timer::TimerKey;

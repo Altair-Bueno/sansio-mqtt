@@ -1,5 +1,6 @@
-use sansio_mqtt_v5_contract::{Action, ConnectOptions, Input, PublishRequest, Qos, TimerKey};
+use sansio_mqtt_v5_contract::{Action, ConnectOptions, Input, PublishRequest, TimerKey};
 use sansio_mqtt_v5_state_machine::StateMachine;
+use sansio_mqtt_v5_types::Qos;
 
 const TOPIC: &str = "sensor/temp";
 const PAYLOAD: u8 = 0x2A;
@@ -72,7 +73,7 @@ fn decode_remaining_length(bytes: &[u8]) -> (usize, usize) {
 fn qos0_publish_sends_once_and_stays_idle() {
     let mut machine = connected_machine();
 
-    let actions = machine.handle(Input::UserPublish(publish_with_qos(Qos::AtMost)));
+    let actions = machine.handle(Input::UserPublish(publish_with_qos(Qos::AtMostOnce)));
 
     assert_eq!(actions.len(), 1);
     match &actions[0] {
@@ -80,7 +81,7 @@ fn qos0_publish_sends_once_and_stays_idle() {
         action => panic!("expected send bytes action, got {action:?}"),
     }
 
-    let second = machine.handle(Input::UserPublish(publish_with_qos(Qos::AtMost)));
+    let second = machine.handle(Input::UserPublish(publish_with_qos(Qos::AtMostOnce)));
     assert_eq!(
         second.len(),
         1,
@@ -92,7 +93,7 @@ fn qos0_publish_sends_once_and_stays_idle() {
 fn qos1_publish_allocates_packet_id_and_waits_for_puback() {
     let mut machine = connected_machine();
 
-    let actions = machine.handle(Input::UserPublish(publish_with_qos(Qos::AtLeast)));
+    let actions = machine.handle(Input::UserPublish(publish_with_qos(Qos::AtLeastOnce)));
 
     assert_eq!(actions.len(), 2);
     match &actions[0] {
@@ -113,14 +114,14 @@ fn qos1_publish_allocates_packet_id_and_waits_for_puback() {
 #[test]
 fn qos1_puback_cancels_timer_and_returns_idle() {
     let mut machine = connected_machine();
-    let _ = machine.handle(Input::UserPublish(publish_with_qos(Qos::AtLeast)));
+    let _ = machine.handle(Input::UserPublish(publish_with_qos(Qos::AtLeastOnce)));
 
     let actions = machine.handle(Input::PacketPubAck { packet_id: 1 });
 
     assert_eq!(actions.len(), 1);
     assert_eq!(actions[0], Action::CancelTimer(TimerKey::AckTimeout(1)));
 
-    let idle_actions = machine.handle(Input::UserPublish(publish_with_qos(Qos::AtMost)));
+    let idle_actions = machine.handle(Input::UserPublish(publish_with_qos(Qos::AtMostOnce)));
     assert_eq!(
         idle_actions.len(),
         1,
@@ -131,7 +132,7 @@ fn qos1_puback_cancels_timer_and_returns_idle() {
 #[test]
 fn qos1_ack_timeout_resends_publish_and_reschedules_timer() {
     let mut machine = connected_machine();
-    let _ = machine.handle(Input::UserPublish(publish_with_qos(Qos::AtLeast)));
+    let _ = machine.handle(Input::UserPublish(publish_with_qos(Qos::AtLeastOnce)));
 
     let actions = machine.handle(Input::TimerFired(TimerKey::AckTimeout(1)));
 
@@ -154,7 +155,7 @@ fn qos1_ack_timeout_resends_publish_and_reschedules_timer() {
 #[test]
 fn qos0_publish_encodes_remaining_length_as_vbi_for_payload_over_127() {
     let mut machine = connected_machine();
-    let mut publish = publish_with_qos(Qos::AtMost);
+    let mut publish = publish_with_qos(Qos::AtMostOnce);
     publish.payload.clear();
     for _ in 0..130 {
         publish.payload.push(PAYLOAD);

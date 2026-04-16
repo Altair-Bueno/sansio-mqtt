@@ -1,7 +1,6 @@
 use alloc::vec::Vec;
-use sansio_mqtt_v5_contract::{
-    Action, DisconnectReason, Input, PublishRequest, Qos, SessionAction, SubscribeRequest, TimerKey,
-};
+use sansio_mqtt_v5_contract::{Action, Input, PublishRequest, SubscribeRequest, TimerKey};
+use sansio_mqtt_v5_types::Qos;
 
 use crate::{Context, MachineState};
 
@@ -36,9 +35,7 @@ pub fn handle(context: &mut Context, state: &mut MachineState, input: Input<'_>)
                 actions.push(Action::CancelTimer(TimerKey::AckTimeout(packet_id)));
             }
 
-            actions.push(Action::SessionAction(SessionAction::Disconnected {
-                reason: DisconnectReason::Normal,
-            }));
+            actions.push(Action::DisconnectedByLocalRequest);
 
             context.pending_qos1 = None;
             context.pending_qos2 = None;
@@ -56,14 +53,11 @@ pub fn handle(context: &mut Context, state: &mut MachineState, input: Input<'_>)
             Input::PacketPublish {
                 topic,
                 payload,
-                qos: Qos::AtMost,
+                qos: Qos::AtMostOnce,
                 ..
             },
         ) => {
-            actions.push(Action::SessionAction(SessionAction::PublishReceived {
-                topic,
-                payload,
-            }));
+            actions.push(Action::PublishReceived { topic, payload });
         }
         (
             MachineState::Idle
@@ -73,21 +67,19 @@ pub fn handle(context: &mut Context, state: &mut MachineState, input: Input<'_>)
             | MachineState::WaitingForPubComp { .. }
             | MachineState::WaitingForSubAck { .. },
             Input::PacketPublish {
-                qos: Qos::AtLeast,
+                qos: Qos::AtLeastOnce,
                 packet_id: None,
                 ..
             }
             | Input::PacketPublish {
-                qos: Qos::Exactly,
+                qos: Qos::ExactlyOnce,
                 packet_id: None,
                 ..
             },
         ) => {
             let disconnect = packet_disconnect();
             actions.push(Action::SendBytes(disconnect));
-            actions.push(Action::SessionAction(SessionAction::Disconnected {
-                reason: DisconnectReason::ProtocolError,
-            }));
+            actions.push(Action::DisconnectedByProtocolViolation);
             *state = MachineState::Disconnected;
         }
         (
@@ -100,15 +92,12 @@ pub fn handle(context: &mut Context, state: &mut MachineState, input: Input<'_>)
             Input::PacketPublish {
                 topic,
                 payload,
-                qos: Qos::AtLeast,
+                qos: Qos::AtLeastOnce,
                 packet_id: Some(packet_id),
             },
         ) => {
             actions.push(Action::SendBytes(packet_puback(packet_id)));
-            actions.push(Action::SessionAction(SessionAction::PublishReceived {
-                topic,
-                payload,
-            }));
+            actions.push(Action::PublishReceived { topic, payload });
         }
         (
             MachineState::Idle
@@ -120,7 +109,7 @@ pub fn handle(context: &mut Context, state: &mut MachineState, input: Input<'_>)
             Input::PacketPublish {
                 topic,
                 payload,
-                qos: Qos::Exactly,
+                qos: Qos::ExactlyOnce,
                 packet_id: Some(packet_id),
             },
         ) => {
@@ -139,21 +128,22 @@ pub fn handle(context: &mut Context, state: &mut MachineState, input: Input<'_>)
             if let Some(pending) = &context.pending_inbound_qos2 {
                 if pending.packet_id == packet_id {
                     actions.push(Action::SendBytes(packet_pubcomp(packet_id)));
-                    actions.push(Action::SessionAction(SessionAction::PublishReceived {
+                    actions.push(Action::PublishReceived {
                         topic: pending.topic.clone(),
                         payload: pending.payload.clone(),
-                    }));
+                    });
                     context.pending_inbound_qos2 = None;
                 }
             }
         }
         (MachineState::Disconnected, Input::UserConnect(connect_options)) => {
-            context.set_keepalive_from_connect(connect_options.keep_alive_secs);
+            context.set_keepalive_from_duration(connect_options.keep_alive);
 
             actions.push(Action::SendBytes(Vec::from([0x10, 0x00])));
             actions.push(Action::ScheduleTimer {
                 key: TimerKey::ConnectTimeout,
-                delay_ms: connect_options.connect_timeout_ms,
+                delay_ms: u32::try_from(connect_options.connect_timeout.as_millis())
+                    .unwrap_or(u32::MAX),
             });
 
             *state = MachineState::Connecting;
@@ -192,17 +182,15 @@ pub fn handle(context: &mut Context, state: &mut MachineState, input: Input<'_>)
         (MachineState::WaitingForPingResp, Input::TimerFired(TimerKey::PingRespTimeout)) => {
             let disconnect = packet_disconnect();
             actions.push(Action::SendBytes(disconnect));
-            actions.push(Action::SessionAction(SessionAction::Disconnected {
-                reason: DisconnectReason::Timeout,
-            }));
+            actions.push(Action::DisconnectedByTimeout);
             *state = MachineState::Disconnected;
         }
-        (MachineState::Idle, Input::UserPublish(publish)) if publish.qos == Qos::AtMost => {
+        (MachineState::Idle, Input::UserPublish(publish)) if publish.qos == Qos::AtMostOnce => {
             if let Some(packet) = packet_publish(&publish, None, false) {
                 actions.push(Action::SendBytes(packet));
             }
         }
-        (MachineState::Idle, Input::UserPublish(publish)) if publish.qos == Qos::AtLeast => {
+        (MachineState::Idle, Input::UserPublish(publish)) if publish.qos == Qos::AtLeastOnce => {
             let packet_id = context.allocate_packet_id();
             if let Some(packet) = packet_publish(&publish, Some(packet_id), false) {
                 actions.push(Action::SendBytes(packet));
@@ -214,7 +202,7 @@ pub fn handle(context: &mut Context, state: &mut MachineState, input: Input<'_>)
                 *state = MachineState::WaitingForPubAck { packet_id };
             }
         }
-        (MachineState::Idle, Input::UserPublish(publish)) if publish.qos == Qos::Exactly => {
+        (MachineState::Idle, Input::UserPublish(publish)) if publish.qos == Qos::ExactlyOnce => {
             let packet_id = context.allocate_packet_id();
             if let Some(packet) = packet_publish(&publish, Some(packet_id), false) {
                 actions.push(Action::SendBytes(packet));
@@ -339,10 +327,10 @@ pub fn handle(context: &mut Context, state: &mut MachineState, input: Input<'_>)
             },
         ) if packet_id == &ack_id => {
             actions.push(Action::CancelTimer(TimerKey::AckTimeout(ack_id)));
-            actions.push(Action::SessionAction(SessionAction::SubscribeAck {
+            actions.push(Action::SubscribeAck {
                 packet_id: ack_id,
                 reason_codes,
-            }));
+            });
             context.pending_subscribe = None;
             *state = MachineState::Idle;
         }
@@ -368,11 +356,11 @@ fn packet_publish(
     let mut packet = Vec::new();
 
     let header = match (publish.qos, retry) {
-        (Qos::AtMost, _) => 0x30,
-        (Qos::AtLeast, false) => 0x32,
-        (Qos::AtLeast, true) => 0x3A,
-        (Qos::Exactly, false) => 0x34,
-        (Qos::Exactly, true) => 0x3C,
+        (Qos::AtMostOnce, _) => 0x30,
+        (Qos::AtLeastOnce, false) => 0x32,
+        (Qos::AtLeastOnce, true) => 0x3A,
+        (Qos::ExactlyOnce, false) => 0x34,
+        (Qos::ExactlyOnce, true) => 0x3C,
     };
     let topic_len = publish.topic.len();
     let packet_id_len = if packet_id.is_some() { 2 } else { 0 };
@@ -446,9 +434,9 @@ fn packet_subscribe(subscribe: &SubscribeRequest, packet_id: u16, _retry: bool) 
     let remaining_len = 2 + 1 + 2 + topic_len + 1;
 
     let qos_flags = match subscribe.qos {
-        Qos::AtMost => 0x00,
-        Qos::AtLeast => 0x01,
-        Qos::Exactly => 0x02,
+        Qos::AtMostOnce => 0x00,
+        Qos::AtLeastOnce => 0x01,
+        Qos::ExactlyOnce => 0x02,
     };
 
     packet.push(0x82);

@@ -1,8 +1,9 @@
 use alloc::string::String;
 use alloc::vec::Vec;
+use sansio_mqtt_v5_types::Qos;
 
 use crate::timer::TimerKey;
-use crate::{ConnectOptions, PublishRequest, Qos, SubscribeRequest};
+use crate::{ConnectOptions, PublishRequest, SubscribeRequest};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[allow(clippy::large_enum_variant)] // Required Task 2 public API keeps request payloads inline.

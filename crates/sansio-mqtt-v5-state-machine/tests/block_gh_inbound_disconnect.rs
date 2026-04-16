@@ -1,8 +1,10 @@
+use core::time::Duration;
 use sansio_mqtt_v5_contract::{
-    Action, ConnectOptions, DisconnectReason, Input, PublishRequest, Qos, SessionAction,
-    SubscribeRequest, TimerKey,
+    Action, ConnectOptions, Input, PublishRequest, SubscribeRequest, TimerKey,
 };
 use sansio_mqtt_v5_state_machine::StateMachine;
+use sansio_mqtt_v5_types::Qos;
+use std::string::String;
 
 const TOPIC: &str = "sensor/temp";
 const PAYLOAD: &[u8] = &[0x2A, 0x2B];
@@ -10,7 +12,7 @@ const PAYLOAD: &[u8] = &[0x2A, 0x2B];
 fn connected_machine() -> StateMachine {
     let mut machine = StateMachine::new_default();
     let _ = machine.handle(Input::UserConnect(ConnectOptions {
-        keep_alive_secs: Some(60),
+        keep_alive: Some(Duration::from_secs(60)),
         ..ConnectOptions::default()
     }));
     let _ = machine.handle(Input::PacketConnAck);
@@ -31,7 +33,7 @@ fn inbound_publish(qos: Qos, packet_id: Option<u16>) -> Input<'static> {
 
 fn qos1_publish() -> PublishRequest {
     let mut publish = PublishRequest {
-        qos: Qos::AtLeast,
+        qos: Qos::AtLeastOnce,
         ..PublishRequest::default()
     };
     publish.topic = TOPIC.to_owned();
@@ -41,7 +43,7 @@ fn qos1_publish() -> PublishRequest {
 
 fn qos2_publish() -> PublishRequest {
     let mut publish = PublishRequest {
-        qos: Qos::Exactly,
+        qos: Qos::ExactlyOnce,
         ..PublishRequest::default()
     };
     publish.topic = TOPIC.to_owned();
@@ -50,22 +52,25 @@ fn qos2_publish() -> PublishRequest {
 }
 
 fn subscribe_request() -> SubscribeRequest {
-    SubscribeRequest::single(TOPIC).expect("topic fits")
+    SubscribeRequest {
+        topic_filter: String::from(TOPIC),
+        ..SubscribeRequest::default()
+    }
 }
 
 fn expected_publish_received_action() -> Action {
     let topic = TOPIC.to_owned();
-    Action::SessionAction(SessionAction::PublishReceived {
+    Action::PublishReceived {
         topic,
         payload: PAYLOAD.to_vec(),
-    })
+    }
 }
 
 #[test]
 fn inbound_qos1_publish_sends_puback_then_publish_received() {
     let mut machine = connected_machine();
 
-    let actions = machine.handle(inbound_publish(Qos::AtLeast, Some(7)));
+    let actions = machine.handle(inbound_publish(Qos::AtLeastOnce, Some(7)));
 
     assert_eq!(actions.len(), 2);
     assert!(
@@ -78,7 +83,7 @@ fn inbound_qos1_publish_sends_puback_then_publish_received() {
 fn inbound_qos0_publish_emits_publish_received_only() {
     let mut machine = connected_machine();
 
-    let actions = machine.handle(inbound_publish(Qos::AtMost, None));
+    let actions = machine.handle(inbound_publish(Qos::AtMostOnce, None));
 
     assert_eq!(actions.len(), 1);
     assert_eq!(actions[0], expected_publish_received_action());
@@ -88,7 +93,7 @@ fn inbound_qos0_publish_emits_publish_received_only() {
 fn inbound_qos2_publish_then_pubrel_sends_pubrec_then_pubcomp_and_publish_received() {
     let mut machine = connected_machine();
 
-    let publish_actions = machine.handle(inbound_publish(Qos::Exactly, Some(10)));
+    let publish_actions = machine.handle(inbound_publish(Qos::ExactlyOnce, Some(10)));
 
     assert_eq!(publish_actions.len(), 1);
     assert!(
@@ -171,7 +176,7 @@ fn malformed_inbound_qos1_without_packet_id_disconnects_from_connected_substates
         let mut machine = connected_machine();
         let _ = (case.prepare)(&mut machine);
 
-        let actions = machine.handle(inbound_publish(Qos::AtLeast, None));
+        let actions = machine.handle(inbound_publish(Qos::AtLeastOnce, None));
 
         assert_eq!(
             actions.len(),
@@ -186,9 +191,7 @@ fn malformed_inbound_qos1_without_packet_id_disconnects_from_connected_substates
         );
         assert_eq!(
             actions[1],
-            Action::SessionAction(SessionAction::Disconnected {
-                reason: DisconnectReason::ProtocolError,
-            }),
+            Action::DisconnectedByProtocolViolation,
             "missing protocol error disconnect for {}",
             case.name
         );
@@ -240,7 +243,7 @@ fn malformed_inbound_qos2_without_packet_id_disconnects_from_connected_substates
         let mut machine = connected_machine();
         let _ = (case.prepare)(&mut machine);
 
-        let actions = machine.handle(inbound_publish(Qos::Exactly, None));
+        let actions = machine.handle(inbound_publish(Qos::ExactlyOnce, None));
 
         assert_eq!(
             actions.len(),
@@ -255,9 +258,7 @@ fn malformed_inbound_qos2_without_packet_id_disconnects_from_connected_substates
         );
         assert_eq!(
             actions[1],
-            Action::SessionAction(SessionAction::Disconnected {
-                reason: DisconnectReason::ProtocolError,
-            }),
+            Action::DisconnectedByProtocolViolation,
             "missing protocol error disconnect for {}",
             case.name
         );
@@ -348,9 +349,7 @@ fn user_disconnect_from_connected_substates_emits_disconnect_cancels_timers_and_
 
         assert_eq!(
             actions[disconnected_index],
-            Action::SessionAction(SessionAction::Disconnected {
-                reason: DisconnectReason::Normal,
-            }),
+            Action::DisconnectedByLocalRequest,
             "missing disconnected session action for {}",
             case.name
         );

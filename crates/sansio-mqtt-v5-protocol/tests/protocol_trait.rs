@@ -1,7 +1,7 @@
 use std::vec::Vec;
 
 use sansio::Protocol;
-use sansio_mqtt_v5_contract::{ProtocolError, SessionAction};
+use sansio_mqtt_v5_contract::{Action, ProtocolError};
 use sansio_mqtt_v5_protocol::{MqttProtocol, ProtocolEvent};
 
 fn assert_protocol_impl<
@@ -11,7 +11,7 @@ fn assert_protocol_impl<
         ProtocolEvent,
         Rout = (),
         Wout = Vec<u8>,
-        Eout = SessionAction,
+        Eout = Action,
         Error = ProtocolError,
         Time = u32,
     >,

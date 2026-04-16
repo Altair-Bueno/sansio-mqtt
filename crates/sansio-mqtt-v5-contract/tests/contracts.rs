@@ -1,18 +1,17 @@
+use core::time::Duration;
 use sansio_mqtt_v5_contract::{
-    Action, ConnectOptions, DisconnectReason, Input, ProtocolError, PublishRequest, SessionAction,
-    SubscribeRequest, TimerKey,
+    Action, ConnectOptions, Input, ProtocolError, PublishRequest, SubscribeRequest, TimerKey,
 };
+use sansio_mqtt_v5_types::{DisconnectReasonCode, Qos};
 
 #[test]
 fn exports_required_boundary_types() {
     let _: Option<Action> = None;
-    let _: Option<SessionAction> = None;
     let _: Option<Input> = None;
     let _: Option<ConnectOptions> = None;
     let _: Option<PublishRequest> = None;
     let _: Option<SubscribeRequest> = None;
     let _: Option<TimerKey> = None;
-    let _: Option<DisconnectReason> = None;
     let _: Option<ProtocolError> = None;
 }
 
@@ -43,7 +42,7 @@ fn input_contract_shape_and_basic_construction() {
     let packet_publish = Input::PacketPublish {
         topic,
         payload: vec![1, 2, 3],
-        qos: sansio_mqtt_v5_contract::Qos::AtLeast,
+        qos: Qos::AtLeastOnce,
         packet_id: Some(42),
     };
     assert!(matches!(
@@ -86,46 +85,47 @@ fn action_contract_shape_and_basic_construction() {
         Action::CancelTimer(TimerKey::AckTimeout(7))
     ));
 
-    let session_action = Action::SessionAction(SessionAction::Connected);
-    assert!(matches!(
-        session_action,
-        Action::SessionAction(SessionAction::Connected)
-    ));
-}
+    let connected = Action::Connected;
+    assert!(matches!(connected, Action::Connected));
 
-#[test]
-fn session_action_contract_shape_and_basic_construction() {
-    let connected = SessionAction::Connected;
-    assert!(matches!(connected, SessionAction::Connected));
-
-    let disconnected = SessionAction::Disconnected {
-        reason: DisconnectReason::ProtocolError,
+    let disconnected = Action::DisconnectedByRemote {
+        reason_code: DisconnectReasonCode::ProtocolError,
     };
     assert!(matches!(
         disconnected,
-        SessionAction::Disconnected {
-            reason: DisconnectReason::ProtocolError
+        Action::DisconnectedByRemote {
+            reason_code: DisconnectReasonCode::ProtocolError
         }
+    ));
+
+    assert!(matches!(
+        Action::DisconnectedByTimeout,
+        Action::DisconnectedByTimeout
+    ));
+    assert!(matches!(
+        Action::DisconnectedByLocalRequest,
+        Action::DisconnectedByLocalRequest
+    ));
+    assert!(matches!(
+        Action::DisconnectedByProtocolViolation,
+        Action::DisconnectedByProtocolViolation
     ));
 
     let topic = "sensors/temp".to_owned();
 
-    let publish_received = SessionAction::PublishReceived {
+    let publish_received = Action::PublishReceived {
         topic,
         payload: vec![1, 2, 3],
     };
-    assert!(matches!(
-        publish_received,
-        SessionAction::PublishReceived { .. }
-    ));
+    assert!(matches!(publish_received, Action::PublishReceived { .. }));
 
-    let subscribe_ack = SessionAction::SubscribeAck {
+    let subscribe_ack = Action::SubscribeAck {
         packet_id: 42,
         reason_codes: vec![0x00],
     };
     assert!(matches!(
         subscribe_ack,
-        SessionAction::SubscribeAck {
+        Action::SubscribeAck {
             packet_id: 42,
             reason_codes: _
         }
@@ -182,7 +182,7 @@ fn options_are_default_constructible() {
     let publish = PublishRequest::default();
     let subscribe = SubscribeRequest::default();
 
-    assert_eq!(connect.connect_timeout_ms, 10_000);
+    assert_eq!(connect.connect_timeout, Duration::from_secs(10));
 
     assert!(matches!(
         publish,
@@ -204,17 +204,23 @@ fn options_are_default_constructible() {
 }
 
 #[test]
-fn subscribe_request_single_accepts_valid_topic_filter() {
-    let request = SubscribeRequest::single("sensors/temperature").expect("fits");
+fn subscribe_request_holds_valid_topic_filter() {
+    let request = SubscribeRequest {
+        topic_filter: "sensors/temperature".to_owned(),
+        ..SubscribeRequest::default()
+    };
 
     assert_eq!(request.topic_filter.as_str(), "sensors/temperature");
 }
 
 #[test]
-fn subscribe_request_single_accepts_long_topic_filter() {
+fn subscribe_request_holds_long_topic_filter() {
     let long_filter = "a".repeat(2_048);
 
-    let request = SubscribeRequest::single(&long_filter).expect("unbounded filter accepted");
+    let request = SubscribeRequest {
+        topic_filter: long_filter.clone(),
+        ..SubscribeRequest::default()
+    };
 
     assert_eq!(request.topic_filter, long_filter);
 }

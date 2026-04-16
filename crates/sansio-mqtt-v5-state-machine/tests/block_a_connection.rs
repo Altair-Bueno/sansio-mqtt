@@ -1,3 +1,4 @@
+use core::time::Duration;
 use sansio_mqtt_v5_contract::{Action, ConnectOptions, Input, TimerKey};
 use sansio_mqtt_v5_state_machine::StateMachine;
 
@@ -5,7 +6,7 @@ use sansio_mqtt_v5_state_machine::StateMachine;
 fn block_a_user_connect_emits_connect_send_and_timeout_schedule() {
     let mut machine = StateMachine::new_default();
     let connect_options = ConnectOptions {
-        connect_timeout_ms: 4_321,
+        connect_timeout: Duration::from_millis(4_321),
         ..ConnectOptions::default()
     };
 
@@ -22,7 +23,7 @@ fn block_a_user_connect_emits_connect_send_and_timeout_schedule() {
     );
 
     let second_actions = machine.handle(Input::UserConnect(ConnectOptions {
-        connect_timeout_ms: 9_999,
+        connect_timeout: Duration::from_millis(9_999),
         ..ConnectOptions::default()
     }));
 

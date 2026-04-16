@@ -1,7 +1,10 @@
 use alloc::borrow::ToOwned;
 use alloc::string::String;
 use alloc::vec::Vec;
-use sansio_mqtt_v5_contract::{PublishRequest, Qos, SubscribeRequest};
+use core::time::Duration;
+
+use sansio_mqtt_v5_contract::{PublishRequest, SubscribeRequest};
+use sansio_mqtt_v5_types::Qos;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Context {
@@ -51,13 +54,16 @@ impl Context {
         packet_id
     }
 
-    pub fn set_keepalive_from_connect(&mut self, keep_alive_secs: Option<u16>) {
-        self.keepalive_delay_ms = keep_alive_secs.map_or(0, |seconds| u32::from(seconds) * 1_000);
+    pub fn set_keepalive_from_duration(&mut self, keep_alive: Option<Duration>) {
+        self.keepalive_delay_ms = keep_alive
+            .map(|duration| duration.as_millis())
+            .and_then(|ms| u32::try_from(ms).ok())
+            .unwrap_or(0);
     }
 
     pub fn store_pending_qos1(&mut self, packet_id: u16, publish: &PublishRequest) {
         let mut pending = publish.clone();
-        pending.qos = Qos::AtLeast;
+        pending.qos = Qos::AtLeastOnce;
 
         self.pending_qos1 = Some(PendingQos1Publish {
             packet_id,
@@ -67,7 +73,7 @@ impl Context {
 
     pub fn store_pending_qos2(&mut self, packet_id: u16, publish: &PublishRequest) {
         let mut pending = publish.clone();
-        pending.qos = Qos::Exactly;
+        pending.qos = Qos::ExactlyOnce;
 
         self.pending_qos2 = Some(PendingQos2Publish {
             packet_id,
