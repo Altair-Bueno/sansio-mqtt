@@ -1,0 +1,9 @@
+[package]
+name = "sansio-mqtt-v5-state-machine"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+sansio-mqtt-v5-contract = { workspace = true, default-features = false }
+heapless = { workspace = true }

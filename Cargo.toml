@@ -9,11 +9,16 @@ rust-version = "1.83.0"
 
 [workspace.dependencies]
 sansio-mqtt-v5-types = { path = "crates/sansio-mqtt-v5-types", default-features = false }
+sansio-mqtt-v5-contract = { path = "crates/sansio-mqtt-v5-contract", default-features = false }
+sansio-mqtt-v5-state-machine = { path = "crates/sansio-mqtt-v5-state-machine", default-features = false }
+sansio-mqtt-v5-protocol = { path = "crates/sansio-mqtt-v5-protocol", default-features = false }
+sansio-mqtt-v5-tokio = { path = "crates/sansio-mqtt-v5-tokio", default-features = false }
 sansio-mqtt-v5-client = { path = "crates/sansio-mqtt-v5-client", default-features = false }
 sansio-mqtt-v5-client-tcp-std = { path = "crates/sansio-mqtt-v5-client-tcp-std", default-features = false }
 
 tracing = "0.1.41"
 tokio = { version = "1", default-features = false }
+tokio-util = { version = "0.7", default-features = false }
 bytes = { version = "1", default-features = false }
 bon = { version = "3.6.1", default-features = false }
 thiserror = { version = "2", default-features = false }
@@ -24,3 +29,6 @@ nutype = { version = "0.6.1", default-features = false }
 vec1 = { version = "1.12.1", default-features = false }
 encode = { version = "0.2.2", default-features = false }
 rstest = { version = "0.25.0", default-features = false }
+heapless = { version = "0.8", default-features = false }
+sansio = { version = "1.0.1", default-features = false }
+futures = { version = "0.3", default-features = false }
