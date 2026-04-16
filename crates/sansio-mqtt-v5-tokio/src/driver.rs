@@ -86,10 +86,8 @@ async fn run_driver(
                     return Ok(());
                 };
 
-                let message = heapless::Vec::<u8, 256>::from_slice(&frame)
-                    .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "mqtt frame too large"))?;
                 let received_connack = is_connack_packet(&frame);
-                Protocol::handle_read(&mut protocol, message).map_err(protocol_error)?;
+                Protocol::handle_read(&mut protocol, frame).map_err(protocol_error)?;
 
                 if received_connack {
                     connected = true;

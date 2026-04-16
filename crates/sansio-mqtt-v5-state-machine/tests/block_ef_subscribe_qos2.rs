@@ -1,6 +1,5 @@
 use sansio_mqtt_v5_contract::{
     Action, ConnectOptions, Input, PublishRequest, Qos, SessionAction, SubscribeRequest, TimerKey,
-    TOPIC_CAPACITY,
 };
 use sansio_mqtt_v5_state_machine::StateMachine;
 
@@ -20,10 +19,8 @@ fn publish_qos2() -> PublishRequest {
         qos: Qos::Exactly,
         ..PublishRequest::default()
     };
-    let mut topic = heapless::String::<TOPIC_CAPACITY>::new();
-    assert!(topic.push_str(TOPIC).is_ok());
-    publish.topic = topic;
-    assert!(publish.payload.push(PAYLOAD).is_ok());
+    publish.topic = TOPIC.to_owned();
+    publish.payload.push(PAYLOAD);
     publish
 }
 
@@ -31,8 +28,8 @@ fn subscribe_request() -> SubscribeRequest {
     SubscribeRequest::single(FILTER).expect("valid topic filter")
 }
 
-fn suback_reason_codes(code: u8) -> heapless::Vec<u8, 8> {
-    heapless::Vec::from_slice(&[code]).expect("single reason code fits")
+fn suback_reason_codes(code: u8) -> Vec<u8> {
+    vec![code]
 }
 
 fn assert_publish_packet(bytes: &[u8], expected_header: u8, expected_packet_id: u16) {

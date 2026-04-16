@@ -1,7 +1,6 @@
 use sansio_mqtt_v5_contract::{
     Action, ConnectOptions, DisconnectReason, Input, PublishRequest, Qos, SessionAction,
-    SubscribeRequest, TimerKey, SESSION_ACTION_PAYLOAD_CAPACITY, SESSION_ACTION_TOPIC_CAPACITY,
-    TOPIC_CAPACITY,
+    SubscribeRequest, TimerKey,
 };
 use sansio_mqtt_v5_state_machine::StateMachine;
 
@@ -19,10 +18,8 @@ fn connected_machine() -> StateMachine {
 }
 
 fn inbound_publish(qos: Qos, packet_id: Option<u16>) -> Input<'static> {
-    let mut topic = heapless::String::<SESSION_ACTION_TOPIC_CAPACITY>::new();
-    assert!(topic.push_str(TOPIC).is_ok());
-    let payload = heapless::Vec::<u8, SESSION_ACTION_PAYLOAD_CAPACITY>::from_slice(PAYLOAD)
-        .expect("payload fits");
+    let topic = TOPIC.to_owned();
+    let payload = PAYLOAD.to_vec();
 
     Input::PacketPublish {
         topic,
@@ -37,10 +34,8 @@ fn qos1_publish() -> PublishRequest {
         qos: Qos::AtLeast,
         ..PublishRequest::default()
     };
-    let mut topic = heapless::String::<TOPIC_CAPACITY>::new();
-    assert!(topic.push_str(TOPIC).is_ok());
-    publish.topic = topic;
-    assert!(publish.payload.push(PAYLOAD[0]).is_ok());
+    publish.topic = TOPIC.to_owned();
+    publish.payload.push(PAYLOAD[0]);
     publish
 }
 
@@ -49,10 +44,8 @@ fn qos2_publish() -> PublishRequest {
         qos: Qos::Exactly,
         ..PublishRequest::default()
     };
-    let mut topic = heapless::String::<TOPIC_CAPACITY>::new();
-    assert!(topic.push_str(TOPIC).is_ok());
-    publish.topic = topic;
-    assert!(publish.payload.push(PAYLOAD[0]).is_ok());
+    publish.topic = TOPIC.to_owned();
+    publish.payload.push(PAYLOAD[0]);
     publish
 }
 
@@ -61,11 +54,10 @@ fn subscribe_request() -> SubscribeRequest {
 }
 
 fn expected_publish_received_action() -> Action {
-    let mut topic = heapless::String::<SESSION_ACTION_TOPIC_CAPACITY>::new();
-    assert!(topic.push_str(TOPIC).is_ok());
+    let topic = TOPIC.to_owned();
     Action::SessionAction(SessionAction::PublishReceived {
         topic,
-        payload: heapless::Vec::from_slice(PAYLOAD).expect("fits"),
+        payload: PAYLOAD.to_vec(),
     })
 }
 

@@ -1,11 +1,11 @@
-use heapless::Vec;
+use alloc::vec::Vec;
 use sansio_mqtt_v5_contract::{
     Action, DisconnectReason, Input, PublishRequest, Qos, SessionAction, SubscribeRequest, TimerKey,
 };
 
 use crate::{Context, MachineState};
 
-pub fn handle(context: &mut Context, state: &mut MachineState, input: Input<'_>) -> Vec<Action, 8> {
+pub fn handle(context: &mut Context, state: &mut MachineState, input: Input<'_>) -> Vec<Action> {
     let mut actions = Vec::new();
 
     match (&*state, input) {
@@ -19,22 +19,10 @@ pub fn handle(context: &mut Context, state: &mut MachineState, input: Input<'_>)
             Input::UserDisconnect,
         ) => {
             let disconnect = packet_disconnect();
-            if actions.push(Action::SendBytes(disconnect)).is_err() {
-                return actions;
-            }
+            actions.push(Action::SendBytes(disconnect));
 
-            if actions
-                .push(Action::CancelTimer(TimerKey::Keepalive))
-                .is_err()
-            {
-                return actions;
-            }
-            if actions
-                .push(Action::CancelTimer(TimerKey::PingRespTimeout))
-                .is_err()
-            {
-                return actions;
-            }
+            actions.push(Action::CancelTimer(TimerKey::Keepalive));
+            actions.push(Action::CancelTimer(TimerKey::PingRespTimeout));
 
             let ack_packet_id = match *state {
                 MachineState::WaitingForPubAck { packet_id }
@@ -45,22 +33,12 @@ pub fn handle(context: &mut Context, state: &mut MachineState, input: Input<'_>)
             };
 
             if let Some(packet_id) = ack_packet_id {
-                if actions
-                    .push(Action::CancelTimer(TimerKey::AckTimeout(packet_id)))
-                    .is_err()
-                {
-                    return actions;
-                }
+                actions.push(Action::CancelTimer(TimerKey::AckTimeout(packet_id)));
             }
 
-            if actions
-                .push(Action::SessionAction(SessionAction::Disconnected {
-                    reason: DisconnectReason::Normal,
-                }))
-                .is_err()
-            {
-                return actions;
-            }
+            actions.push(Action::SessionAction(SessionAction::Disconnected {
+                reason: DisconnectReason::Normal,
+            }));
 
             context.pending_qos1 = None;
             context.pending_qos2 = None;
@@ -82,15 +60,10 @@ pub fn handle(context: &mut Context, state: &mut MachineState, input: Input<'_>)
                 ..
             },
         ) => {
-            if actions
-                .push(Action::SessionAction(SessionAction::PublishReceived {
-                    topic,
-                    payload,
-                }))
-                .is_err()
-            {
-                return actions;
-            }
+            actions.push(Action::SessionAction(SessionAction::PublishReceived {
+                topic,
+                payload,
+            }));
         }
         (
             MachineState::Idle
@@ -111,17 +84,10 @@ pub fn handle(context: &mut Context, state: &mut MachineState, input: Input<'_>)
             },
         ) => {
             let disconnect = packet_disconnect();
-            if actions.push(Action::SendBytes(disconnect)).is_err() {
-                return actions;
-            }
-            if actions
-                .push(Action::SessionAction(SessionAction::Disconnected {
-                    reason: DisconnectReason::ProtocolError,
-                }))
-                .is_err()
-            {
-                return actions;
-            }
+            actions.push(Action::SendBytes(disconnect));
+            actions.push(Action::SessionAction(SessionAction::Disconnected {
+                reason: DisconnectReason::ProtocolError,
+            }));
             *state = MachineState::Disconnected;
         }
         (
@@ -138,21 +104,11 @@ pub fn handle(context: &mut Context, state: &mut MachineState, input: Input<'_>)
                 packet_id: Some(packet_id),
             },
         ) => {
-            if actions
-                .push(Action::SendBytes(packet_puback(packet_id)))
-                .is_err()
-            {
-                return actions;
-            }
-            if actions
-                .push(Action::SessionAction(SessionAction::PublishReceived {
-                    topic,
-                    payload,
-                }))
-                .is_err()
-            {
-                return actions;
-            }
+            actions.push(Action::SendBytes(packet_puback(packet_id)));
+            actions.push(Action::SessionAction(SessionAction::PublishReceived {
+                topic,
+                payload,
+            }));
         }
         (
             MachineState::Idle
@@ -168,12 +124,7 @@ pub fn handle(context: &mut Context, state: &mut MachineState, input: Input<'_>)
                 packet_id: Some(packet_id),
             },
         ) => {
-            if actions
-                .push(Action::SendBytes(packet_pubrec(packet_id)))
-                .is_err()
-            {
-                return actions;
-            }
+            actions.push(Action::SendBytes(packet_pubrec(packet_id)));
             context.store_pending_inbound_qos2(packet_id, &topic, &payload);
         }
         (
@@ -187,21 +138,11 @@ pub fn handle(context: &mut Context, state: &mut MachineState, input: Input<'_>)
         ) => {
             if let Some(pending) = &context.pending_inbound_qos2 {
                 if pending.packet_id == packet_id {
-                    if actions
-                        .push(Action::SendBytes(packet_pubcomp(packet_id)))
-                        .is_err()
-                    {
-                        return actions;
-                    }
-                    if actions
-                        .push(Action::SessionAction(SessionAction::PublishReceived {
-                            topic: pending.topic.clone(),
-                            payload: pending.payload.clone(),
-                        }))
-                        .is_err()
-                    {
-                        return actions;
-                    }
+                    actions.push(Action::SendBytes(packet_pubcomp(packet_id)));
+                    actions.push(Action::SessionAction(SessionAction::PublishReceived {
+                        topic: pending.topic.clone(),
+                        payload: pending.payload.clone(),
+                    }));
                     context.pending_inbound_qos2 = None;
                 }
             }
@@ -209,161 +150,91 @@ pub fn handle(context: &mut Context, state: &mut MachineState, input: Input<'_>)
         (MachineState::Disconnected, Input::UserConnect(connect_options)) => {
             context.set_keepalive_from_connect(connect_options.keep_alive_secs);
 
-            let mut connect_packet = Vec::new();
-            if connect_packet.push(0x10).is_err() {
-                return actions;
-            }
-            if connect_packet.push(0x00).is_err() {
-                return actions;
-            }
-
-            if actions.push(Action::SendBytes(connect_packet)).is_err() {
-                return actions;
-            }
-            if actions
-                .push(Action::ScheduleTimer {
-                    key: TimerKey::ConnectTimeout,
-                    delay_ms: connect_options.connect_timeout_ms,
-                })
-                .is_err()
-            {
-                return actions;
-            }
+            actions.push(Action::SendBytes(Vec::from([0x10, 0x00])));
+            actions.push(Action::ScheduleTimer {
+                key: TimerKey::ConnectTimeout,
+                delay_ms: connect_options.connect_timeout_ms,
+            });
 
             *state = MachineState::Connecting;
         }
         (MachineState::Connecting, Input::PacketConnAck) => {
-            if actions
-                .push(Action::CancelTimer(TimerKey::ConnectTimeout))
-                .is_err()
-            {
-                return actions;
-            }
-            if context.keepalive_delay_ms > 0
-                && actions
-                    .push(Action::ScheduleTimer {
-                        key: TimerKey::Keepalive,
-                        delay_ms: context.keepalive_delay_ms,
-                    })
-                    .is_err()
-            {
-                return actions;
+            actions.push(Action::CancelTimer(TimerKey::ConnectTimeout));
+            if context.keepalive_delay_ms > 0 {
+                actions.push(Action::ScheduleTimer {
+                    key: TimerKey::Keepalive,
+                    delay_ms: context.keepalive_delay_ms,
+                });
             }
             *state = MachineState::Idle;
         }
         // [MQTT-3.12.4-1] Clients send PINGREQ to indicate liveliness.
         (MachineState::Idle, Input::TimerFired(TimerKey::Keepalive)) => {
             let pingreq = packet_pingreq();
-            if actions.push(Action::SendBytes(pingreq)).is_err() {
-                return actions;
-            }
-            if actions
-                .push(Action::ScheduleTimer {
-                    key: TimerKey::PingRespTimeout,
-                    delay_ms: context.pingresp_timeout_ms,
-                })
-                .is_err()
-            {
-                return actions;
-            }
+            actions.push(Action::SendBytes(pingreq));
+            actions.push(Action::ScheduleTimer {
+                key: TimerKey::PingRespTimeout,
+                delay_ms: context.pingresp_timeout_ms,
+            });
             *state = MachineState::WaitingForPingResp;
         }
         // [MQTT-3.13.4-1] PINGRESP acknowledges a PINGREQ.
         (MachineState::WaitingForPingResp, Input::PacketPingResp) => {
-            if actions
-                .push(Action::CancelTimer(TimerKey::PingRespTimeout))
-                .is_err()
-            {
-                return actions;
-            }
-            if context.keepalive_delay_ms > 0
-                && actions
-                    .push(Action::ScheduleTimer {
-                        key: TimerKey::Keepalive,
-                        delay_ms: context.keepalive_delay_ms,
-                    })
-                    .is_err()
-            {
-                return actions;
+            actions.push(Action::CancelTimer(TimerKey::PingRespTimeout));
+            if context.keepalive_delay_ms > 0 {
+                actions.push(Action::ScheduleTimer {
+                    key: TimerKey::Keepalive,
+                    delay_ms: context.keepalive_delay_ms,
+                });
             }
             *state = MachineState::Idle;
         }
         (MachineState::WaitingForPingResp, Input::TimerFired(TimerKey::PingRespTimeout)) => {
             let disconnect = packet_disconnect();
-            if actions.push(Action::SendBytes(disconnect)).is_err() {
-                return actions;
-            }
-            if actions
-                .push(Action::SessionAction(SessionAction::Disconnected {
-                    reason: DisconnectReason::Timeout,
-                }))
-                .is_err()
-            {
-                return actions;
-            }
+            actions.push(Action::SendBytes(disconnect));
+            actions.push(Action::SessionAction(SessionAction::Disconnected {
+                reason: DisconnectReason::Timeout,
+            }));
             *state = MachineState::Disconnected;
         }
         (MachineState::Idle, Input::UserPublish(publish)) if publish.qos == Qos::AtMost => {
             if let Some(packet) = packet_publish(&publish, None, false) {
-                if actions.push(Action::SendBytes(packet)).is_err() {
-                    return actions;
-                }
+                actions.push(Action::SendBytes(packet));
             }
         }
         (MachineState::Idle, Input::UserPublish(publish)) if publish.qos == Qos::AtLeast => {
             let packet_id = context.allocate_packet_id();
             if let Some(packet) = packet_publish(&publish, Some(packet_id), false) {
-                if actions.push(Action::SendBytes(packet)).is_err() {
-                    return actions;
-                }
+                actions.push(Action::SendBytes(packet));
                 context.store_pending_qos1(packet_id, &publish);
-                if actions
-                    .push(Action::ScheduleTimer {
-                        key: TimerKey::AckTimeout(packet_id),
-                        delay_ms: context.ack_timeout_ms,
-                    })
-                    .is_err()
-                {
-                    return actions;
-                }
+                actions.push(Action::ScheduleTimer {
+                    key: TimerKey::AckTimeout(packet_id),
+                    delay_ms: context.ack_timeout_ms,
+                });
                 *state = MachineState::WaitingForPubAck { packet_id };
             }
         }
         (MachineState::Idle, Input::UserPublish(publish)) if publish.qos == Qos::Exactly => {
             let packet_id = context.allocate_packet_id();
             if let Some(packet) = packet_publish(&publish, Some(packet_id), false) {
-                if actions.push(Action::SendBytes(packet)).is_err() {
-                    return actions;
-                }
+                actions.push(Action::SendBytes(packet));
                 context.store_pending_qos2(packet_id, &publish);
-                if actions
-                    .push(Action::ScheduleTimer {
-                        key: TimerKey::AckTimeout(packet_id),
-                        delay_ms: context.ack_timeout_ms,
-                    })
-                    .is_err()
-                {
-                    return actions;
-                }
+                actions.push(Action::ScheduleTimer {
+                    key: TimerKey::AckTimeout(packet_id),
+                    delay_ms: context.ack_timeout_ms,
+                });
                 *state = MachineState::WaitingForPubRec { packet_id };
             }
         }
         (MachineState::Idle, Input::UserSubscribe(subscribe)) => {
             let packet_id = context.allocate_packet_id();
             if let Some(packet) = packet_subscribe(&subscribe, packet_id, false) {
-                if actions.push(Action::SendBytes(packet)).is_err() {
-                    return actions;
-                }
+                actions.push(Action::SendBytes(packet));
                 context.store_pending_subscribe(packet_id, &subscribe);
-                if actions
-                    .push(Action::ScheduleTimer {
-                        key: TimerKey::AckTimeout(packet_id),
-                        delay_ms: context.ack_timeout_ms,
-                    })
-                    .is_err()
-                {
-                    return actions;
-                }
+                actions.push(Action::ScheduleTimer {
+                    key: TimerKey::AckTimeout(packet_id),
+                    delay_ms: context.ack_timeout_ms,
+                });
                 *state = MachineState::WaitingForSubAck { packet_id };
             }
         }
@@ -371,12 +242,7 @@ pub fn handle(context: &mut Context, state: &mut MachineState, input: Input<'_>)
             MachineState::WaitingForPubAck { packet_id },
             Input::PacketPubAck { packet_id: ack_id },
         ) if packet_id == &ack_id => {
-            if actions
-                .push(Action::CancelTimer(TimerKey::AckTimeout(ack_id)))
-                .is_err()
-            {
-                return actions;
-            }
+            actions.push(Action::CancelTimer(TimerKey::AckTimeout(ack_id)));
             context.pending_qos1 = None;
             *state = MachineState::Idle;
         }
@@ -386,18 +252,11 @@ pub fn handle(context: &mut Context, state: &mut MachineState, input: Input<'_>)
         ) if packet_id == &timeout_id => {
             if let Some(pending) = &context.pending_qos1 {
                 if let Some(packet) = packet_publish(&pending.publish, Some(*packet_id), true) {
-                    if actions.push(Action::SendBytes(packet)).is_err() {
-                        return actions;
-                    }
-                    if actions
-                        .push(Action::ScheduleTimer {
-                            key: TimerKey::AckTimeout(*packet_id),
-                            delay_ms: context.ack_timeout_ms,
-                        })
-                        .is_err()
-                    {
-                        return actions;
-                    }
+                    actions.push(Action::SendBytes(packet));
+                    actions.push(Action::ScheduleTimer {
+                        key: TimerKey::AckTimeout(*packet_id),
+                        delay_ms: context.ack_timeout_ms,
+                    });
                 }
             }
         }
@@ -405,25 +264,13 @@ pub fn handle(context: &mut Context, state: &mut MachineState, input: Input<'_>)
             MachineState::WaitingForPubRec { packet_id },
             Input::PacketPubRec { packet_id: rec_id },
         ) if packet_id == &rec_id => {
-            if actions
-                .push(Action::CancelTimer(TimerKey::AckTimeout(rec_id)))
-                .is_err()
-            {
-                return actions;
-            }
+            actions.push(Action::CancelTimer(TimerKey::AckTimeout(rec_id)));
             let packet = packet_pubrel(rec_id);
-            if actions.push(Action::SendBytes(packet)).is_err() {
-                return actions;
-            }
-            if actions
-                .push(Action::ScheduleTimer {
-                    key: TimerKey::AckTimeout(rec_id),
-                    delay_ms: context.ack_timeout_ms,
-                })
-                .is_err()
-            {
-                return actions;
-            }
+            actions.push(Action::SendBytes(packet));
+            actions.push(Action::ScheduleTimer {
+                key: TimerKey::AckTimeout(rec_id),
+                delay_ms: context.ack_timeout_ms,
+            });
             *state = MachineState::WaitingForPubComp { packet_id: rec_id };
         }
         (
@@ -432,18 +279,11 @@ pub fn handle(context: &mut Context, state: &mut MachineState, input: Input<'_>)
         ) if packet_id == &timeout_id => {
             if let Some(pending) = &context.pending_qos2 {
                 if let Some(packet) = packet_publish(&pending.publish, Some(*packet_id), true) {
-                    if actions.push(Action::SendBytes(packet)).is_err() {
-                        return actions;
-                    }
-                    if actions
-                        .push(Action::ScheduleTimer {
-                            key: TimerKey::AckTimeout(*packet_id),
-                            delay_ms: context.ack_timeout_ms,
-                        })
-                        .is_err()
-                    {
-                        return actions;
-                    }
+                    actions.push(Action::SendBytes(packet));
+                    actions.push(Action::ScheduleTimer {
+                        key: TimerKey::AckTimeout(*packet_id),
+                        delay_ms: context.ack_timeout_ms,
+                    });
                 }
             }
         }
@@ -452,18 +292,11 @@ pub fn handle(context: &mut Context, state: &mut MachineState, input: Input<'_>)
             Input::PacketPubRec { packet_id: rec_id },
         ) if packet_id == &rec_id => {
             let packet = packet_pubrel(rec_id);
-            if actions.push(Action::SendBytes(packet)).is_err() {
-                return actions;
-            }
-            if actions
-                .push(Action::ScheduleTimer {
-                    key: TimerKey::AckTimeout(rec_id),
-                    delay_ms: context.ack_timeout_ms,
-                })
-                .is_err()
-            {
-                return actions;
-            }
+            actions.push(Action::SendBytes(packet));
+            actions.push(Action::ScheduleTimer {
+                key: TimerKey::AckTimeout(rec_id),
+                delay_ms: context.ack_timeout_ms,
+            });
         }
         (
             MachineState::WaitingForSubAck { packet_id },
@@ -471,18 +304,11 @@ pub fn handle(context: &mut Context, state: &mut MachineState, input: Input<'_>)
         ) if packet_id == &timeout_id => {
             if let Some(pending) = &context.pending_subscribe {
                 if let Some(packet) = packet_subscribe(&pending.request, *packet_id, true) {
-                    if actions.push(Action::SendBytes(packet)).is_err() {
-                        return actions;
-                    }
-                    if actions
-                        .push(Action::ScheduleTimer {
-                            key: TimerKey::AckTimeout(*packet_id),
-                            delay_ms: context.ack_timeout_ms,
-                        })
-                        .is_err()
-                    {
-                        return actions;
-                    }
+                    actions.push(Action::SendBytes(packet));
+                    actions.push(Action::ScheduleTimer {
+                        key: TimerKey::AckTimeout(*packet_id),
+                        delay_ms: context.ack_timeout_ms,
+                    });
                 }
             }
         }
@@ -490,12 +316,7 @@ pub fn handle(context: &mut Context, state: &mut MachineState, input: Input<'_>)
             MachineState::WaitingForPubComp { packet_id },
             Input::PacketPubComp { packet_id: comp_id },
         ) if packet_id == &comp_id => {
-            if actions
-                .push(Action::CancelTimer(TimerKey::AckTimeout(comp_id)))
-                .is_err()
-            {
-                return actions;
-            }
+            actions.push(Action::CancelTimer(TimerKey::AckTimeout(comp_id)));
             context.pending_qos2 = None;
             *state = MachineState::Idle;
         }
@@ -504,18 +325,11 @@ pub fn handle(context: &mut Context, state: &mut MachineState, input: Input<'_>)
             Input::TimerFired(TimerKey::AckTimeout(timeout_id)),
         ) if packet_id == &timeout_id => {
             let packet = packet_pubrel(*packet_id);
-            if actions.push(Action::SendBytes(packet)).is_err() {
-                return actions;
-            }
-            if actions
-                .push(Action::ScheduleTimer {
-                    key: TimerKey::AckTimeout(*packet_id),
-                    delay_ms: context.ack_timeout_ms,
-                })
-                .is_err()
-            {
-                return actions;
-            }
+            actions.push(Action::SendBytes(packet));
+            actions.push(Action::ScheduleTimer {
+                key: TimerKey::AckTimeout(*packet_id),
+                delay_ms: context.ack_timeout_ms,
+            });
         }
         (
             MachineState::WaitingForSubAck { packet_id },
@@ -524,21 +338,11 @@ pub fn handle(context: &mut Context, state: &mut MachineState, input: Input<'_>)
                 reason_codes,
             },
         ) if packet_id == &ack_id => {
-            if actions
-                .push(Action::CancelTimer(TimerKey::AckTimeout(ack_id)))
-                .is_err()
-            {
-                return actions;
-            }
-            if actions
-                .push(Action::SessionAction(SessionAction::SubscribeAck {
-                    packet_id: ack_id,
-                    reason_codes,
-                }))
-                .is_err()
-            {
-                return actions;
-            }
+            actions.push(Action::CancelTimer(TimerKey::AckTimeout(ack_id)));
+            actions.push(Action::SessionAction(SessionAction::SubscribeAck {
+                packet_id: ack_id,
+                reason_codes,
+            }));
             context.pending_subscribe = None;
             *state = MachineState::Idle;
         }
@@ -548,25 +352,19 @@ pub fn handle(context: &mut Context, state: &mut MachineState, input: Input<'_>)
     actions
 }
 
-fn packet_pingreq() -> Vec<u8, 256> {
-    let mut packet = Vec::new();
-    let _ = packet.push(0xC0);
-    let _ = packet.push(0x00);
-    packet
+fn packet_pingreq() -> Vec<u8> {
+    Vec::from([0xC0, 0x00])
 }
 
-fn packet_disconnect() -> Vec<u8, 256> {
-    let mut packet = Vec::new();
-    let _ = packet.push(0xE0);
-    let _ = packet.push(0x00);
-    packet
+fn packet_disconnect() -> Vec<u8> {
+    Vec::from([0xE0, 0x00])
 }
 
 fn packet_publish(
     publish: &PublishRequest,
     packet_id: Option<u16>,
     retry: bool,
-) -> Option<Vec<u8, 256>> {
+) -> Option<Vec<u8>> {
     let mut packet = Vec::new();
 
     let header = match (publish.qos, retry) {
@@ -580,44 +378,31 @@ fn packet_publish(
     let packet_id_len = if packet_id.is_some() { 2 } else { 0 };
     let remaining_len = 2 + topic_len + packet_id_len + 1 + publish.payload.len();
 
-    push_checked(&mut packet, header)?;
+    packet.push(header);
     push_variable_byte_integer(&mut packet, remaining_len)?;
-    push_checked(&mut packet, ((topic_len >> 8) & 0xFF) as u8)?;
-    push_checked(&mut packet, (topic_len & 0xFF) as u8)?;
-    extend_checked(&mut packet, publish.topic.as_bytes())?;
+    packet.push(((topic_len >> 8) & 0xFF) as u8);
+    packet.push((topic_len & 0xFF) as u8);
+    packet.extend_from_slice(publish.topic.as_bytes());
 
     if let Some(id) = packet_id {
-        push_checked(&mut packet, (id >> 8) as u8)?;
-        push_checked(&mut packet, (id & 0xFF) as u8)?;
+        packet.push((id >> 8) as u8);
+        packet.push((id & 0xFF) as u8);
     }
 
     // [MQTT-3.3.2-1] Property Length is present in MQTT v5 PUBLISH variable header.
-    push_checked(&mut packet, 0x00)?;
+    packet.push(0x00);
 
-    extend_checked(&mut packet, publish.payload.as_slice())?;
+    packet.extend_from_slice(publish.payload.as_slice());
 
     Some(packet)
 }
 
-fn push_checked(packet: &mut Vec<u8, 256>, byte: u8) -> Option<()> {
-    packet.push(byte).ok()
-}
-
-fn extend_checked(packet: &mut Vec<u8, 256>, bytes: &[u8]) -> Option<()> {
-    for byte in bytes.iter().copied() {
-        push_checked(packet, byte)?;
-    }
+fn push_variable_byte_integer(packet: &mut Vec<u8>, value: usize) -> Option<()> {
+    packet.extend(encode_variable_byte_integer(value)?);
     Some(())
 }
 
-fn push_variable_byte_integer(packet: &mut Vec<u8, 256>, value: usize) -> Option<()> {
-    for byte in encode_variable_byte_integer(value)?.iter().copied() {
-        push_checked(packet, byte)?;
-    }
-    Some(())
-}
-
-fn encode_variable_byte_integer(mut value: usize) -> Option<Vec<u8, 4>> {
+fn encode_variable_byte_integer(mut value: usize) -> Option<Vec<u8>> {
     if value > 268_435_455 {
         return None;
     }
@@ -629,7 +414,7 @@ fn encode_variable_byte_integer(mut value: usize) -> Option<Vec<u8, 4>> {
         if value > 0 {
             byte |= 0x80;
         }
-        encoded.push(byte).ok()?;
+        encoded.push(byte);
         if value == 0 {
             break;
         }
@@ -638,47 +423,23 @@ fn encode_variable_byte_integer(mut value: usize) -> Option<Vec<u8, 4>> {
     Some(encoded)
 }
 
-fn packet_pubrel(packet_id: u16) -> Vec<u8, 256> {
-    let mut packet = Vec::new();
-    let _ = packet.push(0x62);
-    let _ = packet.push(0x02);
-    let _ = packet.push((packet_id >> 8) as u8);
-    let _ = packet.push((packet_id & 0xFF) as u8);
-    packet
+fn packet_pubrel(packet_id: u16) -> Vec<u8> {
+    Vec::from([0x62, 0x02, (packet_id >> 8) as u8, (packet_id & 0xFF) as u8])
 }
 
-fn packet_puback(packet_id: u16) -> Vec<u8, 256> {
-    let mut packet = Vec::new();
-    let _ = packet.push(0x40);
-    let _ = packet.push(0x02);
-    let _ = packet.push((packet_id >> 8) as u8);
-    let _ = packet.push((packet_id & 0xFF) as u8);
-    packet
+fn packet_puback(packet_id: u16) -> Vec<u8> {
+    Vec::from([0x40, 0x02, (packet_id >> 8) as u8, (packet_id & 0xFF) as u8])
 }
 
-fn packet_pubrec(packet_id: u16) -> Vec<u8, 256> {
-    let mut packet = Vec::new();
-    let _ = packet.push(0x50);
-    let _ = packet.push(0x02);
-    let _ = packet.push((packet_id >> 8) as u8);
-    let _ = packet.push((packet_id & 0xFF) as u8);
-    packet
+fn packet_pubrec(packet_id: u16) -> Vec<u8> {
+    Vec::from([0x50, 0x02, (packet_id >> 8) as u8, (packet_id & 0xFF) as u8])
 }
 
-fn packet_pubcomp(packet_id: u16) -> Vec<u8, 256> {
-    let mut packet = Vec::new();
-    let _ = packet.push(0x70);
-    let _ = packet.push(0x02);
-    let _ = packet.push((packet_id >> 8) as u8);
-    let _ = packet.push((packet_id & 0xFF) as u8);
-    packet
+fn packet_pubcomp(packet_id: u16) -> Vec<u8> {
+    Vec::from([0x70, 0x02, (packet_id >> 8) as u8, (packet_id & 0xFF) as u8])
 }
 
-fn packet_subscribe(
-    subscribe: &SubscribeRequest,
-    packet_id: u16,
-    _retry: bool,
-) -> Option<Vec<u8, 256>> {
+fn packet_subscribe(subscribe: &SubscribeRequest, packet_id: u16, _retry: bool) -> Option<Vec<u8>> {
     let mut packet = Vec::new();
 
     let topic_len = subscribe.topic_filter.len();
@@ -690,18 +451,18 @@ fn packet_subscribe(
         Qos::Exactly => 0x02,
     };
 
-    push_checked(&mut packet, 0x82)?;
+    packet.push(0x82);
     push_variable_byte_integer(&mut packet, remaining_len)?;
-    push_checked(&mut packet, (packet_id >> 8) as u8)?;
-    push_checked(&mut packet, (packet_id & 0xFF) as u8)?;
+    packet.push((packet_id >> 8) as u8);
+    packet.push((packet_id & 0xFF) as u8);
 
     // [MQTT-3.8.2.1-1] SUBSCRIBE Properties length appears in MQTT v5.
-    push_checked(&mut packet, 0x00)?;
+    packet.push(0x00);
 
-    push_checked(&mut packet, ((topic_len >> 8) & 0xFF) as u8)?;
-    push_checked(&mut packet, (topic_len & 0xFF) as u8)?;
-    extend_checked(&mut packet, subscribe.topic_filter.as_bytes())?;
-    push_checked(&mut packet, qos_flags)?;
+    packet.push(((topic_len >> 8) & 0xFF) as u8);
+    packet.push((topic_len & 0xFF) as u8);
+    packet.extend_from_slice(subscribe.topic_filter.as_bytes());
+    packet.push(qos_flags);
 
     Some(packet)
 }

@@ -1,8 +1,8 @@
-use heapless::Vec;
+use std::string::String;
+use std::vec::Vec;
+
 use sansio::Protocol;
-use sansio_mqtt_v5_contract::{
-    ConnectOptions, DisconnectReason, ProtocolError, SessionAction, TOPIC_CAPACITY,
-};
+use sansio_mqtt_v5_contract::{ConnectOptions, DisconnectReason, ProtocolError, SessionAction};
 use sansio_mqtt_v5_protocol::{MqttProtocol, ProtocolEvent};
 
 fn connect_options(connect_timeout_ms: u32, keep_alive_secs: Option<u16>) -> ConnectOptions {
@@ -13,8 +13,8 @@ fn connect_options(connect_timeout_ms: u32, keep_alive_secs: Option<u16>) -> Con
     }
 }
 
-fn bytes<const N: usize>(data: &[u8]) -> Vec<u8, N> {
-    Vec::from_slice(data).expect("test bytes must fit")
+fn bytes(data: &[u8]) -> Vec<u8> {
+    data.to_vec()
 }
 
 #[test]
@@ -112,8 +112,7 @@ fn puback_read_dispatches_ack_timeout_cancel() {
     let _ = Protocol::poll_write(&mut protocol);
     let _ = Protocol::handle_read(&mut protocol, bytes(&[0x20, 0x03, 0x00, 0x00, 0x00]));
 
-    let mut topic = heapless::String::<TOPIC_CAPACITY>::new();
-    assert!(topic.push_str("a/b").is_ok());
+    let topic = String::from("a/b");
     let publish = sansio_mqtt_v5_contract::PublishRequest {
         topic,
         qos: sansio_mqtt_v5_contract::Qos::AtLeast,
@@ -180,8 +179,7 @@ fn qos1_publish_read_sends_puback_and_dispatches_publish_received() {
         Some(bytes(&[0x40, 0x02, 0x00, 0x2A]))
     );
 
-    let mut topic = heapless::String::new();
-    assert!(topic.push_str("a/b").is_ok());
+    let topic = String::from("a/b");
     assert_eq!(
         Protocol::poll_event(&mut protocol),
         Some(SessionAction::PublishReceived {
@@ -222,8 +220,7 @@ fn qos2_publish_read_enters_pubrec_flow() {
         Some(bytes(&[0x70, 0x02, 0x12, 0x34]))
     );
 
-    let mut topic = heapless::String::new();
-    assert!(topic.push_str("a/b").is_ok());
+    let topic = String::from("a/b");
     assert_eq!(
         Protocol::poll_event(&mut protocol),
         Some(SessionAction::PublishReceived {
@@ -260,18 +257,9 @@ fn suback_read_parses_multi_byte_property_length() {
     let _ = Protocol::handle_event(&mut protocol, ProtocolEvent::Subscribe(subscribe));
     let _ = Protocol::poll_write(&mut protocol);
 
-    let mut packet = Vec::<u8, 256>::new();
-    assert!(packet.push(0x90).is_ok());
-    assert!(packet.push(0x85).is_ok());
-    assert!(packet.push(0x01).is_ok());
-    assert!(packet.push(0x00).is_ok());
-    assert!(packet.push(0x01).is_ok());
-    assert!(packet.push(0x80).is_ok());
-    assert!(packet.push(0x01).is_ok());
-    for _ in 0..128 {
-        assert!(packet.push(0x00).is_ok());
-    }
-    assert!(packet.push(0x00).is_ok());
+    let mut packet = vec![0x90, 0x85, 0x01, 0x00, 0x01, 0x80, 0x01];
+    packet.extend(vec![0x00; 128]);
+    packet.push(0x00);
 
     let result = Protocol::handle_read(&mut protocol, packet);
 

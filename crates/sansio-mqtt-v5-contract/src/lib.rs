@@ -1,6 +1,8 @@
 #![no_std]
 #![forbid(unsafe_code)]
 
+extern crate alloc;
+
 mod action;
 mod error;
 mod input;
@@ -10,9 +12,5 @@ mod timer;
 pub use action::{Action, SessionAction};
 pub use error::{DisconnectReason, OptionsError, ProtocolError};
 pub use input::Input;
-pub use options::{
-    ConnectOptions, PublishRequest, Qos, SubscribeRequest, PAYLOAD_CAPACITY,
-    SESSION_ACTION_PAYLOAD_CAPACITY, SESSION_ACTION_TOPIC_CAPACITY, SUBACK_REASON_CODES_CAPACITY,
-    TOPIC_CAPACITY,
-};
+pub use options::{ConnectOptions, PublishRequest, Qos, SubscribeRequest};
 pub use timer::TimerKey;

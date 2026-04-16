@@ -1,8 +1,7 @@
-use heapless::{String, Vec};
-use sansio_mqtt_v5_contract::{
-    PublishRequest, Qos, SubscribeRequest, SESSION_ACTION_PAYLOAD_CAPACITY,
-    SESSION_ACTION_TOPIC_CAPACITY,
-};
+use alloc::borrow::ToOwned;
+use alloc::string::String;
+use alloc::vec::Vec;
+use sansio_mqtt_v5_contract::{PublishRequest, Qos, SubscribeRequest};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Context {
@@ -37,8 +36,8 @@ pub struct PendingSubscribe {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PendingInboundQos2Publish {
     pub packet_id: u16,
-    pub topic: String<SESSION_ACTION_TOPIC_CAPACITY>,
-    pub payload: Vec<u8, SESSION_ACTION_PAYLOAD_CAPACITY>,
+    pub topic: String,
+    pub payload: Vec<u8>,
 }
 
 impl Context {
@@ -83,16 +82,11 @@ impl Context {
         });
     }
 
-    pub fn store_pending_inbound_qos2(
-        &mut self,
-        packet_id: u16,
-        topic: &String<SESSION_ACTION_TOPIC_CAPACITY>,
-        payload: &Vec<u8, SESSION_ACTION_PAYLOAD_CAPACITY>,
-    ) {
+    pub fn store_pending_inbound_qos2(&mut self, packet_id: u16, topic: &str, payload: &[u8]) {
         self.pending_inbound_qos2 = Some(PendingInboundQos2Publish {
             packet_id,
-            topic: topic.clone(),
-            payload: payload.clone(),
+            topic: topic.to_owned(),
+            payload: payload.to_vec(),
         });
     }
 }

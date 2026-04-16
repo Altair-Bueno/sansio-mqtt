@@ -29,6 +29,5 @@ nutype = { version = "0.6.1", default-features = false }
 vec1 = { version = "1.12.1", default-features = false }
 encode = { version = "0.2.2", default-features = false }
 rstest = { version = "0.25.0", default-features = false }
-heapless = { version = "0.8", default-features = false }
 sansio = { version = "1.0.1", default-features = false }
 futures = { version = "0.3", default-features = false }

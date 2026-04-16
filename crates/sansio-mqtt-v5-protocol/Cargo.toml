@@ -5,7 +5,6 @@ edition.workspace = true
 rust-version.workspace = true
 
 [dependencies]
-heapless = { workspace = true }
 sansio = { workspace = true, default-features = false }
 sansio-mqtt-v5-contract = { workspace = true, default-features = false }
 sansio-mqtt-v5-state-machine = { workspace = true, default-features = false }

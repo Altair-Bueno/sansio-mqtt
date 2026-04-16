@@ -1,7 +1,6 @@
 use sansio_mqtt_v5_contract::{
     Action, ConnectOptions, DisconnectReason, Input, ProtocolError, PublishRequest, SessionAction,
-    SubscribeRequest, TimerKey, SESSION_ACTION_PAYLOAD_CAPACITY, SESSION_ACTION_TOPIC_CAPACITY,
-    SUBACK_REASON_CODES_CAPACITY,
+    SubscribeRequest, TimerKey,
 };
 
 #[test]
@@ -40,12 +39,10 @@ fn input_contract_shape_and_basic_construction() {
     let user_disconnect = Input::UserDisconnect;
     assert!(matches!(user_disconnect, Input::UserDisconnect));
 
-    let mut topic = heapless::String::<SESSION_ACTION_TOPIC_CAPACITY>::new();
-    assert!(topic.push_str("sensors/temp").is_ok());
+    let topic = "sensors/temp".to_owned();
     let packet_publish = Input::PacketPublish {
         topic,
-        payload: heapless::Vec::<u8, SESSION_ACTION_PAYLOAD_CAPACITY>::from_slice(&[1, 2, 3])
-            .expect("fits"),
+        payload: vec![1, 2, 3],
         qos: sansio_mqtt_v5_contract::Qos::AtLeast,
         packet_id: Some(42),
     };
@@ -68,7 +65,7 @@ fn input_contract_shape_and_basic_construction() {
 
 #[test]
 fn action_contract_shape_and_basic_construction() {
-    let send_bytes = Action::SendBytes(heapless::Vec::from_slice(&[0x20, 0x00]).expect("fits"));
+    let send_bytes = Action::SendBytes(vec![0x20, 0x00]);
     assert!(matches!(send_bytes, Action::SendBytes(_)));
 
     let timer_action = Action::ScheduleTimer {
@@ -111,12 +108,11 @@ fn session_action_contract_shape_and_basic_construction() {
         }
     ));
 
-    let mut topic = heapless::String::<256>::new();
-    assert!(topic.push_str("sensors/temp").is_ok());
+    let topic = "sensors/temp".to_owned();
 
     let publish_received = SessionAction::PublishReceived {
         topic,
-        payload: heapless::Vec::from_slice(&[1, 2, 3]).expect("fits"),
+        payload: vec![1, 2, 3],
     };
     assert!(matches!(
         publish_received,
@@ -125,7 +121,7 @@ fn session_action_contract_shape_and_basic_construction() {
 
     let subscribe_ack = SessionAction::SubscribeAck {
         packet_id: 42,
-        reason_codes: heapless::Vec::from_slice(&[0x00]).expect("fits"),
+        reason_codes: vec![0x00],
     };
     assert!(matches!(
         subscribe_ack,
@@ -140,8 +136,7 @@ fn session_action_contract_shape_and_basic_construction() {
 fn suback_input_carries_reason_codes() {
     let suback = Input::PacketSubAck {
         packet_id: 7,
-        reason_codes: heapless::Vec::<u8, SUBACK_REASON_CODES_CAPACITY>::from_slice(&[0x00, 0x80])
-            .expect("fits"),
+        reason_codes: vec![0x00, 0x80],
     };
 
     assert!(matches!(
@@ -216,10 +211,10 @@ fn subscribe_request_single_accepts_valid_topic_filter() {
 }
 
 #[test]
-fn subscribe_request_single_returns_error_when_topic_filter_overflows() {
-    let overflow_filter = "a".repeat(257);
+fn subscribe_request_single_accepts_long_topic_filter() {
+    let long_filter = "a".repeat(2_048);
 
-    let request = SubscribeRequest::single(&overflow_filter);
+    let request = SubscribeRequest::single(&long_filter).expect("unbounded filter accepted");
 
-    assert!(request.is_err());
+    assert_eq!(request.topic_filter, long_filter);
 }

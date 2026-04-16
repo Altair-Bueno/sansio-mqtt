@@ -1,6 +1,8 @@
 #![no_std]
 #![forbid(unsafe_code)]
 
+extern crate alloc;
+
 mod context;
 mod states;
 mod transitions;
@@ -8,7 +10,7 @@ mod transitions;
 pub use context::Context;
 pub use states::MachineState;
 
-use heapless::Vec;
+use alloc::vec::Vec;
 use sansio_mqtt_v5_contract::{Action, Input};
 
 pub struct StateMachine {
@@ -24,7 +26,7 @@ impl StateMachine {
         }
     }
 
-    pub fn handle(&mut self, input: Input<'_>) -> Vec<Action, 8> {
+    pub fn handle(&mut self, input: Input<'_>) -> Vec<Action> {
         transitions::handle(&mut self.context, &mut self.state, input)
     }
 }

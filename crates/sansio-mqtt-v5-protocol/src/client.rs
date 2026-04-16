@@ -1,13 +1,13 @@
-use sansio_mqtt_v5_contract::ProtocolError;
+use alloc::collections::BTreeSet;
 
-use heapless::FnvIndexSet;
+use sansio_mqtt_v5_contract::ProtocolError;
 
 pub const DEFAULT_PACKET_ID_TRACKING_CAPACITY: usize = 1024;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ClientState<const N: usize = DEFAULT_PACKET_ID_TRACKING_CAPACITY> {
     next_packet_id: u16,
-    in_use: FnvIndexSet<u16, N>,
+    in_use: BTreeSet<u16>,
 }
 
 impl<const N: usize> ClientState<N> {
@@ -15,22 +15,25 @@ impl<const N: usize> ClientState<N> {
     pub fn new(next_packet_id: u16) -> Self {
         Self {
             next_packet_id,
-            in_use: FnvIndexSet::new(),
+            in_use: BTreeSet::new(),
         }
     }
 
     pub fn allocate_packet_id(&mut self) -> Result<u16, ProtocolError> {
+        if self.in_use.len() >= N {
+            return Err(ProtocolError::PacketIdExhausted);
+        }
+
         let mut attempts = 0u16;
         loop {
             let candidate = self.next_packet_id;
             self.bump_next_packet_id();
 
             if candidate != 0 && !self.in_use.contains(&candidate) {
-                return self
-                    .in_use
-                    .insert(candidate)
-                    .map(|_| candidate)
-                    .map_err(|_| ProtocolError::PacketIdExhausted);
+                let inserted = self.in_use.insert(candidate);
+                if inserted {
+                    return Ok(candidate);
+                }
             }
 
             if attempts == u16::MAX {

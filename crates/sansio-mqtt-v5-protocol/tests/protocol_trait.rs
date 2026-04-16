@@ -1,14 +1,16 @@
+use std::vec::Vec;
+
 use sansio::Protocol;
 use sansio_mqtt_v5_contract::{ProtocolError, SessionAction};
 use sansio_mqtt_v5_protocol::{MqttProtocol, ProtocolEvent};
 
 fn assert_protocol_impl<
     T: Protocol<
-        heapless::Vec<u8, 256>,
+        Vec<u8>,
         (),
         ProtocolEvent,
         Rout = (),
-        Wout = heapless::Vec<u8, 256>,
+        Wout = Vec<u8>,
         Eout = SessionAction,
         Error = ProtocolError,
         Time = u32,

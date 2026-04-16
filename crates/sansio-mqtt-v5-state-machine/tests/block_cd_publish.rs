@@ -1,6 +1,4 @@
-use sansio_mqtt_v5_contract::{
-    Action, ConnectOptions, Input, PublishRequest, Qos, TimerKey, TOPIC_CAPACITY,
-};
+use sansio_mqtt_v5_contract::{Action, ConnectOptions, Input, PublishRequest, Qos, TimerKey};
 use sansio_mqtt_v5_state_machine::StateMachine;
 
 const TOPIC: &str = "sensor/temp";
@@ -18,10 +16,8 @@ fn publish_with_qos(qos: Qos) -> PublishRequest {
         qos,
         ..PublishRequest::default()
     };
-    let mut topic = heapless::String::<TOPIC_CAPACITY>::new();
-    assert!(topic.push_str(TOPIC).is_ok());
-    publish.topic = topic;
-    assert!(publish.payload.push(PAYLOAD).is_ok());
+    publish.topic = TOPIC.to_owned();
+    publish.payload.push(PAYLOAD);
     publish
 }
 
@@ -161,7 +157,7 @@ fn qos0_publish_encodes_remaining_length_as_vbi_for_payload_over_127() {
     let mut publish = publish_with_qos(Qos::AtMost);
     publish.payload.clear();
     for _ in 0..130 {
-        assert!(publish.payload.push(PAYLOAD).is_ok());
+        publish.payload.push(PAYLOAD);
     }
 
     let actions = machine.handle(Input::UserPublish(publish));

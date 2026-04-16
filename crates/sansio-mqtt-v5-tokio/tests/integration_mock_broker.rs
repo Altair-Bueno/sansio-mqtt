@@ -264,10 +264,7 @@ fn publish_request(topic: &str, payload: &[u8], qos: Qos) -> PublishRequest {
         qos,
         ..PublishRequest::default()
     };
-    request.topic.push_str(topic).expect("topic fits");
-    request
-        .payload
-        .extend_from_slice(payload)
-        .expect("payload fits");
+    request.topic.push_str(topic);
+    request.payload.extend_from_slice(payload);
     request
 }

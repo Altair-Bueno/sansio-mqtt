@@ -1,6 +1,8 @@
 #![no_std]
 #![forbid(unsafe_code)]
 
+extern crate alloc;
+
 mod client;
 mod error;
 mod timer_queue;
@@ -9,11 +11,13 @@ pub use client::ClientState;
 pub use error::TimerQueueError;
 pub use timer_queue::TimerQueue;
 
-use heapless::{Deque, String, Vec};
+use alloc::collections::VecDeque;
+use alloc::string::String;
+use alloc::vec::Vec;
 use sansio::Protocol;
 use sansio_mqtt_v5_contract::{
     Action, ConnectOptions, Input, ProtocolError, PublishRequest, Qos, SessionAction,
-    SubscribeRequest, SESSION_ACTION_PAYLOAD_CAPACITY, SESSION_ACTION_TOPIC_CAPACITY,
+    SubscribeRequest,
 };
 use sansio_mqtt_v5_state_machine::StateMachine;
 
@@ -21,7 +25,7 @@ const TIMER_CAPACITY: usize = 8;
 const WRITE_QUEUE_CAPACITY: usize = 16;
 const EVENT_QUEUE_CAPACITY: usize = 16;
 
-type Frame = Vec<u8, 256>;
+type Frame = Vec<u8>;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[allow(clippy::large_enum_variant)] // Request payloads are intentionally inline in owned event variants.
@@ -36,8 +40,8 @@ pub struct MqttProtocol {
     client: ClientState,
     timers: TimerQueue<TIMER_CAPACITY>,
     machine: StateMachine,
-    write_queue: Deque<Frame, WRITE_QUEUE_CAPACITY>,
-    event_queue: Deque<SessionAction, EVENT_QUEUE_CAPACITY>,
+    write_queue: VecDeque<Frame>,
+    event_queue: VecDeque<SessionAction>,
     now_ms: u32,
 }
 
@@ -48,8 +52,8 @@ impl MqttProtocol {
             client: ClientState::new(1),
             timers: TimerQueue::new(),
             machine: StateMachine::new_default(),
-            write_queue: Deque::new(),
-            event_queue: Deque::new(),
+            write_queue: VecDeque::with_capacity(WRITE_QUEUE_CAPACITY),
+            event_queue: VecDeque::with_capacity(EVENT_QUEUE_CAPACITY),
             now_ms: 0,
         }
     }
@@ -73,14 +77,16 @@ impl MqttProtocol {
         for action in actions {
             match action {
                 Action::SendBytes(bytes) => {
-                    if self.write_queue.push_back(bytes.clone()).is_err() {
+                    if self.write_queue.len() >= WRITE_QUEUE_CAPACITY {
                         return Err(ProtocolError::UnexpectedPacket);
                     }
+                    self.write_queue.push_back(bytes.clone());
                 }
                 Action::SessionAction(session_action) => {
-                    if self.event_queue.push_back(session_action.clone()).is_err() {
+                    if self.event_queue.len() >= EVENT_QUEUE_CAPACITY {
                         return Err(ProtocolError::UnexpectedPacket);
                     }
+                    self.event_queue.push_back(session_action.clone());
                 }
                 Action::ScheduleTimer { key, delay_ms } => {
                     let deadline = self.now_ms.wrapping_add(*delay_ms);
@@ -267,12 +273,7 @@ fn decode_suback(bytes: &[u8]) -> Result<Input<'static>, ProtocolError> {
         return Err(ProtocolError::DecodeError);
     }
 
-    let mut reason_codes = Vec::new();
-    for code in bytes[reason_start..packet_end].iter().copied() {
-        reason_codes
-            .push(code)
-            .map_err(|_| ProtocolError::DecodeError)?;
-    }
+    let reason_codes = bytes[reason_start..packet_end].to_vec();
 
     Ok(Input::PacketSubAck {
         packet_id,
@@ -311,12 +312,9 @@ fn decode_publish(bytes: &[u8]) -> Result<Input<'static>, ProtocolError> {
         return Err(ProtocolError::DecodeError);
     }
 
-    let mut topic = String::<SESSION_ACTION_TOPIC_CAPACITY>::new();
     let topic_str = core::str::from_utf8(&bytes[topic_start..topic_end])
         .map_err(|_| ProtocolError::DecodeError)?;
-    topic
-        .push_str(topic_str)
-        .map_err(|_| ProtocolError::DecodeError)?;
+    let topic = String::from(topic_str);
 
     let mut cursor = topic_end;
 
@@ -344,10 +342,7 @@ fn decode_publish(bytes: &[u8]) -> Result<Input<'static>, ProtocolError> {
         return Err(ProtocolError::DecodeError);
     }
 
-    let mut payload = Vec::<u8, SESSION_ACTION_PAYLOAD_CAPACITY>::new();
-    for byte in bytes[payload_start..packet_end].iter().copied() {
-        payload.push(byte).map_err(|_| ProtocolError::DecodeError)?;
-    }
+    let payload = bytes[payload_start..packet_end].to_vec();
 
     Ok(Input::PacketPublish {
         topic,

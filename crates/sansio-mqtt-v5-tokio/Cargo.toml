@@ -8,7 +8,6 @@ rust-version.workspace = true
 sansio = { workspace = true, default-features = false }
 sansio-mqtt-v5-protocol = { workspace = true, default-features = false }
 sansio-mqtt-v5-contract = { workspace = true, default-features = false }
-heapless = { workspace = true, default-features = false }
 tokio = { workspace = true, features = ["macros", "net", "io-util", "rt", "sync", "time"] }
 tokio-util = { workspace = true, features = ["time"] }
 

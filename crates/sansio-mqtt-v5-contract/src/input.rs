@@ -1,9 +1,8 @@
+use alloc::string::String;
+use alloc::vec::Vec;
+
 use crate::timer::TimerKey;
-use crate::{
-    ConnectOptions, PublishRequest, Qos, SubscribeRequest, SESSION_ACTION_PAYLOAD_CAPACITY,
-    SESSION_ACTION_TOPIC_CAPACITY, SUBACK_REASON_CODES_CAPACITY,
-};
-use heapless::{String, Vec};
+use crate::{ConnectOptions, PublishRequest, Qos, SubscribeRequest};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[allow(clippy::large_enum_variant)] // Required Task 2 public API keeps request payloads inline.
@@ -24,14 +23,14 @@ pub enum Input<'a> {
         packet_id: u16,
     },
     PacketPublish {
-        topic: String<SESSION_ACTION_TOPIC_CAPACITY>,
-        payload: Vec<u8, SESSION_ACTION_PAYLOAD_CAPACITY>,
+        topic: String,
+        payload: Vec<u8>,
         qos: Qos,
         packet_id: Option<u16>,
     },
     PacketSubAck {
         packet_id: u16,
-        reason_codes: Vec<u8, SUBACK_REASON_CODES_CAPACITY>,
+        reason_codes: Vec<u8>,
     },
     TimerFired(TimerKey),
     UserConnect(ConnectOptions),
