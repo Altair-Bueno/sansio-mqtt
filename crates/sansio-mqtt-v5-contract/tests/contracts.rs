@@ -1,8 +1,10 @@
 use core::time::Duration;
+
 use sansio_mqtt_v5_contract::{
-    Action, ConnectOptions, Input, ProtocolError, PublishRequest, SubscribeRequest, TimerKey,
+    Action, ConnectOptions, Input, ProtocolError, PublishRequest, PublishRequestProperties,
+    SubscribeRequest, SubscribeRequestProperties, TimerKey,
 };
-use sansio_mqtt_v5_types::{DisconnectReasonCode, Qos};
+use sansio_mqtt_v5_types::{DisconnectReasonCode, Payload, Qos, Topic, Utf8String};
 
 #[test]
 fn exports_required_boundary_types() {
@@ -10,7 +12,9 @@ fn exports_required_boundary_types() {
     let _: Option<Input> = None;
     let _: Option<ConnectOptions> = None;
     let _: Option<PublishRequest> = None;
+    let _: Option<PublishRequestProperties> = None;
     let _: Option<SubscribeRequest> = None;
+    let _: Option<SubscribeRequestProperties> = None;
     let _: Option<TimerKey> = None;
     let _: Option<ProtocolError> = None;
 }
@@ -37,29 +41,6 @@ fn input_contract_shape_and_basic_construction() {
 
     let user_disconnect = Input::UserDisconnect;
     assert!(matches!(user_disconnect, Input::UserDisconnect));
-
-    let topic = "sensors/temp".to_owned();
-    let packet_publish = Input::PacketPublish {
-        topic,
-        payload: vec![1, 2, 3],
-        qos: Qos::AtLeastOnce,
-        packet_id: Some(42),
-    };
-    assert!(matches!(
-        packet_publish,
-        Input::PacketPublish {
-            topic: _,
-            payload: _,
-            qos: _,
-            packet_id: Some(42)
-        }
-    ));
-
-    let packet_pubrel = Input::PacketPubRel { packet_id: 42 };
-    assert!(matches!(
-        packet_pubrel,
-        Input::PacketPubRel { packet_id: 42 }
-    ));
 }
 
 #[test]
@@ -133,22 +114,6 @@ fn action_contract_shape_and_basic_construction() {
 }
 
 #[test]
-fn suback_input_carries_reason_codes() {
-    let suback = Input::PacketSubAck {
-        packet_id: 7,
-        reason_codes: vec![0x00, 0x80],
-    };
-
-    assert!(matches!(
-        suback,
-        Input::PacketSubAck {
-            packet_id: 7,
-            reason_codes: _
-        }
-    ));
-}
-
-#[test]
 fn timer_key_contract_shape() {
     assert!(matches!(TimerKey::Keepalive, TimerKey::Keepalive));
     assert!(matches!(
@@ -204,23 +169,24 @@ fn options_are_default_constructible() {
 }
 
 #[test]
-fn subscribe_request_holds_valid_topic_filter() {
+fn typed_request_fields_accept_strong_types() {
     let request = SubscribeRequest {
-        topic_filter: "sensors/temperature".to_owned(),
+        topic_filter: Utf8String::try_from("sensors/temperature").expect("valid utf8 string"),
         ..SubscribeRequest::default()
     };
 
-    assert_eq!(request.topic_filter.as_str(), "sensors/temperature");
-}
+    assert_eq!(request.topic_filter.to_string(), "sensors/temperature");
 
-#[test]
-fn subscribe_request_holds_long_topic_filter() {
-    let long_filter = "a".repeat(2_048);
-
-    let request = SubscribeRequest {
-        topic_filter: long_filter.clone(),
-        ..SubscribeRequest::default()
+    let publish = PublishRequest {
+        topic: Topic::try_from(
+            Utf8String::try_from("sensors/temperature").expect("valid utf8 string"),
+        )
+        .expect("valid topic"),
+        payload: Payload::from(vec![1, 2, 3]),
+        qos: Qos::AtMostOnce,
+        ..PublishRequest::default()
     };
 
-    assert_eq!(request.topic_filter, long_filter);
+    assert_eq!(publish.topic.to_string(), "sensors/temperature");
+    assert_eq!(publish.payload.as_ref().as_ref(), &[1, 2, 3]);
 }

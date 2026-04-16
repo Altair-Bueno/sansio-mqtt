@@ -1,9 +1,6 @@
-use sansio_mqtt_v5_contract::{
-    Action, ConnectOptions, Input, PublishRequest, SubscribeRequest, TimerKey,
-};
-use sansio_mqtt_v5_state_machine::StateMachine;
-use sansio_mqtt_v5_types::Qos;
-use std::string::String;
+use sansio_mqtt_v5_contract::{Action, ConnectOptions, PublishRequest, SubscribeRequest, TimerKey};
+use sansio_mqtt_v5_state_machine::{Event, StateMachine};
+use sansio_mqtt_v5_types::{Payload, Qos, Topic, Utf8String};
 
 const TOPIC: &str = "sensor/temp";
 const PAYLOAD: u8 = 0x2A;
@@ -11,8 +8,8 @@ const FILTER: &str = "sensor/#";
 
 fn connected_machine() -> StateMachine {
     let mut machine = StateMachine::new_default();
-    let _ = machine.handle(Input::UserConnect(ConnectOptions::default()));
-    let _ = machine.handle(Input::PacketConnAck);
+    let _ = machine.handle(Event::UserConnect(ConnectOptions::default()));
+    let _ = machine.handle(Event::PacketConnAck);
     machine
 }
 
@@ -21,14 +18,15 @@ fn publish_qos2() -> PublishRequest {
         qos: Qos::ExactlyOnce,
         ..PublishRequest::default()
     };
-    publish.topic = TOPIC.to_owned();
-    publish.payload.push(PAYLOAD);
+    publish.topic =
+        Topic::try_from(Utf8String::try_from(TOPIC).expect("valid utf8")).expect("valid topic");
+    publish.payload = Payload::from(vec![PAYLOAD]);
     publish
 }
 
 fn subscribe_request() -> SubscribeRequest {
     SubscribeRequest {
-        topic_filter: String::from(FILTER),
+        topic_filter: Utf8String::try_from(FILTER).expect("valid topic filter"),
         ..SubscribeRequest::default()
     }
 }
@@ -56,7 +54,7 @@ fn assert_publish_packet(bytes: &[u8], expected_header: u8, expected_packet_id: 
 fn qos2_happy_path_publishes_pubrel_and_completes() {
     let mut machine = connected_machine();
 
-    let publish_actions = machine.handle(Input::UserPublish(publish_qos2()));
+    let publish_actions = machine.handle(Event::UserPublish(publish_qos2()));
     assert_eq!(publish_actions.len(), 2);
     match &publish_actions[0] {
         Action::SendBytes(bytes) => assert_publish_packet(bytes.as_slice(), 0x34, 1),
@@ -70,7 +68,7 @@ fn qos2_happy_path_publishes_pubrel_and_completes() {
         }
     );
 
-    let pubrec_actions = machine.handle(Input::PacketPubRec { packet_id: 1 });
+    let pubrec_actions = machine.handle(Event::PacketPubRec { packet_id: 1 });
     assert_eq!(pubrec_actions.len(), 3);
     assert_eq!(
         pubrec_actions[0],
@@ -87,23 +85,23 @@ fn qos2_happy_path_publishes_pubrel_and_completes() {
         }
     );
 
-    let pubcomp_actions = machine.handle(Input::PacketPubComp { packet_id: 1 });
+    let pubcomp_actions = machine.handle(Event::PacketPubComp { packet_id: 1 });
     assert_eq!(pubcomp_actions.len(), 1);
     assert_eq!(
         pubcomp_actions[0],
         Action::CancelTimer(TimerKey::AckTimeout(1))
     );
 
-    let idle_actions = machine.handle(Input::UserPublish(PublishRequest::default()));
+    let idle_actions = machine.handle(Event::UserPublish(PublishRequest::default()));
     assert_eq!(idle_actions.len(), 1, "expected machine to return to idle");
 }
 
 #[test]
 fn qos2_ack_timeout_retries_in_both_waiting_stages() {
     let mut machine = connected_machine();
-    let _ = machine.handle(Input::UserPublish(publish_qos2()));
+    let _ = machine.handle(Event::UserPublish(publish_qos2()));
 
-    let waiting_pubrec = machine.handle(Input::TimerFired(TimerKey::AckTimeout(1)));
+    let waiting_pubrec = machine.handle(Event::TimerFired(TimerKey::AckTimeout(1)));
     assert_eq!(waiting_pubrec.len(), 2);
     match &waiting_pubrec[0] {
         Action::SendBytes(bytes) => assert_publish_packet(bytes.as_slice(), 0x3C, 1),
@@ -117,8 +115,8 @@ fn qos2_ack_timeout_retries_in_both_waiting_stages() {
         }
     );
 
-    let _ = machine.handle(Input::PacketPubRec { packet_id: 1 });
-    let waiting_pubcomp = machine.handle(Input::TimerFired(TimerKey::AckTimeout(1)));
+    let _ = machine.handle(Event::PacketPubRec { packet_id: 1 });
+    let waiting_pubcomp = machine.handle(Event::TimerFired(TimerKey::AckTimeout(1)));
     assert_eq!(waiting_pubcomp.len(), 2);
     assert!(
         matches!(&waiting_pubcomp[0], Action::SendBytes(bytes) if bytes.as_slice() == [0x62, 0x02, 0x00, 0x01])
@@ -136,7 +134,7 @@ fn qos2_ack_timeout_retries_in_both_waiting_stages() {
 fn subscribe_and_suback_cancel_timer_and_emit_session_action() {
     let mut machine = connected_machine();
 
-    let subscribe_actions = machine.handle(Input::UserSubscribe(subscribe_request()));
+    let subscribe_actions = machine.handle(Event::UserSubscribe(subscribe_request()));
     assert_eq!(subscribe_actions.len(), 2);
     assert!(matches!(
         &subscribe_actions[0],
@@ -150,7 +148,7 @@ fn subscribe_and_suback_cancel_timer_and_emit_session_action() {
         }
     );
 
-    let suback_actions = machine.handle(Input::PacketSubAck {
+    let suback_actions = machine.handle(Event::PacketSubAck {
         packet_id: 1,
         reason_codes: suback_reason_codes(0x00),
     });
@@ -171,9 +169,9 @@ fn subscribe_and_suback_cancel_timer_and_emit_session_action() {
 #[test]
 fn suback_reason_codes_preserve_success_and_failure_values() {
     let mut success_machine = connected_machine();
-    let _ = success_machine.handle(Input::UserSubscribe(subscribe_request()));
+    let _ = success_machine.handle(Event::UserSubscribe(subscribe_request()));
 
-    let success_actions = success_machine.handle(Input::PacketSubAck {
+    let success_actions = success_machine.handle(Event::PacketSubAck {
         packet_id: 1,
         reason_codes: suback_reason_codes(0x01),
     });
@@ -187,9 +185,9 @@ fn suback_reason_codes_preserve_success_and_failure_values() {
     );
 
     let mut failure_machine = connected_machine();
-    let _ = failure_machine.handle(Input::UserSubscribe(subscribe_request()));
+    let _ = failure_machine.handle(Event::UserSubscribe(subscribe_request()));
 
-    let failure_actions = failure_machine.handle(Input::PacketSubAck {
+    let failure_actions = failure_machine.handle(Event::PacketSubAck {
         packet_id: 1,
         reason_codes: suback_reason_codes(0x80),
     });
@@ -207,14 +205,14 @@ fn suback_reason_codes_preserve_success_and_failure_values() {
 fn subscribe_ack_timeout_retries_subscribe_with_dup_and_rearms_timer() {
     let mut machine = connected_machine();
 
-    let subscribe_actions = machine.handle(Input::UserSubscribe(subscribe_request()));
+    let subscribe_actions = machine.handle(Event::UserSubscribe(subscribe_request()));
     assert_eq!(subscribe_actions.len(), 2);
     let subscribe_packet = match &subscribe_actions[0] {
         Action::SendBytes(bytes) => bytes.as_slice().to_vec(),
         action => panic!("expected send bytes action, got {action:?}"),
     };
 
-    let timeout_actions = machine.handle(Input::TimerFired(TimerKey::AckTimeout(1)));
+    let timeout_actions = machine.handle(Event::TimerFired(TimerKey::AckTimeout(1)));
     assert_eq!(timeout_actions.len(), 2);
     assert!(matches!(&timeout_actions[0], Action::SendBytes(bytes) if {
         let packet = bytes.as_slice();
@@ -233,10 +231,10 @@ fn subscribe_ack_timeout_retries_subscribe_with_dup_and_rearms_timer() {
 fn duplicate_pubrec_while_waiting_for_pubcomp_retries_pubrel_and_rearms_timer() {
     let mut machine = connected_machine();
 
-    let _ = machine.handle(Input::UserPublish(publish_qos2()));
-    let _ = machine.handle(Input::PacketPubRec { packet_id: 1 });
+    let _ = machine.handle(Event::UserPublish(publish_qos2()));
+    let _ = machine.handle(Event::PacketPubRec { packet_id: 1 });
 
-    let duplicate_pubrec_actions = machine.handle(Input::PacketPubRec { packet_id: 1 });
+    let duplicate_pubrec_actions = machine.handle(Event::PacketPubRec { packet_id: 1 });
     assert_eq!(duplicate_pubrec_actions.len(), 2);
     assert!(
         matches!(&duplicate_pubrec_actions[0], Action::SendBytes(bytes) if bytes.as_slice() == [0x62, 0x02, 0x00, 0x01])

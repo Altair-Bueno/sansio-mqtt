@@ -1,10 +1,11 @@
+use alloc::string::ToString;
 use alloc::vec::Vec;
-use sansio_mqtt_v5_contract::{Action, Input, PublishRequest, SubscribeRequest, TimerKey};
+use sansio_mqtt_v5_contract::{Action, PublishRequest, SubscribeRequest, TimerKey};
 use sansio_mqtt_v5_types::Qos;
 
-use crate::{Context, MachineState};
+use crate::{Context, Event, MachineState};
 
-pub fn handle(context: &mut Context, state: &mut MachineState, input: Input<'_>) -> Vec<Action> {
+pub fn handle(context: &mut Context, state: &mut MachineState, input: Event) -> Vec<Action> {
     let mut actions = Vec::new();
 
     match (&*state, input) {
@@ -15,7 +16,7 @@ pub fn handle(context: &mut Context, state: &mut MachineState, input: Input<'_>)
             | MachineState::WaitingForPubRec { .. }
             | MachineState::WaitingForPubComp { .. }
             | MachineState::WaitingForSubAck { .. },
-            Input::UserDisconnect,
+            Event::UserDisconnect,
         ) => {
             let disconnect = packet_disconnect();
             actions.push(Action::SendBytes(disconnect));
@@ -50,14 +51,17 @@ pub fn handle(context: &mut Context, state: &mut MachineState, input: Input<'_>)
             | MachineState::WaitingForPubRec { .. }
             | MachineState::WaitingForPubComp { .. }
             | MachineState::WaitingForSubAck { .. },
-            Input::PacketPublish {
+            Event::PacketPublish {
                 topic,
                 payload,
                 qos: Qos::AtMostOnce,
                 ..
             },
         ) => {
-            actions.push(Action::PublishReceived { topic, payload });
+            actions.push(Action::PublishReceived {
+                topic: topic.to_string(),
+                payload: payload.as_ref().as_ref().to_vec(),
+            });
         }
         (
             MachineState::Idle
@@ -66,12 +70,12 @@ pub fn handle(context: &mut Context, state: &mut MachineState, input: Input<'_>)
             | MachineState::WaitingForPubRec { .. }
             | MachineState::WaitingForPubComp { .. }
             | MachineState::WaitingForSubAck { .. },
-            Input::PacketPublish {
+            Event::PacketPublish {
                 qos: Qos::AtLeastOnce,
                 packet_id: None,
                 ..
             }
-            | Input::PacketPublish {
+            | Event::PacketPublish {
                 qos: Qos::ExactlyOnce,
                 packet_id: None,
                 ..
@@ -89,7 +93,7 @@ pub fn handle(context: &mut Context, state: &mut MachineState, input: Input<'_>)
             | MachineState::WaitingForPubRec { .. }
             | MachineState::WaitingForPubComp { .. }
             | MachineState::WaitingForSubAck { .. },
-            Input::PacketPublish {
+            Event::PacketPublish {
                 topic,
                 payload,
                 qos: Qos::AtLeastOnce,
@@ -97,7 +101,10 @@ pub fn handle(context: &mut Context, state: &mut MachineState, input: Input<'_>)
             },
         ) => {
             actions.push(Action::SendBytes(packet_puback(packet_id)));
-            actions.push(Action::PublishReceived { topic, payload });
+            actions.push(Action::PublishReceived {
+                topic: topic.to_string(),
+                payload: payload.as_ref().as_ref().to_vec(),
+            });
         }
         (
             MachineState::Idle
@@ -106,7 +113,7 @@ pub fn handle(context: &mut Context, state: &mut MachineState, input: Input<'_>)
             | MachineState::WaitingForPubRec { .. }
             | MachineState::WaitingForPubComp { .. }
             | MachineState::WaitingForSubAck { .. },
-            Input::PacketPublish {
+            Event::PacketPublish {
                 topic,
                 payload,
                 qos: Qos::ExactlyOnce,
@@ -123,20 +130,20 @@ pub fn handle(context: &mut Context, state: &mut MachineState, input: Input<'_>)
             | MachineState::WaitingForPubRec { .. }
             | MachineState::WaitingForPubComp { .. }
             | MachineState::WaitingForSubAck { .. },
-            Input::PacketPubRel { packet_id },
+            Event::PacketPubRel { packet_id },
         ) => {
             if let Some(pending) = &context.pending_inbound_qos2 {
                 if pending.packet_id == packet_id {
                     actions.push(Action::SendBytes(packet_pubcomp(packet_id)));
                     actions.push(Action::PublishReceived {
-                        topic: pending.topic.clone(),
-                        payload: pending.payload.clone(),
+                        topic: pending.topic.to_string(),
+                        payload: pending.payload.as_ref().as_ref().to_vec(),
                     });
                     context.pending_inbound_qos2 = None;
                 }
             }
         }
-        (MachineState::Disconnected, Input::UserConnect(connect_options)) => {
+        (MachineState::Disconnected, Event::UserConnect(connect_options)) => {
             context.set_keepalive_from_duration(connect_options.keep_alive);
 
             actions.push(Action::SendBytes(Vec::from([0x10, 0x00])));
@@ -148,7 +155,7 @@ pub fn handle(context: &mut Context, state: &mut MachineState, input: Input<'_>)
 
             *state = MachineState::Connecting;
         }
-        (MachineState::Connecting, Input::PacketConnAck) => {
+        (MachineState::Connecting, Event::PacketConnAck) => {
             actions.push(Action::CancelTimer(TimerKey::ConnectTimeout));
             if context.keepalive_delay_ms > 0 {
                 actions.push(Action::ScheduleTimer {
@@ -159,7 +166,7 @@ pub fn handle(context: &mut Context, state: &mut MachineState, input: Input<'_>)
             *state = MachineState::Idle;
         }
         // [MQTT-3.12.4-1] Clients send PINGREQ to indicate liveliness.
-        (MachineState::Idle, Input::TimerFired(TimerKey::Keepalive)) => {
+        (MachineState::Idle, Event::TimerFired(TimerKey::Keepalive)) => {
             let pingreq = packet_pingreq();
             actions.push(Action::SendBytes(pingreq));
             actions.push(Action::ScheduleTimer {
@@ -169,7 +176,7 @@ pub fn handle(context: &mut Context, state: &mut MachineState, input: Input<'_>)
             *state = MachineState::WaitingForPingResp;
         }
         // [MQTT-3.13.4-1] PINGRESP acknowledges a PINGREQ.
-        (MachineState::WaitingForPingResp, Input::PacketPingResp) => {
+        (MachineState::WaitingForPingResp, Event::PacketPingResp) => {
             actions.push(Action::CancelTimer(TimerKey::PingRespTimeout));
             if context.keepalive_delay_ms > 0 {
                 actions.push(Action::ScheduleTimer {
@@ -179,18 +186,18 @@ pub fn handle(context: &mut Context, state: &mut MachineState, input: Input<'_>)
             }
             *state = MachineState::Idle;
         }
-        (MachineState::WaitingForPingResp, Input::TimerFired(TimerKey::PingRespTimeout)) => {
+        (MachineState::WaitingForPingResp, Event::TimerFired(TimerKey::PingRespTimeout)) => {
             let disconnect = packet_disconnect();
             actions.push(Action::SendBytes(disconnect));
             actions.push(Action::DisconnectedByTimeout);
             *state = MachineState::Disconnected;
         }
-        (MachineState::Idle, Input::UserPublish(publish)) if publish.qos == Qos::AtMostOnce => {
+        (MachineState::Idle, Event::UserPublish(publish)) if publish.qos == Qos::AtMostOnce => {
             if let Some(packet) = packet_publish(&publish, None, false) {
                 actions.push(Action::SendBytes(packet));
             }
         }
-        (MachineState::Idle, Input::UserPublish(publish)) if publish.qos == Qos::AtLeastOnce => {
+        (MachineState::Idle, Event::UserPublish(publish)) if publish.qos == Qos::AtLeastOnce => {
             let packet_id = context.allocate_packet_id();
             if let Some(packet) = packet_publish(&publish, Some(packet_id), false) {
                 actions.push(Action::SendBytes(packet));
@@ -202,7 +209,7 @@ pub fn handle(context: &mut Context, state: &mut MachineState, input: Input<'_>)
                 *state = MachineState::WaitingForPubAck { packet_id };
             }
         }
-        (MachineState::Idle, Input::UserPublish(publish)) if publish.qos == Qos::ExactlyOnce => {
+        (MachineState::Idle, Event::UserPublish(publish)) if publish.qos == Qos::ExactlyOnce => {
             let packet_id = context.allocate_packet_id();
             if let Some(packet) = packet_publish(&publish, Some(packet_id), false) {
                 actions.push(Action::SendBytes(packet));
@@ -214,7 +221,7 @@ pub fn handle(context: &mut Context, state: &mut MachineState, input: Input<'_>)
                 *state = MachineState::WaitingForPubRec { packet_id };
             }
         }
-        (MachineState::Idle, Input::UserSubscribe(subscribe)) => {
+        (MachineState::Idle, Event::UserSubscribe(subscribe)) => {
             let packet_id = context.allocate_packet_id();
             if let Some(packet) = packet_subscribe(&subscribe, packet_id, false) {
                 actions.push(Action::SendBytes(packet));
@@ -228,7 +235,7 @@ pub fn handle(context: &mut Context, state: &mut MachineState, input: Input<'_>)
         }
         (
             MachineState::WaitingForPubAck { packet_id },
-            Input::PacketPubAck { packet_id: ack_id },
+            Event::PacketPubAck { packet_id: ack_id },
         ) if packet_id == &ack_id => {
             actions.push(Action::CancelTimer(TimerKey::AckTimeout(ack_id)));
             context.pending_qos1 = None;
@@ -236,7 +243,7 @@ pub fn handle(context: &mut Context, state: &mut MachineState, input: Input<'_>)
         }
         (
             MachineState::WaitingForPubAck { packet_id },
-            Input::TimerFired(TimerKey::AckTimeout(timeout_id)),
+            Event::TimerFired(TimerKey::AckTimeout(timeout_id)),
         ) if packet_id == &timeout_id => {
             if let Some(pending) = &context.pending_qos1 {
                 if let Some(packet) = packet_publish(&pending.publish, Some(*packet_id), true) {
@@ -250,7 +257,7 @@ pub fn handle(context: &mut Context, state: &mut MachineState, input: Input<'_>)
         }
         (
             MachineState::WaitingForPubRec { packet_id },
-            Input::PacketPubRec { packet_id: rec_id },
+            Event::PacketPubRec { packet_id: rec_id },
         ) if packet_id == &rec_id => {
             actions.push(Action::CancelTimer(TimerKey::AckTimeout(rec_id)));
             let packet = packet_pubrel(rec_id);
@@ -263,7 +270,7 @@ pub fn handle(context: &mut Context, state: &mut MachineState, input: Input<'_>)
         }
         (
             MachineState::WaitingForPubRec { packet_id },
-            Input::TimerFired(TimerKey::AckTimeout(timeout_id)),
+            Event::TimerFired(TimerKey::AckTimeout(timeout_id)),
         ) if packet_id == &timeout_id => {
             if let Some(pending) = &context.pending_qos2 {
                 if let Some(packet) = packet_publish(&pending.publish, Some(*packet_id), true) {
@@ -277,7 +284,7 @@ pub fn handle(context: &mut Context, state: &mut MachineState, input: Input<'_>)
         }
         (
             MachineState::WaitingForPubComp { packet_id },
-            Input::PacketPubRec { packet_id: rec_id },
+            Event::PacketPubRec { packet_id: rec_id },
         ) if packet_id == &rec_id => {
             let packet = packet_pubrel(rec_id);
             actions.push(Action::SendBytes(packet));
@@ -288,7 +295,7 @@ pub fn handle(context: &mut Context, state: &mut MachineState, input: Input<'_>)
         }
         (
             MachineState::WaitingForSubAck { packet_id },
-            Input::TimerFired(TimerKey::AckTimeout(timeout_id)),
+            Event::TimerFired(TimerKey::AckTimeout(timeout_id)),
         ) if packet_id == &timeout_id => {
             if let Some(pending) = &context.pending_subscribe {
                 if let Some(packet) = packet_subscribe(&pending.request, *packet_id, true) {
@@ -302,7 +309,7 @@ pub fn handle(context: &mut Context, state: &mut MachineState, input: Input<'_>)
         }
         (
             MachineState::WaitingForPubComp { packet_id },
-            Input::PacketPubComp { packet_id: comp_id },
+            Event::PacketPubComp { packet_id: comp_id },
         ) if packet_id == &comp_id => {
             actions.push(Action::CancelTimer(TimerKey::AckTimeout(comp_id)));
             context.pending_qos2 = None;
@@ -310,7 +317,7 @@ pub fn handle(context: &mut Context, state: &mut MachineState, input: Input<'_>)
         }
         (
             MachineState::WaitingForPubComp { packet_id },
-            Input::TimerFired(TimerKey::AckTimeout(timeout_id)),
+            Event::TimerFired(TimerKey::AckTimeout(timeout_id)),
         ) if packet_id == &timeout_id => {
             let packet = packet_pubrel(*packet_id);
             actions.push(Action::SendBytes(packet));
@@ -321,7 +328,7 @@ pub fn handle(context: &mut Context, state: &mut MachineState, input: Input<'_>)
         }
         (
             MachineState::WaitingForSubAck { packet_id },
-            Input::PacketSubAck {
+            Event::PacketSubAck {
                 packet_id: ack_id,
                 reason_codes,
             },
@@ -380,7 +387,7 @@ fn packet_publish(
     // [MQTT-3.3.2-1] Property Length is present in MQTT v5 PUBLISH variable header.
     packet.push(0x00);
 
-    packet.extend_from_slice(publish.payload.as_slice());
+    packet.extend_from_slice(publish.payload.as_ref().as_ref());
 
     Some(packet)
 }

@@ -12,5 +12,8 @@ mod timer;
 pub use action::Action;
 pub use error::ProtocolError;
 pub use input::Input;
-pub use options::{ConnectOptions, PublishRequest, SubscribeRequest};
+pub use options::{
+    ConnectOptions, PublishRequest, PublishRequestProperties, SubscribeRequest,
+    SubscribeRequestProperties,
+};
 pub use timer::TimerKey;

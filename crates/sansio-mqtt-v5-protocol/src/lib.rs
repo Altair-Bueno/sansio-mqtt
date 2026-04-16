@@ -16,16 +16,85 @@ use alloc::string::String;
 use alloc::vec::Vec;
 use sansio::Protocol;
 use sansio_mqtt_v5_contract::{
-    Action, ConnectOptions, Input, ProtocolError, PublishRequest, SubscribeRequest,
+    Action, ConnectOptions, ProtocolError, PublishRequest, SubscribeRequest, TimerKey,
 };
-use sansio_mqtt_v5_state_machine::StateMachine;
-use sansio_mqtt_v5_types::Qos;
+use sansio_mqtt_v5_state_machine::{Event as StateMachineEvent, StateMachine};
+use sansio_mqtt_v5_types::{Payload, Qos, Topic, Utf8String};
 
 const TIMER_CAPACITY: usize = 8;
 const WRITE_QUEUE_CAPACITY: usize = 16;
 const EVENT_QUEUE_CAPACITY: usize = 16;
 
 type Frame = Vec<u8>;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum InternalEvent {
+    TimerFired(TimerKey),
+    UserConnect(ConnectOptions),
+    UserPublish(PublishRequest),
+    UserSubscribe(SubscribeRequest),
+    UserDisconnect,
+    PacketConnAck,
+    PacketPingResp,
+    PacketPubAck {
+        packet_id: u16,
+    },
+    PacketPubRec {
+        packet_id: u16,
+    },
+    PacketPubRel {
+        packet_id: u16,
+    },
+    PacketPubComp {
+        packet_id: u16,
+    },
+    PacketSubAck {
+        packet_id: u16,
+        reason_codes: Vec<u8>,
+    },
+    PacketPublish {
+        topic: Topic,
+        payload: Payload,
+        qos: Qos,
+        packet_id: Option<u16>,
+    },
+}
+
+impl From<InternalEvent> for StateMachineEvent {
+    fn from(value: InternalEvent) -> Self {
+        match value {
+            InternalEvent::TimerFired(key) => Self::TimerFired(key),
+            InternalEvent::UserConnect(options) => Self::UserConnect(options),
+            InternalEvent::UserPublish(request) => Self::UserPublish(request),
+            InternalEvent::UserSubscribe(request) => Self::UserSubscribe(request),
+            InternalEvent::UserDisconnect => Self::UserDisconnect,
+            InternalEvent::PacketConnAck => Self::PacketConnAck,
+            InternalEvent::PacketPingResp => Self::PacketPingResp,
+            InternalEvent::PacketPubAck { packet_id } => Self::PacketPubAck { packet_id },
+            InternalEvent::PacketPubRec { packet_id } => Self::PacketPubRec { packet_id },
+            InternalEvent::PacketPubRel { packet_id } => Self::PacketPubRel { packet_id },
+            InternalEvent::PacketPubComp { packet_id } => Self::PacketPubComp { packet_id },
+            InternalEvent::PacketSubAck {
+                packet_id,
+                reason_codes,
+            } => Self::PacketSubAck {
+                packet_id,
+                reason_codes,
+            },
+            InternalEvent::PacketPublish {
+                topic,
+                payload,
+                qos,
+                packet_id,
+            } => Self::PacketPublish {
+                topic,
+                payload,
+                qos,
+                packet_id,
+            },
+        }
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ProtocolEvent {
@@ -67,8 +136,8 @@ impl MqttProtocol {
         &self.timers
     }
 
-    fn dispatch_input(&mut self, input: Input<'_>) -> Result<(), ProtocolError> {
-        let actions = self.machine.handle(input);
+    fn dispatch_input(&mut self, input: InternalEvent) -> Result<(), ProtocolError> {
+        let actions = self.machine.handle(input.into());
         self.apply_actions(&actions)
     }
 
@@ -141,10 +210,16 @@ impl Protocol<Frame, (), ProtocolEvent> for MqttProtocol {
 
     fn handle_event(&mut self, evt: ProtocolEvent) -> Result<(), Self::Error> {
         match evt {
-            ProtocolEvent::Connect(options) => self.dispatch_input(Input::UserConnect(options)),
-            ProtocolEvent::Publish(request) => self.dispatch_input(Input::UserPublish(request)),
-            ProtocolEvent::Subscribe(request) => self.dispatch_input(Input::UserSubscribe(request)),
-            ProtocolEvent::Disconnect => self.dispatch_input(Input::UserDisconnect),
+            ProtocolEvent::Connect(options) => {
+                self.dispatch_input(InternalEvent::UserConnect(options))
+            }
+            ProtocolEvent::Publish(request) => {
+                self.dispatch_input(InternalEvent::UserPublish(request))
+            }
+            ProtocolEvent::Subscribe(request) => {
+                self.dispatch_input(InternalEvent::UserSubscribe(request))
+            }
+            ProtocolEvent::Disconnect => self.dispatch_input(InternalEvent::UserDisconnect),
         }
     }
 
@@ -156,7 +231,7 @@ impl Protocol<Frame, (), ProtocolEvent> for MqttProtocol {
         self.now_ms = now;
 
         while let Some(key) = self.timers.expired(now) {
-            self.dispatch_input(Input::TimerFired(key))?;
+            self.dispatch_input(InternalEvent::TimerFired(key))?;
         }
 
         Ok(())
@@ -175,7 +250,7 @@ pub trait ProtocolAnchor: Protocol<Frame, (), ProtocolEvent> {}
 
 impl<T> ProtocolAnchor for T where T: Protocol<Frame, (), ProtocolEvent> {}
 
-fn decode_input(bytes: &[u8]) -> Result<Input<'static>, ProtocolError> {
+fn decode_input(bytes: &[u8]) -> Result<InternalEvent, ProtocolError> {
     if bytes.is_empty() {
         return Err(ProtocolError::DecodeError);
     }
@@ -187,32 +262,32 @@ fn decode_input(bytes: &[u8]) -> Result<Input<'static>, ProtocolError> {
             if header_flags != 0 {
                 return Err(ProtocolError::DecodeError);
             }
-            Ok(Input::PacketConnAck)
+            Ok(InternalEvent::PacketConnAck)
         }
         3 => decode_publish(bytes),
         4 => {
             if header_flags != 0 {
                 return Err(ProtocolError::DecodeError);
             }
-            decode_ack_packet_id(bytes).map(|packet_id| Input::PacketPubAck { packet_id })
+            decode_ack_packet_id(bytes).map(|packet_id| InternalEvent::PacketPubAck { packet_id })
         }
         5 => {
             if header_flags != 0 {
                 return Err(ProtocolError::DecodeError);
             }
-            decode_ack_packet_id(bytes).map(|packet_id| Input::PacketPubRec { packet_id })
+            decode_ack_packet_id(bytes).map(|packet_id| InternalEvent::PacketPubRec { packet_id })
         }
         6 => {
             if header_flags != 0b0010 {
                 return Err(ProtocolError::DecodeError);
             }
-            decode_ack_packet_id(bytes).map(|packet_id| Input::PacketPubRel { packet_id })
+            decode_ack_packet_id(bytes).map(|packet_id| InternalEvent::PacketPubRel { packet_id })
         }
         7 => {
             if header_flags != 0 {
                 return Err(ProtocolError::DecodeError);
             }
-            decode_ack_packet_id(bytes).map(|packet_id| Input::PacketPubComp { packet_id })
+            decode_ack_packet_id(bytes).map(|packet_id| InternalEvent::PacketPubComp { packet_id })
         }
         9 => {
             if header_flags != 0 {
@@ -224,7 +299,7 @@ fn decode_input(bytes: &[u8]) -> Result<Input<'static>, ProtocolError> {
             if header_flags != 0 {
                 return Err(ProtocolError::DecodeError);
             }
-            Ok(Input::PacketPingResp)
+            Ok(InternalEvent::PacketPingResp)
         }
         _ => Err(ProtocolError::DecodeError),
     }
@@ -248,7 +323,7 @@ fn decode_ack_packet_id(bytes: &[u8]) -> Result<u16, ProtocolError> {
     read_u16(bytes, variable_header_start)
 }
 
-fn decode_suback(bytes: &[u8]) -> Result<Input<'static>, ProtocolError> {
+fn decode_suback(bytes: &[u8]) -> Result<InternalEvent, ProtocolError> {
     let (remaining_len, remaining_len_bytes) = decode_variable_byte_integer(&bytes[1..])?;
     let variable_header_start = 1usize
         .checked_add(remaining_len_bytes)
@@ -280,13 +355,13 @@ fn decode_suback(bytes: &[u8]) -> Result<Input<'static>, ProtocolError> {
 
     let reason_codes = bytes[reason_start..packet_end].to_vec();
 
-    Ok(Input::PacketSubAck {
+    Ok(InternalEvent::PacketSubAck {
         packet_id,
         reason_codes,
     })
 }
 
-fn decode_publish(bytes: &[u8]) -> Result<Input<'static>, ProtocolError> {
+fn decode_publish(bytes: &[u8]) -> Result<InternalEvent, ProtocolError> {
     // [MQTT-3.3.1-1] QoS is encoded in bits 2 and 1 of the fixed header.
     let qos = match (bytes[0] >> 1) & 0x03 {
         0 => Qos::AtMostOnce,
@@ -319,7 +394,9 @@ fn decode_publish(bytes: &[u8]) -> Result<Input<'static>, ProtocolError> {
 
     let topic_str = core::str::from_utf8(&bytes[topic_start..topic_end])
         .map_err(|_| ProtocolError::DecodeError)?;
-    let topic = String::from(topic_str);
+    let topic_utf8 =
+        Utf8String::try_from(String::from(topic_str)).map_err(|_| ProtocolError::DecodeError)?;
+    let topic = Topic::try_from(topic_utf8).map_err(|_| ProtocolError::DecodeError)?;
 
     let mut cursor = topic_end;
 
@@ -347,9 +424,9 @@ fn decode_publish(bytes: &[u8]) -> Result<Input<'static>, ProtocolError> {
         return Err(ProtocolError::DecodeError);
     }
 
-    let payload = bytes[payload_start..packet_end].to_vec();
+    let payload = Payload::from(bytes[payload_start..packet_end].to_vec());
 
-    Ok(Input::PacketPublish {
+    Ok(InternalEvent::PacketPublish {
         topic,
         payload,
         qos,

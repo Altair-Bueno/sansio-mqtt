@@ -1,10 +1,10 @@
 use std::io;
-use std::string::String;
 use std::time::Duration;
 
 use sansio_mqtt_v5_tokio::{
     Action, ConnectOptions, PublishRequest, Qos, SubscribeRequest, TokioClient,
 };
+use sansio_mqtt_v5_types::{Payload, Topic, Utf8String};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::time::timeout;
@@ -26,7 +26,7 @@ async fn connect_then_subscribe_and_receive_publish_event() {
 
     client
         .subscribe(SubscribeRequest {
-            topic_filter: String::from("a/#"),
+            topic_filter: Utf8String::try_from("a/#").expect("valid topic filter"),
             ..SubscribeRequest::default()
         })
         .await
@@ -264,11 +264,12 @@ fn decode_remaining_length(encoded: &[u8]) -> io::Result<(usize, usize)> {
 }
 
 fn publish_request(topic: &str, payload: &[u8], qos: Qos) -> PublishRequest {
-    let mut request = PublishRequest {
+    let topic_utf8 = Utf8String::try_from(topic.to_owned()).expect("valid utf8");
+
+    PublishRequest {
+        topic: Topic::try_from(topic_utf8).expect("valid topic"),
+        payload: Payload::from(payload.to_vec()),
         qos,
         ..PublishRequest::default()
-    };
-    request.topic.push_str(topic);
-    request.payload.extend_from_slice(payload);
-    request
+    }
 }

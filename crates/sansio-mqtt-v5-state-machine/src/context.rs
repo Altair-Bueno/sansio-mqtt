@@ -1,10 +1,7 @@
-use alloc::borrow::ToOwned;
-use alloc::string::String;
-use alloc::vec::Vec;
 use core::time::Duration;
 
 use sansio_mqtt_v5_contract::{PublishRequest, SubscribeRequest};
-use sansio_mqtt_v5_types::Qos;
+use sansio_mqtt_v5_types::{Payload, Qos, Topic};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Context {
@@ -39,8 +36,8 @@ pub struct PendingSubscribe {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PendingInboundQos2Publish {
     pub packet_id: u16,
-    pub topic: String,
-    pub payload: Vec<u8>,
+    pub topic: Topic,
+    pub payload: Payload,
 }
 
 impl Context {
@@ -88,11 +85,11 @@ impl Context {
         });
     }
 
-    pub fn store_pending_inbound_qos2(&mut self, packet_id: u16, topic: &str, payload: &[u8]) {
+    pub fn store_pending_inbound_qos2(&mut self, packet_id: u16, topic: &Topic, payload: &Payload) {
         self.pending_inbound_qos2 = Some(PendingInboundQos2Publish {
             packet_id,
-            topic: topic.to_owned(),
-            payload: payload.to_vec(),
+            topic: topic.clone(),
+            payload: payload.clone(),
         });
     }
 }

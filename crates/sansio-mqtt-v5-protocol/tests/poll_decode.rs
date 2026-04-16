@@ -5,7 +5,7 @@ use std::vec::Vec;
 use sansio::Protocol;
 use sansio_mqtt_v5_contract::{Action, ConnectOptions, ProtocolError, SubscribeRequest};
 use sansio_mqtt_v5_protocol::{MqttProtocol, ProtocolEvent};
-use sansio_mqtt_v5_types::Qos;
+use sansio_mqtt_v5_types::{Qos, Topic, Utf8String};
 
 fn connect_options(connect_timeout_ms: u32, keep_alive_secs: Option<u16>) -> ConnectOptions {
     ConnectOptions {
@@ -112,9 +112,9 @@ fn puback_read_dispatches_ack_timeout_cancel() {
     let _ = Protocol::poll_write(&mut protocol);
     let _ = Protocol::handle_read(&mut protocol, bytes(&[0x20, 0x03, 0x00, 0x00, 0x00]));
 
-    let topic = String::from("a/b");
     let publish = sansio_mqtt_v5_contract::PublishRequest {
-        topic,
+        topic: Topic::try_from(Utf8String::try_from("a/b").expect("valid utf8"))
+            .expect("valid topic"),
         qos: Qos::AtLeastOnce,
         ..sansio_mqtt_v5_contract::PublishRequest::default()
     };
@@ -139,7 +139,7 @@ fn suback_read_dispatches_session_event() {
     let _ = Protocol::handle_read(&mut protocol, bytes(&[0x20, 0x03, 0x00, 0x00, 0x00]));
 
     let subscribe = SubscribeRequest {
-        topic_filter: String::from("sensor/#"),
+        topic_filter: Utf8String::try_from("sensor/#").expect("valid filter"),
         ..SubscribeRequest::default()
     };
     let _ = Protocol::handle_event(&mut protocol, ProtocolEvent::Subscribe(subscribe));
@@ -255,7 +255,7 @@ fn suback_read_parses_multi_byte_property_length() {
     let _ = Protocol::handle_read(&mut protocol, bytes(&[0x20, 0x03, 0x00, 0x00, 0x00]));
 
     let subscribe = SubscribeRequest {
-        topic_filter: String::from("sensor/#"),
+        topic_filter: Utf8String::try_from("sensor/#").expect("valid filter"),
         ..SubscribeRequest::default()
     };
     let _ = Protocol::handle_event(&mut protocol, ProtocolEvent::Subscribe(subscribe));
