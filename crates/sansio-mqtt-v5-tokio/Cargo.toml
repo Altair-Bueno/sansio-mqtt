@@ -13,3 +13,4 @@ tokio-util = { workspace = true, features = ["time"] }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "net", "io-util", "io-std", "signal", "rt-multi-thread", "sync", "time"] }
+encode = { workspace = true, default-features = false }
