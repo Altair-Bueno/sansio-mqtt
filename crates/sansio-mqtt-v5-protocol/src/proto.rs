@@ -3,11 +3,9 @@ use core::num::NonZero;
 use crate::types::*;
 use alloc::collections::btree_map::BTreeMap;
 use alloc::collections::vec_deque::VecDeque;
-use bimap::BiBTreeMap;
 use bytes::Bytes;
 use bytes::BytesMut;
 use sansio::Protocol;
-use sansio_mqtt_v5_types::Topic;
 
 #[derive(Debug, PartialEq, Default)]
 enum ClientState {
