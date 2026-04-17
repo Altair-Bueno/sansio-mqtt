@@ -18,7 +18,20 @@ use sansio_mqtt_v5_types::Disconnect;
 use sansio_mqtt_v5_types::DisconnectProperties;
 use sansio_mqtt_v5_types::DisconnectReasonCode;
 use sansio_mqtt_v5_types::EncodeError;
+use sansio_mqtt_v5_types::GuaranteedQoS;
 use sansio_mqtt_v5_types::PingReq;
+use sansio_mqtt_v5_types::PubAck;
+use sansio_mqtt_v5_types::PubAckProperties;
+use sansio_mqtt_v5_types::PubAckReasonCode;
+use sansio_mqtt_v5_types::PubComp;
+use sansio_mqtt_v5_types::PubCompProperties;
+use sansio_mqtt_v5_types::PubCompReasonCode;
+use sansio_mqtt_v5_types::PubRec;
+use sansio_mqtt_v5_types::PubRecProperties;
+use sansio_mqtt_v5_types::PubRecReasonCode;
+use sansio_mqtt_v5_types::PubRel;
+use sansio_mqtt_v5_types::PubRelProperties;
+use sansio_mqtt_v5_types::PubRelReasonCode;
 use sansio_mqtt_v5_types::Publish;
 use sansio_mqtt_v5_types::PublishKind;
 use sansio_mqtt_v5_types::PublishProperties;
@@ -66,6 +79,13 @@ enum ClientState {
     Connected,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+enum OutboundInflightState {
+    Qos1AwaitPubAck { publish: Publish },
+    Qos2AwaitPubRec { publish: Publish },
+    Qos2AwaitPubComp,
+}
+
 #[derive(Debug, PartialEq)]
 pub struct Client<Time>
 where
@@ -80,8 +100,8 @@ where
     read_buffer: BytesMut,
 
     // Pending packages to be acknowledged indexed by packet identifier
-    on_flight_sent: BTreeMap<NonZero<u16>, ClientMessage>,
-    on_flight_received: BTreeMap<NonZero<u16>, ClientMessage>,
+    on_flight_sent: BTreeMap<NonZero<u16>, OutboundInflightState>,
+    on_flight_received: BTreeMap<NonZero<u16>, ()>,
 
     // Output queues
     read_queue: VecDeque<UserWriteOut>,
@@ -212,6 +232,26 @@ impl<Time> Client<Time> {
         NonZero::new(packet_id).expect("packet identifier is always non-zero")
     }
 
+    fn next_outbound_publish_packet_id(&mut self) -> Result<NonZero<u16>, Error> {
+        for _ in 0..u16::MAX {
+            let packet_id = self.next_packet_id();
+            if !self.on_flight_sent.contains_key(&packet_id) {
+                return Ok(packet_id);
+            }
+        }
+
+        Err(Error::ReceiveMaximumExceeded)
+    }
+
+    fn ensure_outbound_receive_maximum_capacity(&self) -> Result<(), Error> {
+        // [MQTT-4.9.0-2] [MQTT-4.9.0-3] Sender enforces peer Receive Maximum by limiting concurrent QoS>0 in-flight PUBLISH packets.
+        if self.on_flight_sent.len() >= usize::from(self.negotiated_limits.receive_maximum.get()) {
+            return Err(Error::ReceiveMaximumExceeded);
+        }
+
+        Ok(())
+    }
+
     fn validate_outbound_topic_alias(
         &self,
         topic_alias: Option<NonZero<u16>>,
@@ -240,7 +280,54 @@ impl<Time> Client<Time> {
         self.negotiated_limits = NegotiatedLimits::default();
     }
 
+    fn reset_inflight_transactions(&mut self) {
+        self.on_flight_sent.clear();
+        self.on_flight_received.clear();
+    }
+
+    fn replay_outbound_inflight_with_dup(&mut self) -> Result<(), Error> {
+        // [MQTT-4.4.0-1] [MQTT-4.4.0-2] On session resume, retransmit unacknowledged QoS1/QoS2 PUBLISH with DUP=1.
+        for (packet_id, state) in self.on_flight_sent.clone() {
+            let publish = match state {
+                OutboundInflightState::Qos1AwaitPubAck { mut publish }
+                | OutboundInflightState::Qos2AwaitPubRec { mut publish } => {
+                    if let PublishKind::Repetible { dup, .. } = &mut publish.kind {
+                        *dup = true;
+                    }
+                    publish
+                }
+                OutboundInflightState::Qos2AwaitPubComp => continue,
+            };
+
+            self.enqueue_packet(ControlPacket::Publish(publish.clone()))?;
+
+            match self.on_flight_sent.get_mut(&packet_id) {
+                Some(OutboundInflightState::Qos1AwaitPubAck {
+                    publish: stored_publish,
+                })
+                | Some(OutboundInflightState::Qos2AwaitPubRec {
+                    publish: stored_publish,
+                }) => {
+                    *stored_publish = publish;
+                }
+                _ => {}
+            }
+        }
+
+        Ok(())
+    }
+
+    fn emit_publish_dropped_for_all_inflight(&mut self) {
+        for packet_id in self.on_flight_sent.keys().copied() {
+            self.read_queue.push_back(UserWriteOut::PublishDropped {
+                packet_id,
+                reason: PublishDroppedReason::SessionNotResumed,
+            });
+        }
+    }
+
     fn fail_protocol_and_disconnect(&mut self, reason: DisconnectReasonCode) -> Result<(), Error> {
+        // [MQTT-4.13.1-1] Protocol violations and malformed frames force DISCONNECT and connection close.
         let _ = self.enqueue_packet(ControlPacket::Disconnect(Disconnect {
             reason_code: reason,
             properties: DisconnectProperties::default(),
@@ -248,25 +335,85 @@ impl<Time> Client<Time> {
 
         self.action_queue.push_back(DriverEventOut::CloseSocket);
         self.state = ClientState::Disconnected;
+        self.read_buffer.clear();
         self.next_timeout = None;
         self.reset_negotiated_limits();
+        self.reset_inflight_transactions();
 
         Ok(())
+    }
+
+    fn enqueue_pubrel_or_fail_protocol(&mut self, packet_id: NonZero<u16>) -> Result<(), Error> {
+        match self.enqueue_packet(ControlPacket::PubRel(PubRel {
+            packet_id,
+            reason_code: PubRelReasonCode::Success,
+            properties: PubRelProperties::default(),
+        })) {
+            Ok(()) => Ok(()),
+            Err(_) => {
+                self.fail_protocol_and_disconnect(DisconnectReasonCode::ProtocolError)?;
+                Err(Error::ProtocolError)
+            }
+        }
+    }
+
+    fn enqueue_puback_or_fail_protocol(&mut self, packet_id: NonZero<u16>) -> Result<(), Error> {
+        match self.enqueue_packet(ControlPacket::PubAck(PubAck {
+            packet_id,
+            reason_code: PubAckReasonCode::Success,
+            properties: PubAckProperties::default(),
+        })) {
+            Ok(()) => Ok(()),
+            Err(_) => {
+                self.fail_protocol_and_disconnect(DisconnectReasonCode::ProtocolError)?;
+                Err(Error::ProtocolError)
+            }
+        }
+    }
+
+    fn enqueue_pubrec_or_fail_protocol(&mut self, packet_id: NonZero<u16>) -> Result<(), Error> {
+        match self.enqueue_packet(ControlPacket::PubRec(PubRec {
+            packet_id,
+            reason_code: PubRecReasonCode::Success,
+            properties: PubRecProperties::default(),
+        })) {
+            Ok(()) => Ok(()),
+            Err(_) => {
+                self.fail_protocol_and_disconnect(DisconnectReasonCode::ProtocolError)?;
+                Err(Error::ProtocolError)
+            }
+        }
+    }
+
+    fn enqueue_pubcomp_or_fail_protocol(
+        &mut self,
+        packet_id: NonZero<u16>,
+        reason_code: PubCompReasonCode,
+    ) -> Result<(), Error> {
+        match self.enqueue_packet(ControlPacket::PubComp(PubComp {
+            packet_id,
+            reason_code,
+            properties: PubCompProperties::default(),
+        })) {
+            Ok(()) => Ok(()),
+            Err(_) => {
+                self.fail_protocol_and_disconnect(DisconnectReasonCode::ProtocolError)?;
+                Err(Error::ProtocolError)
+            }
+        }
     }
 
     fn handle_read_control_packet(&mut self, packet: ControlPacket) -> Result<(), Error> {
         match self.state {
             ClientState::Connecting => match packet {
                 ControlPacket::ConnAck(connack) => {
-                    let connack_is_success = matches!(
+                    if matches!(
                         connack.kind,
                         sansio_mqtt_v5_types::ConnAckKind::ResumePreviousSession
                             | sansio_mqtt_v5_types::ConnAckKind::Other {
                                 reason_code: ConnackReasonCode::Success
                             }
-                    );
-
-                    if connack_is_success {
+                    ) {
                         self.negotiated_limits.receive_maximum =
                             connack.properties.receive_maximum.unwrap_or(
                                 NonZero::new(u16::MAX).expect("u16::MAX is always non-zero"),
@@ -277,8 +424,35 @@ impl<Time> Client<Time> {
                             connack.properties.topic_alias_maximum.unwrap_or(0);
                         self.negotiated_limits.server_keep_alive =
                             connack.properties.server_keep_alive;
+
+                        let mut connected_emitted = false;
+
+                        match connack.kind {
+                            sansio_mqtt_v5_types::ConnAckKind::ResumePreviousSession => {
+                                // [MQTT-4.4.0-1] [MQTT-4.4.0-2] Session Present=1 resumes in-flight QoS transactions and replay path.
+                                if self.replay_outbound_inflight_with_dup().is_err() {
+                                    self.fail_protocol_and_disconnect(
+                                        DisconnectReasonCode::ProtocolError,
+                                    )?;
+                                    return Err(Error::ProtocolError);
+                                }
+                            }
+                            sansio_mqtt_v5_types::ConnAckKind::Other {
+                                reason_code: ConnackReasonCode::Success,
+                            } => {
+                                self.read_queue.push_back(UserWriteOut::Connected);
+                                connected_emitted = true;
+                                self.emit_publish_dropped_for_all_inflight();
+                                self.reset_inflight_transactions();
+                            }
+                            _ => unreachable!("successful CONNACK kind already matched"),
+                        }
+
                         self.state = ClientState::Connected;
-                        self.read_queue.push_back(UserWriteOut::Connected);
+                        if !connected_emitted {
+                            self.read_queue.push_back(UserWriteOut::Connected);
+                        }
+
                         Ok(())
                     } else {
                         self.state = ClientState::Disconnected;
@@ -300,11 +474,128 @@ impl<Time> Client<Time> {
                         ));
                         Ok(())
                     }
-                    _ => {
-                        self.fail_protocol_and_disconnect(DisconnectReasonCode::ProtocolError)?;
-                        Err(Error::ProtocolError)
+                    PublishKind::Repetible {
+                        packet_id,
+                        qos: GuaranteedQoS::AtLeastOnce,
+                        ..
+                    } => {
+                        // [MQTT-4.3.2-2] QoS1 receiver acknowledges inbound PUBLISH with PUBACK using the same Packet Identifier.
+                        self.read_queue.push_back(UserWriteOut::ReceivedMessage(
+                            Self::map_inbound_publish_to_broker_message(publish),
+                        ));
+                        self.enqueue_puback_or_fail_protocol(packet_id)
+                    }
+                    PublishKind::Repetible {
+                        packet_id,
+                        qos: GuaranteedQoS::ExactlyOnce,
+                        ..
+                    } => {
+                        // [MQTT-4.3.3-9] [MQTT-4.3.3-10] QoS2 receiver must treat duplicate Packet Identifier as duplicate delivery and re-send PUBREC.
+                        if self.on_flight_received.contains_key(&packet_id) {
+                            self.enqueue_pubrec_or_fail_protocol(packet_id)
+                        } else {
+                            self.read_queue.push_back(UserWriteOut::ReceivedMessage(
+                                Self::map_inbound_publish_to_broker_message(publish),
+                            ));
+                            self.on_flight_received.insert(packet_id, ());
+                            self.enqueue_pubrec_or_fail_protocol(packet_id)
+                        }
                     }
                 },
+                ControlPacket::PubRel(pubrel) => {
+                    let packet_id = pubrel.packet_id;
+
+                    if self.on_flight_received.remove(&packet_id).is_some() {
+                        // [MQTT-4.3.3-11] QoS2 receiver responds to PUBREL with PUBCOMP carrying the same Packet Identifier.
+                        self.enqueue_pubcomp_or_fail_protocol(packet_id, PubCompReasonCode::Success)
+                    } else {
+                        // [MQTT-4.3.3-11] PUBREL is still answered with PUBCOMP for the same Packet Identifier; use PacketIdentifierNotFound when no state exists (section 3.7.2.1 PUBCOMP Reason Code).
+                        self.enqueue_pubcomp_or_fail_protocol(
+                            packet_id,
+                            PubCompReasonCode::PacketIdentifierNotFound,
+                        )
+                    }
+                }
+                ControlPacket::PubAck(puback) => {
+                    let packet_id = puback.packet_id;
+                    let reason_code = puback.reason_code;
+
+                    match self.on_flight_sent.get(&packet_id) {
+                        Some(OutboundInflightState::Qos1AwaitPubAck { .. }) => {
+                            // [MQTT-4.3.2-3] QoS1 sender keeps PUBLISH unacknowledged until matching PUBACK is received.
+                            let _ = self.on_flight_sent.remove(&packet_id);
+                            self.read_queue
+                                .push_back(UserWriteOut::PublishAcknowledged {
+                                    packet_id,
+                                    reason_code,
+                                });
+                            Ok(())
+                        }
+                        _ => {
+                            self.fail_protocol_and_disconnect(DisconnectReasonCode::ProtocolError)?;
+                            Err(Error::ProtocolError)
+                        }
+                    }
+                }
+                ControlPacket::PubRec(pubrec) => {
+                    let packet_id = pubrec.packet_id;
+                    let reason_code = pubrec.reason_code;
+
+                    match self.on_flight_sent.get(&packet_id).cloned() {
+                        Some(OutboundInflightState::Qos2AwaitPubRec { .. }) => {
+                            // [MQTT-4.3.3-4] QoS2 sender sends PUBREL with the same Packet Identifier after PUBREC (Reason Code < 0x80).
+                            if matches!(
+                                reason_code,
+                                PubRecReasonCode::Success | PubRecReasonCode::NoMatchingSubscribers
+                            ) {
+                                self.enqueue_pubrel_or_fail_protocol(packet_id)?;
+
+                                self.on_flight_sent
+                                    .insert(packet_id, OutboundInflightState::Qos2AwaitPubComp);
+                            } else {
+                                let _ = self.on_flight_sent.remove(&packet_id);
+                                self.read_queue.push_back(UserWriteOut::PublishDropped {
+                                    packet_id,
+                                    reason: PublishDroppedReason::BrokerRejectedPubRec {
+                                        reason_code,
+                                    },
+                                });
+                            }
+
+                            Ok(())
+                        }
+                        Some(OutboundInflightState::Qos2AwaitPubComp) => {
+                            // [MQTT-4.3.3-4] Repeated PUBREC still requires PUBREL with the same Packet Identifier.
+                            self.enqueue_pubrel_or_fail_protocol(packet_id)?;
+                            Ok(())
+                        }
+                        _ => {
+                            self.fail_protocol_and_disconnect(DisconnectReasonCode::ProtocolError)?;
+                            Err(Error::ProtocolError)
+                        }
+                    }
+                }
+                ControlPacket::PubComp(pubcomp) => {
+                    let packet_id = pubcomp.packet_id;
+                    let reason_code = pubcomp.reason_code;
+
+                    match self.on_flight_sent.get(&packet_id) {
+                        Some(OutboundInflightState::Qos2AwaitPubComp) => {
+                            // [MQTT-4.3.3-5] QoS2 sender treats PUBREL as unacknowledged until matching PUBCOMP is received.
+                            let _ = self.on_flight_sent.remove(&packet_id);
+                            self.read_queue.push_back(UserWriteOut::PublishCompleted {
+                                packet_id,
+                                reason_code,
+                            });
+
+                            Ok(())
+                        }
+                        _ => {
+                            self.fail_protocol_and_disconnect(DisconnectReasonCode::ProtocolError)?;
+                            Err(Error::ProtocolError)
+                        }
+                    }
+                }
                 ControlPacket::PingResp(_) => Ok(()),
                 ControlPacket::SubAck(_) => Ok(()),
                 ControlPacket::UnsubAck(_) => Ok(()),
@@ -312,6 +603,7 @@ impl<Time> Client<Time> {
                     self.state = ClientState::Disconnected;
                     self.next_timeout = None;
                     self.reset_negotiated_limits();
+                    self.reset_inflight_transactions();
                     self.read_queue.push_back(UserWriteOut::Disconnected);
                     self.action_queue.push_back(DriverEventOut::CloseSocket);
                     Ok(())
@@ -385,6 +677,7 @@ where
                     break;
                 }
                 Err(ErrMode::Backtrack(_)) | Err(ErrMode::Cut(_)) => {
+                    // [MQTT-4.13.1-1] Malformed Control Packet is a protocol error and requires disconnect.
                     self.fail_protocol_and_disconnect(DisconnectReasonCode::MalformedPacket)?;
 
                     return Err(Error::MalformedPacket);
@@ -417,11 +710,12 @@ where
                     return Err(Error::InvalidStateTransition);
                 }
 
-                if msg.qos != Qos::AtMostOnce {
-                    return Err(Error::UnsupportedQosForMvp { qos: msg.qos });
-                }
-
                 self.validate_outbound_topic_alias(msg.topic_alias)?;
+
+                if matches!(msg.qos, Qos::AtLeastOnce | Qos::ExactlyOnce) {
+                    // [MQTT-4.9.0-1] Apply peer Receive Maximum before sending QoS1/QoS2 PUBLISH.
+                    self.ensure_outbound_receive_maximum_capacity()?;
+                }
 
                 let message_expiry_interval = msg
                     .message_expiry_interval
@@ -439,8 +733,42 @@ where
                     subscription_identifier: None,
                     content_type: msg.content_type,
                 };
+                let kind = match msg.qos {
+                    Qos::AtMostOnce => PublishKind::FireAndForget,
+                    Qos::AtLeastOnce => PublishKind::Repetible {
+                        packet_id: self.next_outbound_publish_packet_id()?,
+                        qos: GuaranteedQoS::AtLeastOnce,
+                        dup: false,
+                    },
+                    Qos::ExactlyOnce => PublishKind::Repetible {
+                        packet_id: self.next_outbound_publish_packet_id()?,
+                        qos: GuaranteedQoS::ExactlyOnce,
+                        dup: false,
+                    },
+                };
+                let inflight_state = match msg.qos {
+                    Qos::AtMostOnce => None,
+                    Qos::AtLeastOnce => Some(OutboundInflightState::Qos1AwaitPubAck {
+                        publish: Publish {
+                            kind: kind.clone(),
+                            retain: false,
+                            payload: msg.payload.clone(),
+                            topic: msg.topic.clone(),
+                            properties: properties.clone(),
+                        },
+                    }),
+                    Qos::ExactlyOnce => Some(OutboundInflightState::Qos2AwaitPubRec {
+                        publish: Publish {
+                            kind: kind.clone(),
+                            retain: false,
+                            payload: msg.payload.clone(),
+                            topic: msg.topic.clone(),
+                            properties: properties.clone(),
+                        },
+                    }),
+                };
                 let packet = ControlPacket::Publish(Publish {
-                    kind: PublishKind::FireAndForget,
+                    kind: kind.clone(),
                     retain: false,
                     payload: msg.payload,
                     topic: msg.topic,
@@ -448,6 +776,12 @@ where
                 });
 
                 self.enqueue_packet(packet)?;
+
+                if let (PublishKind::Repetible { packet_id, .. }, Some(inflight_state)) =
+                    (kind, inflight_state)
+                {
+                    self.on_flight_sent.insert(packet_id, inflight_state);
+                }
 
                 Ok(())
             }
@@ -508,16 +842,20 @@ where
                     }));
                     self.action_queue.push_back(DriverEventOut::CloseSocket);
                     self.state = ClientState::Disconnected;
+                    self.read_buffer.clear();
                     self.next_timeout = None;
                     self.reset_negotiated_limits();
+                    self.reset_inflight_transactions();
                     self.read_queue.push_back(UserWriteOut::Disconnected);
                     Ok(())
                 }
                 ClientState::Disconnected => Ok(()),
                 ClientState::Start => {
                     self.state = ClientState::Disconnected;
+                    self.read_buffer.clear();
                     self.next_timeout = None;
                     self.reset_negotiated_limits();
+                    self.reset_inflight_transactions();
                     Ok(())
                 }
             },
@@ -541,6 +879,7 @@ where
             DriverEventIn::SocketClosed => {
                 let was_disconnected = self.state == ClientState::Disconnected;
                 self.state = ClientState::Disconnected;
+                self.read_buffer.clear();
                 self.next_timeout = None;
                 self.reset_negotiated_limits();
 
@@ -552,6 +891,7 @@ where
             }
             DriverEventIn::SocketError => {
                 self.state = ClientState::Disconnected;
+                self.read_buffer.clear();
                 self.next_timeout = None;
                 self.reset_negotiated_limits();
                 self.action_queue.push_back(DriverEventOut::CloseSocket);
@@ -582,16 +922,20 @@ where
                 }));
                 self.action_queue.push_back(DriverEventOut::CloseSocket);
                 self.state = ClientState::Disconnected;
+                self.read_buffer.clear();
                 self.next_timeout = None;
                 self.reset_negotiated_limits();
+                self.reset_inflight_transactions();
                 self.read_queue.push_back(UserWriteOut::Disconnected);
                 Ok(())
             }
             ClientState::Disconnected => Ok(()),
             ClientState::Start => {
                 self.state = ClientState::Disconnected;
+                self.read_buffer.clear();
                 self.next_timeout = None;
                 self.reset_negotiated_limits();
+                self.reset_inflight_transactions();
                 Ok(())
             }
         }
@@ -622,6 +966,9 @@ mod tests {
     use sansio_mqtt_v5_types::BinaryData;
     use sansio_mqtt_v5_types::FormatIndicator;
     use sansio_mqtt_v5_types::Payload;
+    use sansio_mqtt_v5_types::PubRec;
+    use sansio_mqtt_v5_types::PubRecProperties;
+    use sansio_mqtt_v5_types::PubRecReasonCode;
     use sansio_mqtt_v5_types::Qos;
     use sansio_mqtt_v5_types::Topic;
 
@@ -716,5 +1063,45 @@ mod tests {
         );
         assert_eq!(client.state, ClientState::Start);
         assert_eq!(client.poll_write(), None);
+    }
+
+    #[test]
+    fn pubrel_enqueue_failure_forces_protocol_close() {
+        let mut client = Client::<u64>::default();
+        let packet_id = NonZero::new(1).expect("non-zero packet id");
+
+        client.state = ClientState::Connected;
+        client.negotiated_limits.maximum_packet_size =
+            NonZero::new(1).expect("non-zero packet size limit").into();
+        client.on_flight_sent.insert(
+            packet_id,
+            OutboundInflightState::Qos2AwaitPubRec {
+                publish: Publish {
+                    kind: PublishKind::Repetible {
+                        packet_id,
+                        qos: GuaranteedQoS::ExactlyOnce,
+                        dup: false,
+                    },
+                    retain: false,
+                    payload: Payload::from(&b"test"[..]),
+                    topic: Topic::try_from(Utf8String::try_from("topic/test").expect("valid utf8"))
+                        .expect("valid topic"),
+                    properties: PublishProperties::default(),
+                },
+            },
+        );
+
+        assert_eq!(
+            client.handle_read_control_packet(ControlPacket::PubRec(PubRec {
+                packet_id,
+                reason_code: PubRecReasonCode::Success,
+                properties: PubRecProperties::default(),
+            })),
+            Err(Error::ProtocolError)
+        );
+
+        assert_eq!(client.state, ClientState::Disconnected);
+        assert_eq!(client.poll_event(), Some(DriverEventOut::CloseSocket));
+        assert!(client.on_flight_sent.is_empty());
     }
 }

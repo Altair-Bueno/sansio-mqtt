@@ -68,7 +68,7 @@ pub enum PublishReasonCode {
     PayloadFormatInvalid = 0x99,
 }
 
-#[derive(Debug, PartialEq, Clone, Copy, Default, EnumIter, Display)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Default, EnumIter, Display)]
 pub enum PubAckReasonCode {
     #[default]
     Success = 0x00,
@@ -103,7 +103,7 @@ pub enum PubRelReasonCode {
     PacketIdentifierNotFound = 0x92,
 }
 
-#[derive(Debug, PartialEq, Clone, Copy, Default, EnumIter, Display)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Default, EnumIter, Display)]
 pub enum PubCompReasonCode {
     #[default]
     Success = 0x00,

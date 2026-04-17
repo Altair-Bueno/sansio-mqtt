@@ -43,11 +43,6 @@ pub enum Error {
     ProtocolError,
     #[error("invalid state transition")]
     InvalidStateTransition,
-    /// MQTT v5 QoS1/QoS2 outbound publish is intentionally deferred for MVP.
-    ///
-    /// Follow-up: implement PUBACK/PUBREC/PUBREL/PUBCOMP flows and remove this guard.
-    #[error("unsupported qos for mvp: {qos:?}")]
-    UnsupportedQosForMvp { qos: Qos },
     #[error("packet too large")]
     PacketTooLarge,
     #[error("receive maximum exceeded")]
@@ -135,11 +130,31 @@ pub struct UnsubscribeOptions {
 }
 
 // Things that the protocol can read from the socket (via the driver)
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum UserWriteOut {
     ReceivedMessage(BrokerMessage),
+    PublishAcknowledged {
+        packet_id: NonZero<u16>,
+        reason_code: sansio_mqtt_v5_types::PubAckReasonCode,
+    },
+    PublishCompleted {
+        packet_id: NonZero<u16>,
+        reason_code: sansio_mqtt_v5_types::PubCompReasonCode,
+    },
+    PublishDropped {
+        packet_id: NonZero<u16>,
+        reason: PublishDroppedReason,
+    },
     Connected,
     Disconnected,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum PublishDroppedReason {
+    SessionNotResumed,
+    BrokerRejectedPubRec {
+        reason_code: sansio_mqtt_v5_types::PubRecReasonCode,
+    },
 }
 
 // Things that the client can write to the socket (via the driver)
