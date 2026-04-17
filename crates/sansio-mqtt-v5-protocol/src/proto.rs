@@ -58,6 +58,13 @@ struct NegotiatedLimits {
     server_keep_alive: Option<u16>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+struct KeepAliveState {
+    interval_secs: Option<NonZero<u16>>,
+    saw_network_activity: bool,
+    ping_outstanding: bool,
+}
+
 impl Default for NegotiatedLimits {
     fn default() -> Self {
         Self {
@@ -102,6 +109,11 @@ where
     // Pending packages to be acknowledged indexed by packet identifier
     on_flight_sent: BTreeMap<NonZero<u16>, OutboundInflightState>,
     on_flight_received: BTreeMap<NonZero<u16>, ()>,
+    pending_subscribe: BTreeMap<NonZero<u16>, ()>,
+    pending_unsubscribe: BTreeMap<NonZero<u16>, ()>,
+
+    keep_alive: KeepAliveState,
+    session_should_persist: bool,
 
     // Output queues
     read_queue: VecDeque<UserWriteOut>,
@@ -121,6 +133,10 @@ impl<Time> Default for Client<Time> {
             read_buffer: BytesMut::new(),
             on_flight_sent: BTreeMap::new(),
             on_flight_received: BTreeMap::new(),
+            pending_subscribe: BTreeMap::new(),
+            pending_unsubscribe: BTreeMap::new(),
+            keep_alive: KeepAliveState::default(),
+            session_should_persist: false,
             read_queue: VecDeque::new(),
             write_queue: VecDeque::new(),
             action_queue: VecDeque::new(),
@@ -153,6 +169,7 @@ impl<Time> Client<Time> {
         let encoded = Self::encode_control_packet(&packet)?;
         self.validate_outbound_packet_size(encoded.len())?;
         self.write_queue.push_back(encoded);
+        self.keep_alive.saw_network_activity = true;
         Ok(())
     }
 
@@ -235,7 +252,10 @@ impl<Time> Client<Time> {
     fn next_outbound_publish_packet_id(&mut self) -> Result<NonZero<u16>, Error> {
         for _ in 0..u16::MAX {
             let packet_id = self.next_packet_id();
-            if !self.on_flight_sent.contains_key(&packet_id) {
+            if !self.on_flight_sent.contains_key(&packet_id)
+                && !self.pending_subscribe.contains_key(&packet_id)
+                && !self.pending_unsubscribe.contains_key(&packet_id)
+            {
                 return Ok(packet_id);
             }
         }
@@ -283,6 +303,44 @@ impl<Time> Client<Time> {
     fn reset_inflight_transactions(&mut self) {
         self.on_flight_sent.clear();
         self.on_flight_received.clear();
+    }
+
+    fn clear_pending_subscriptions(&mut self) {
+        self.pending_subscribe.clear();
+        self.pending_unsubscribe.clear();
+    }
+
+    fn reset_session_state(&mut self) {
+        self.reset_inflight_transactions();
+        self.clear_pending_subscriptions();
+    }
+
+    fn maybe_reset_session_state(&mut self) {
+        // [MQTT-3.1.2-4] Clean Start controls whether prior session state is discarded.
+        if !self.session_should_persist {
+            self.reset_session_state();
+        }
+    }
+
+    fn reset_keepalive(&mut self) {
+        // [MQTT-3.1.2-22] [MQTT-3.1.2-23] Keep Alive tracking resets on connection lifecycle boundaries.
+        self.keep_alive = KeepAliveState::default();
+        self.next_timeout = None;
+    }
+
+    fn next_packet_id_checked(&mut self) -> Result<NonZero<u16>, Error> {
+        // [MQTT-2.2.1-2] Packet Identifier MUST be unused while an exchange is in-flight.
+        for _ in 0..u16::MAX {
+            let packet_id = self.next_packet_id();
+            if !self.on_flight_sent.contains_key(&packet_id)
+                && !self.pending_subscribe.contains_key(&packet_id)
+                && !self.pending_unsubscribe.contains_key(&packet_id)
+            {
+                return Ok(packet_id);
+            }
+        }
+
+        Err(Error::ReceiveMaximumExceeded)
     }
 
     fn replay_outbound_inflight_with_dup(&mut self) -> Result<(), Error> {
@@ -336,9 +394,9 @@ impl<Time> Client<Time> {
         self.action_queue.push_back(DriverEventOut::CloseSocket);
         self.state = ClientState::Disconnected;
         self.read_buffer.clear();
-        self.next_timeout = None;
+        self.reset_keepalive();
         self.reset_negotiated_limits();
-        self.reset_inflight_transactions();
+        self.reset_session_state();
 
         Ok(())
     }
@@ -424,6 +482,13 @@ impl<Time> Client<Time> {
                             connack.properties.topic_alias_maximum.unwrap_or(0);
                         self.negotiated_limits.server_keep_alive =
                             connack.properties.server_keep_alive;
+                        self.keep_alive.interval_secs = self
+                            .negotiated_limits
+                            .server_keep_alive
+                            .map(|v| NonZero::new(v).expect("server keep alive must be non-zero"))
+                            .or(self.pending_connect_options.keep_alive);
+                        self.keep_alive.saw_network_activity = false;
+                        self.keep_alive.ping_outstanding = false;
 
                         let mut connected_emitted = false;
 
@@ -461,6 +526,7 @@ impl<Time> Client<Time> {
                         Err(Error::ProtocolError)
                     }
                 }
+                ControlPacket::Auth(_) => Ok(()),
                 _ => {
                     self.fail_protocol_and_disconnect(DisconnectReasonCode::ProtocolError)?;
                     Err(Error::ProtocolError)
@@ -597,13 +663,31 @@ impl<Time> Client<Time> {
                     }
                 }
                 ControlPacket::PingResp(_) => Ok(()),
-                ControlPacket::SubAck(_) => Ok(()),
-                ControlPacket::UnsubAck(_) => Ok(()),
+                ControlPacket::SubAck(suback) => {
+                    // [MQTT-3.8.4-1] SUBACK MUST correspond to an outstanding SUBSCRIBE Packet Identifier.
+                    if self.pending_subscribe.remove(&suback.packet_id).is_none() {
+                        self.fail_protocol_and_disconnect(DisconnectReasonCode::ProtocolError)?;
+                        return Err(Error::ProtocolError);
+                    }
+                    Ok(())
+                }
+                ControlPacket::UnsubAck(unsuback) => {
+                    // [MQTT-3.10.4-1] UNSUBACK MUST correspond to an outstanding UNSUBSCRIBE Packet Identifier.
+                    if self
+                        .pending_unsubscribe
+                        .remove(&unsuback.packet_id)
+                        .is_none()
+                    {
+                        self.fail_protocol_and_disconnect(DisconnectReasonCode::ProtocolError)?;
+                        return Err(Error::ProtocolError);
+                    }
+                    Ok(())
+                }
                 ControlPacket::Disconnect(_) => {
                     self.state = ClientState::Disconnected;
-                    self.next_timeout = None;
+                    self.reset_keepalive();
                     self.reset_negotiated_limits();
-                    self.reset_inflight_transactions();
+                    self.maybe_reset_session_state();
                     self.read_queue.push_back(UserWriteOut::Disconnected);
                     self.action_queue.push_back(DriverEventOut::CloseSocket);
                     Ok(())
@@ -671,6 +755,10 @@ where
             {
                 Ok(packet) => {
                     slice = input.into_inner();
+                    self.keep_alive.saw_network_activity = true;
+                    if matches!(packet, ControlPacket::PingResp(_)) {
+                        self.keep_alive.ping_outstanding = false;
+                    }
                     self.handle_read_control_packet(packet)?;
                 }
                 Err(ErrMode::Incomplete(_)) => {
@@ -696,6 +784,15 @@ where
             UserWriteIn::Connect(options) => {
                 if self.state == ClientState::Start || self.state == ClientState::Disconnected {
                     self.pending_connect_options = options;
+                    if self.pending_connect_options.clean_start {
+                        // [MQTT-3.1.2-4] Clean Start=1 starts a new Session.
+                        self.reset_session_state();
+                    }
+                    self.session_should_persist = self
+                        .pending_connect_options
+                        .session_expiry_interval
+                        .unwrap_or(0)
+                        > 0;
 
                     if !self.action_queue.contains(&DriverEventOut::OpenSocket) {
                         self.action_queue.push_back(DriverEventOut::OpenSocket);
@@ -805,7 +902,7 @@ where
                     .collect::<Vec<_>>()
                     .try_into()
                     .map_err(|_| Error::ProtocolError)?;
-                let packet_id = self.next_packet_id();
+                let packet_id = self.next_packet_id_checked()?;
 
                 self.enqueue_packet(ControlPacket::Subscribe(Subscribe {
                     packet_id,
@@ -815,6 +912,7 @@ where
                         user_properties: options.user_properties,
                     },
                 }))?;
+                self.pending_subscribe.insert(packet_id, ());
 
                 Ok(())
             }
@@ -822,7 +920,7 @@ where
                 if self.state != ClientState::Connected {
                     return Err(Error::InvalidStateTransition);
                 }
-                let packet_id = self.next_packet_id();
+                let packet_id = self.next_packet_id_checked()?;
 
                 self.enqueue_packet(ControlPacket::Unsubscribe(Unsubscribe {
                     packet_id,
@@ -831,6 +929,7 @@ where
                     },
                     topics: options.subscriptions,
                 }))?;
+                self.pending_unsubscribe.insert(packet_id, ());
 
                 Ok(())
             }
@@ -843,9 +942,9 @@ where
                     self.action_queue.push_back(DriverEventOut::CloseSocket);
                     self.state = ClientState::Disconnected;
                     self.read_buffer.clear();
-                    self.next_timeout = None;
+                    self.reset_keepalive();
                     self.reset_negotiated_limits();
-                    self.reset_inflight_transactions();
+                    self.maybe_reset_session_state();
                     self.read_queue.push_back(UserWriteOut::Disconnected);
                     Ok(())
                 }
@@ -853,9 +952,9 @@ where
                 ClientState::Start => {
                     self.state = ClientState::Disconnected;
                     self.read_buffer.clear();
-                    self.next_timeout = None;
+                    self.reset_keepalive();
                     self.reset_negotiated_limits();
-                    self.reset_inflight_transactions();
+                    self.maybe_reset_session_state();
                     Ok(())
                 }
             },
@@ -874,13 +973,15 @@ where
                 let connect_packet = self.build_connect_packet(&self.pending_connect_options)?;
                 self.enqueue_packet(ControlPacket::Connect(connect_packet))?;
                 self.state = ClientState::Connecting;
+                self.keep_alive.saw_network_activity = false;
+                self.keep_alive.ping_outstanding = false;
                 Ok(())
             }
             DriverEventIn::SocketClosed => {
                 let was_disconnected = self.state == ClientState::Disconnected;
                 self.state = ClientState::Disconnected;
                 self.read_buffer.clear();
-                self.next_timeout = None;
+                self.reset_keepalive();
                 self.reset_negotiated_limits();
 
                 if !was_disconnected {
@@ -892,7 +993,7 @@ where
             DriverEventIn::SocketError => {
                 self.state = ClientState::Disconnected;
                 self.read_buffer.clear();
-                self.next_timeout = None;
+                self.reset_keepalive();
                 self.reset_negotiated_limits();
                 self.action_queue.push_back(DriverEventOut::CloseSocket);
                 Err(Error::ProtocolError)
@@ -906,7 +1007,27 @@ where
             return Ok(());
         }
 
+        if self.keep_alive.interval_secs.is_none() {
+            self.next_timeout = None;
+            return Ok(());
+        }
+
+        if self.keep_alive.ping_outstanding {
+            // [MQTT-3.1.2-24] [MQTT-4.13.1-1] Keep Alive timeout closes the network connection.
+            self.fail_protocol_and_disconnect(DisconnectReasonCode::KeepAliveTimeout)?;
+            return Err(Error::ProtocolError);
+        }
+
+        if self.keep_alive.saw_network_activity {
+            // [MQTT-3.1.2-22] Any control packet traffic resets keep-alive idle detection.
+            self.keep_alive.saw_network_activity = false;
+            self.next_timeout = Some(now);
+            return Ok(());
+        }
+
+        // [MQTT-3.1.2-22] [MQTT-3.12.4-1] Send PINGREQ when Keep Alive elapses without traffic.
         self.enqueue_packet(ControlPacket::PingReq(PingReq {}))?;
+        self.keep_alive.ping_outstanding = true;
         self.next_timeout = Some(now);
 
         Ok(())
@@ -923,9 +1044,9 @@ where
                 self.action_queue.push_back(DriverEventOut::CloseSocket);
                 self.state = ClientState::Disconnected;
                 self.read_buffer.clear();
-                self.next_timeout = None;
+                self.reset_keepalive();
                 self.reset_negotiated_limits();
-                self.reset_inflight_transactions();
+                self.maybe_reset_session_state();
                 self.read_queue.push_back(UserWriteOut::Disconnected);
                 Ok(())
             }
@@ -933,9 +1054,9 @@ where
             ClientState::Start => {
                 self.state = ClientState::Disconnected;
                 self.read_buffer.clear();
-                self.next_timeout = None;
+                self.reset_keepalive();
                 self.reset_negotiated_limits();
-                self.reset_inflight_transactions();
+                self.maybe_reset_session_state();
                 Ok(())
             }
         }
