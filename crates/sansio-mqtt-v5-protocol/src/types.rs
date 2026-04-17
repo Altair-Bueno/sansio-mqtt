@@ -7,15 +7,54 @@ use sansio_mqtt_v5_types::BinaryData;
 use sansio_mqtt_v5_types::FormatIndicator;
 use sansio_mqtt_v5_types::Payload;
 use sansio_mqtt_v5_types::Qos;
+use sansio_mqtt_v5_types::Settings;
 use sansio_mqtt_v5_types::Topic;
 use sansio_mqtt_v5_types::Utf8String;
 use sansio_mqtt_v5_types::Vec1;
 
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub struct Config {}
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Config {
+    pub parser_max_bytes_string: u16,
+    pub parser_max_bytes_binary_data: u16,
+    pub parser_max_remaining_bytes: u64,
+    pub parser_max_subscriptions_len: u32,
+    pub parser_max_user_properties_len: usize,
+}
 
-#[derive(Debug, Clone, thiserror::Error)]
-pub enum Error {}
+impl Default for Config {
+    fn default() -> Self {
+        let settings = Settings::default();
+
+        Self {
+            parser_max_bytes_string: settings.max_bytes_string,
+            parser_max_bytes_binary_data: settings.max_bytes_binary_data,
+            parser_max_remaining_bytes: settings.max_remaining_bytes,
+            parser_max_subscriptions_len: settings.max_subscriptions_len,
+            parser_max_user_properties_len: settings.max_user_properties_len,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum Error {
+    #[error("malformed packet")]
+    MalformedPacket,
+    #[error("protocol error")]
+    ProtocolError,
+    #[error("invalid state transition")]
+    InvalidStateTransition,
+    /// MQTT v5 QoS1/QoS2 outbound publish is intentionally deferred for MVP.
+    ///
+    /// Follow-up: implement PUBACK/PUBREC/PUBREL/PUBCOMP flows and remove this guard.
+    #[error("unsupported qos for mvp: {qos:?}")]
+    UnsupportedQosForMvp { qos: Qos },
+    #[error("packet too large")]
+    PacketTooLarge,
+    #[error("receive maximum exceeded")]
+    ReceiveMaximumExceeded,
+    #[error("encode failure")]
+    EncodeFailure,
+}
 
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct ConnectionOptions {
@@ -53,6 +92,7 @@ pub struct Will {
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct ClientMessage {
     pub topic: Topic,
+    pub qos: Qos,
     pub payload: Payload,
     pub payload_format_indicator: Option<FormatIndicator>,
     pub message_expiry_interval: Option<Duration>,
@@ -108,7 +148,7 @@ pub enum UserWriteIn {
     Connect(ConnectionOptions),
     PublishMessage(ClientMessage),
     Subscribe(SubscribeOptions),
-    Unsubcribe(UnsubscribeOptions),
+    Unsubscribe(UnsubscribeOptions),
     Disconnect,
 }
 

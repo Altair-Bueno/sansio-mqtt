@@ -11,3 +11,4 @@ thiserror = { workspace = true, default-features = false }
 bytes = { workspace = true, default-features = false }
 winnow = { workspace = true, default-features = false }
 tracing = { workspace = true, default-features = false }
+encode = { workspace = true, default-features = false }

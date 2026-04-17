@@ -16,7 +16,7 @@ sansio-mqtt-v5-tokio = { path = "crates/sansio-mqtt-v5-tokio", default-features 
 sansio-mqtt-v5-client = { path = "crates/sansio-mqtt-v5-client", default-features = false }
 sansio-mqtt-v5-client-tcp-std = { path = "crates/sansio-mqtt-v5-client-tcp-std", default-features = false }
 
-tracing = "0.1.41"
+tracing = { version = "0.1.41", default-features = false, features = ["attributes"] }
 tokio = { version = "1", default-features = false }
 tokio-util = { version = "0.7", default-features = false }
 bytes = { version = "1", default-features = false }
