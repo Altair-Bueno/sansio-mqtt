@@ -6,6 +6,9 @@ rust-version.workspace = true
 
 [dependencies]
 sansio = { workspace = true, default-features = false }
-sansio-mqtt-v5-contract = { workspace = true, default-features = false }
-sansio-mqtt-v5-state-machine = { workspace = true, default-features = false }
 sansio-mqtt-v5-types = { workspace = true, default-features = false }
+thiserror = { workspace = true, default-features = false }
+bytes = { workspace = true, default-features = false }
+winnow = { workspace = true, default-features = false }
+tracing = { workspace = true, default-features = false }
+bimap = { workspace = true, default-features = false }
