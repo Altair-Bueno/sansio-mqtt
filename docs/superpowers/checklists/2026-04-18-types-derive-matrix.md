@@ -45,7 +45,7 @@
 | `properties.rs::DuplicatedPropertyError` | `Debug, PartialEq, Clone, Copy, Error` | `Debug, PartialEq, Clone, Copy, Error` | Keep existing derive set in Task 1; reviewed for constraints. |
 | `properties.rs::UnsupportedPropertyError` | `Debug, PartialEq, Clone, Copy, Error` | `Debug, PartialEq, Clone, Copy, Error` | Keep existing derive set in Task 1; reviewed for constraints. |
 | `properties.rs::TooManyUserPropertiesError` | `Debug, PartialEq, Clone, Copy, Error` | `Debug, PartialEq, Clone, Copy, Error` | Empty marker/unit error; enforce no `Hash`, `Ord`, or `PartialOrd`. |
-| `properties.rs::MissingAuthenticationMethodError` | `(none)` | `(none)` | Empty marker/unit error; enforce no `Hash`, `Ord`, or `PartialOrd`. |
+| `properties.rs::MissingAuthenticationMethodError` | `Debug, PartialEq, Clone, Copy, Error` | `Debug, PartialEq, Clone, Copy, Error` | Empty marker/unit error; enforce no `Hash`, `Ord`, or `PartialOrd`. |
 | `properties.rs::PropertiesError` | `Debug, PartialEq, Clone, Copy, Error` | `Debug, PartialEq, Clone, Copy, Error` | Keep existing derive set in Task 1; reviewed for constraints. |
 | `puback.rs::PubAck` | `Debug, PartialEq, Clone` | `Debug, PartialEq, Clone` | Control packet shape; enforce policy that `Default` is not derived. |
 | `puback.rs::PubAckHeaderFlags` | `Debug, PartialEq, Clone` | `Debug, PartialEq, Clone` | Keep existing derive set in Task 1; reviewed for constraints. |
