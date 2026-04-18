@@ -57,6 +57,33 @@ fn utf8_string_new_panics_on_invalid_input() {
 }
 
 #[test]
+fn utf8_string_try_from_non_static_str() {
+    let owned = String::from("dynamic/topic");
+    let borrowed = owned.as_str();
+
+    let value = Utf8String::try_from(borrowed).expect("borrowed str should construct");
+    assert_eq!(&*value, "dynamic/topic");
+}
+
+#[test]
+fn binary_data_try_from_non_static_slice() {
+    let owned = vec![10_u8, 11, 12];
+    let borrowed = owned.as_slice();
+
+    let value = BinaryData::try_from(borrowed).expect("borrowed slice should construct");
+    assert_eq!(&value[..], &[10, 11, 12]);
+}
+
+#[test]
+fn payload_from_non_static_slice() {
+    let owned = vec![13_u8, 14, 15];
+    let borrowed = owned.as_slice();
+
+    let payload = Payload::from(borrowed);
+    assert_eq!(&payload[..], &[13, 14, 15]);
+}
+
+#[test]
 fn topic_try_new_validates_input() {
     let topic = Topic::try_new("home/living-room").expect("valid topic must construct");
     let topic_inner: &Utf8String = &topic;

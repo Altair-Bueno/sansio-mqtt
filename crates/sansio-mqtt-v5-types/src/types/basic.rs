@@ -390,17 +390,17 @@ impl From<Vec<u8>> for Payload {
     }
 }
 
-impl From<&'static [u8]> for Payload {
+impl<'a> From<&'a [u8]> for Payload {
     #[inline]
-    fn from(value: &'static [u8]) -> Self {
-        Self::new(value)
+    fn from(value: &'a [u8]) -> Self {
+        Self::new(bytes::Bytes::copy_from_slice(value))
     }
 }
 
-impl<const SIZE: usize> From<&'static [u8; SIZE]> for Payload {
+impl<'a, const SIZE: usize> From<&'a [u8; SIZE]> for Payload {
     #[inline]
-    fn from(value: &'static [u8; SIZE]) -> Self {
-        Self::new(&value[..] as &[u8])
+    fn from(value: &'a [u8; SIZE]) -> Self {
+        Self::from(&value[..] as &[u8])
     }
 }
 
@@ -413,20 +413,20 @@ impl TryFrom<Vec<u8>> for BinaryData {
     }
 }
 
-impl TryFrom<&'static [u8]> for BinaryData {
+impl<'a> TryFrom<&'a [u8]> for BinaryData {
     type Error = BinaryDataError;
 
     #[inline]
-    fn try_from(value: &'static [u8]) -> Result<Self, Self::Error> {
-        Self::try_new(value)
+    fn try_from(value: &'a [u8]) -> Result<Self, Self::Error> {
+        Self::try_new(bytes::Bytes::copy_from_slice(value))
     }
 }
 
-impl<const SIZE: usize> TryFrom<&'static [u8; SIZE]> for BinaryData {
+impl<'a, const SIZE: usize> TryFrom<&'a [u8; SIZE]> for BinaryData {
     type Error = BinaryDataError;
 
     #[inline]
-    fn try_from(value: &'static [u8; SIZE]) -> Result<Self, Self::Error> {
+    fn try_from(value: &'a [u8; SIZE]) -> Result<Self, Self::Error> {
         (&value[..] as &[u8]).try_into()
     }
 }
@@ -440,12 +440,12 @@ impl TryFrom<String> for Utf8String {
     }
 }
 
-impl TryFrom<&'static str> for Utf8String {
+impl<'a> TryFrom<&'a str> for Utf8String {
     type Error = Utf8StringError;
 
     #[inline]
-    fn try_from(value: &'static str) -> Result<Self, Self::Error> {
-        Self::try_new(value)
+    fn try_from(value: &'a str) -> Result<Self, Self::Error> {
+        Self::try_new(bytes::Bytes::copy_from_slice(value.as_bytes()))
     }
 }
 
