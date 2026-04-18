@@ -13,6 +13,7 @@ pub use types::ConnectionOptions;
 pub use types::DriverEventIn;
 pub use types::DriverEventOut;
 pub use types::Error;
+pub use types::IncomingRejectReason;
 pub use types::SubscribeOptions;
 pub use types::UnsubscribeOptions;
 pub use types::UserWriteIn;

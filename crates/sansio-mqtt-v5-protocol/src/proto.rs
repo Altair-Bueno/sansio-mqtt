@@ -662,6 +662,7 @@ impl<Time> Client<Time> {
                     match publish.kind {
                         PublishKind::FireAndForget => {
                             self.read_queue.push_back(UserWriteOut::ReceivedMessage(
+                                None,
                                 Self::map_inbound_publish_to_broker_message(publish),
                             ));
                             Ok(())
@@ -673,6 +674,7 @@ impl<Time> Client<Time> {
                         } => {
                             // [MQTT-4.3.2-2] QoS1 receiver acknowledges inbound PUBLISH with PUBACK using the same Packet Identifier.
                             self.read_queue.push_back(UserWriteOut::ReceivedMessage(
+                                Some(packet_id),
                                 Self::map_inbound_publish_to_broker_message(publish),
                             ));
                             self.enqueue_puback_or_fail_protocol(packet_id)
@@ -687,6 +689,7 @@ impl<Time> Client<Time> {
                                 self.enqueue_pubrec_or_fail_protocol(packet_id)
                             } else {
                                 self.read_queue.push_back(UserWriteOut::ReceivedMessage(
+                                    Some(packet_id),
                                     Self::map_inbound_publish_to_broker_message(publish),
                                 ));
                                 self.on_flight_received.insert(packet_id, ());
@@ -1013,6 +1016,9 @@ where
                 }
 
                 Ok(())
+            }
+            UserWriteIn::AcknowledgeMessage(_) | UserWriteIn::RejectMessage(_, _) => {
+                Err(Error::InvalidStateTransition)
             }
             UserWriteIn::Subscribe(options) => {
                 if self.state != ClientState::Connected {

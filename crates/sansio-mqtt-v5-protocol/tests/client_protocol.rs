@@ -4,7 +4,7 @@ use encode::Encodable;
 use sansio::Protocol;
 use sansio_mqtt_v5_protocol::{
     Client, ClientMessage, ClientSettings, ConnectionOptions, DriverEventIn, Error,
-    SubscribeOptions, UserWriteIn, UserWriteOut,
+    IncomingRejectReason, SubscribeOptions, UserWriteIn, UserWriteOut,
 };
 use sansio_mqtt_v5_types::{
     Auth, AuthProperties, AuthReasonCode, ConnAck, ConnAckKind, ConnAckProperties,
@@ -44,6 +44,15 @@ fn client_message_exposes_qos_field() {
 #[test]
 fn user_write_out_exposes_qos_delivery_events_with_packet_id() {
     let packet_id = NonZero::new(7).expect("non-zero packet id");
+    let msg = sansio_mqtt_v5_protocol::BrokerMessage::default();
+
+    let out = UserWriteOut::ReceivedMessage(Some(packet_id), msg.clone());
+    assert!(matches!(out, UserWriteOut::ReceivedMessage(Some(_), _)));
+
+    let ack = UserWriteIn::AcknowledgeMessage(packet_id);
+    let reject = UserWriteIn::RejectMessage(packet_id, IncomingRejectReason::UnspecifiedError);
+    assert!(matches!(ack, UserWriteIn::AcknowledgeMessage(_)));
+    assert!(matches!(reject, UserWriteIn::RejectMessage(_, _)));
 
     let acknowledged = UserWriteOut::PublishAcknowledged(packet_id, PubAckReasonCode::Success);
     let completed = UserWriteOut::PublishCompleted(packet_id, PubCompReasonCode::Success);
@@ -369,7 +378,7 @@ fn inbound_publish_qos0_is_forwarded_to_user_queue() {
     assert_eq!(client.handle_read(encode_packet(&publish)), Ok(()));
 
     match client.poll_read() {
-        Some(UserWriteOut::ReceivedMessage(message)) => {
+        Some(UserWriteOut::ReceivedMessage(None, message)) => {
             assert_eq!(message.topic, publish_topic);
             assert_eq!(message.payload, publish_payload);
             assert_eq!(message.payload_format_indicator, None);
@@ -428,7 +437,7 @@ fn inbound_publish_registers_topic_alias_then_resolves_alias_only_publish() {
     assert_eq!(client.handle_read(encode_packet(&register_publish)), Ok(()));
 
     match client.poll_read() {
-        Some(UserWriteOut::ReceivedMessage(message)) => {
+        Some(UserWriteOut::ReceivedMessage(None, message)) => {
             assert_eq!(message.topic, topic);
             assert_eq!(message.payload, Payload::new(b"first".as_slice()));
             assert_eq!(message.topic_alias, Some(alias));
@@ -452,7 +461,7 @@ fn inbound_publish_registers_topic_alias_then_resolves_alias_only_publish() {
     );
 
     match client.poll_read() {
-        Some(UserWriteOut::ReceivedMessage(message)) => {
+        Some(UserWriteOut::ReceivedMessage(None, message)) => {
             assert_eq!(
                 message.topic,
                 Topic::try_new("alias/topic").expect("valid topic")
@@ -639,7 +648,8 @@ fn inbound_qos1_publish_sends_puback_and_emits_message_once() {
     assert_eq!(client.handle_read(encode_packet(&publish)), Ok(()));
 
     match client.poll_read() {
-        Some(UserWriteOut::ReceivedMessage(message)) => {
+        Some(UserWriteOut::ReceivedMessage(Some(read_packet_id), message)) => {
+            assert_eq!(read_packet_id, packet_id);
             assert_eq!(message.topic, publish_topic);
             assert_eq!(message.payload, publish_payload);
         }
@@ -689,7 +699,8 @@ fn inbound_qos2_duplicate_publish_resends_pubrec_without_duplicate_delivery() {
     assert_eq!(client.handle_read(encode_packet(&publish)), Ok(()));
 
     match client.poll_read() {
-        Some(UserWriteOut::ReceivedMessage(message)) => {
+        Some(UserWriteOut::ReceivedMessage(Some(read_packet_id), message)) => {
+            assert_eq!(read_packet_id, packet_id);
             assert_eq!(message.topic, publish_topic);
             assert_eq!(message.payload, publish_payload);
         }
@@ -756,7 +767,7 @@ fn inbound_qos2_pubrel_completes_with_pubcomp() {
     assert_eq!(client.handle_read(encode_packet(&publish)), Ok(()));
     assert!(matches!(
         client.poll_read(),
-        Some(UserWriteOut::ReceivedMessage(_))
+        Some(UserWriteOut::ReceivedMessage(Some(_), _))
     ));
 
     let expected_pubrec = ControlPacket::PubRec(PubRec {

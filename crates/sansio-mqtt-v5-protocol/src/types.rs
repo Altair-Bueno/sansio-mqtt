@@ -137,7 +137,7 @@ pub struct UnsubscribeOptions {
 // Things that the protocol can read from the socket (via the driver)
 #[derive(Debug, Clone, PartialEq)]
 pub enum UserWriteOut {
-    ReceivedMessage(BrokerMessage),
+    ReceivedMessage(Option<NonZero<u16>>, BrokerMessage),
     PublishAcknowledged(NonZero<u16>, PubAckReasonCode),
     PublishCompleted(NonZero<u16>, PubCompReasonCode),
     PublishDroppedDueToSessionNotResumed(NonZero<u16>),
@@ -146,11 +146,23 @@ pub enum UserWriteOut {
     Disconnected,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum IncomingRejectReason {
+    UnspecifiedError,
+    ImplementationSpecificError,
+    NotAuthorized,
+    TopicNameInvalid,
+    QuotaExceeded,
+    PayloadFormatInvalid,
+}
+
 // Things that the client can write to the socket (via the driver)
 #[derive(Debug, Clone, PartialEq)]
 pub enum UserWriteIn {
     Connect(ConnectionOptions),
     PublishMessage(ClientMessage),
+    AcknowledgeMessage(NonZero<u16>),
+    RejectMessage(NonZero<u16>, IncomingRejectReason),
     Subscribe(SubscribeOptions),
     Unsubscribe(UnsubscribeOptions),
     Disconnect,
