@@ -20,7 +20,7 @@ Current:
 - `ReceivedMessage(BrokerMessage)`
 
 New:
-- `ReceivedMessage(BrokerMessage, Option<NonZero<u16>>)`
+- `ReceivedMessage(Option<NonZero<u16>>, BrokerMessage)`
 
 Rules:
 - QoS0 inbound publish => `None`
@@ -45,12 +45,12 @@ Intent:
 
 ### QoS0 inbound publish
 
-- Emit `ReceivedMessage(msg, None)`.
+- Emit `ReceivedMessage(None, msg)`.
 - No pending inbound-ack state is created.
 
 ### QoS1 inbound publish
 
-- Emit `ReceivedMessage(msg, Some(packet_id))`.
+- Emit `ReceivedMessage(Some(packet_id), msg)`.
 - Track packet id in inbound pending map as `AwaitingAppDecision`.
 
 On app command:
@@ -59,7 +59,7 @@ On app command:
 
 ### QoS2 inbound publish
 
-- Emit `ReceivedMessage(msg, Some(packet_id))`.
+- Emit `ReceivedMessage(Some(packet_id), msg)`.
 - Track packet id in inbound pending map as `AwaitingAppDecision`.
 
 On app command:
