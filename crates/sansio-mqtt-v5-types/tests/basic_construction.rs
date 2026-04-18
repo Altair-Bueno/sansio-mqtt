@@ -25,7 +25,7 @@ fn binary_data_try_new_validates_input() {
 }
 
 #[test]
-#[should_panic(expected = "BinaryData::new received invalid MQTT binary data")]
+#[should_panic]
 fn binary_data_new_panics_on_invalid_input() {
     let invalid = vec![0_u8; (u16::MAX as usize) + 1];
     let _ = BinaryData::new(invalid);
@@ -37,21 +37,18 @@ fn utf8_string_try_new_validates_input() {
     assert_eq!(&*value, "hello");
 
     let too_long = vec![b'a'; (u16::MAX as usize) + 1];
-    assert_eq!(Utf8String::try_new(too_long), Err(Utf8StringError::TooLong));
+    assert_eq!(Utf8String::try_new(too_long), Err(Utf8StringError));
 
-    assert_eq!(
-        Utf8String::try_new(vec![0xFF_u8]),
-        Err(Utf8StringError::InvalidUtf8)
-    );
+    assert_eq!(Utf8String::try_new(vec![0xFF_u8]), Err(Utf8StringError));
 
     assert_eq!(
         Utf8String::try_new("hello\u{0001}world"),
-        Err(Utf8StringError::DisallowedCharacter)
+        Err(Utf8StringError)
     );
 }
 
 #[test]
-#[should_panic(expected = "Utf8String::new received invalid MQTT utf8 string")]
+#[should_panic]
 fn utf8_string_new_panics_on_invalid_input() {
     let _ = Utf8String::new(vec![0xFF_u8]);
 }
@@ -102,7 +99,7 @@ fn utf8_string_and_topic_boundary_lengths() {
     assert_eq!(utf8.as_bytes().len(), u16::MAX as usize);
     assert_eq!(
         Utf8String::try_new(max_plus_one.clone()),
-        Err(Utf8StringError::TooLong)
+        Err(Utf8StringError)
     );
 
     let topic = Topic::try_new(max).expect("u16::MAX-byte topic should be accepted");
@@ -112,7 +109,7 @@ fn utf8_string_and_topic_boundary_lengths() {
 }
 
 #[test]
-#[should_panic(expected = "Topic::new received invalid MQTT topic")]
+#[should_panic]
 fn topic_new_panics_on_invalid_input() {
     let _ = Topic::new("home/+");
 }

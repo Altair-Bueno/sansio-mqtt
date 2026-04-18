@@ -1,5 +1,9 @@
 use super::*;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
+#[error("invalid MQTT payload")]
+pub struct PayloadError;
+
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
 pub struct Payload(bytes::Bytes);
 
@@ -11,14 +15,8 @@ pub struct BinaryDataError;
 pub struct BinaryData(bytes::Bytes);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
-pub enum Utf8StringError {
-    #[error("MQTT UTF-8 string exceeds u16::MAX bytes")]
-    TooLong,
-    #[error("MQTT UTF-8 string contains invalid UTF-8")]
-    InvalidUtf8,
-    #[error("MQTT UTF-8 string contains disallowed characters")]
-    DisallowedCharacter,
-}
+#[error("invalid MQTT UTF-8 string")]
+pub struct Utf8StringError;
 
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
 pub struct Utf8String(bytes::Bytes);
@@ -35,8 +33,16 @@ impl Payload {
     ///
     /// This constructor is infallible and always returns `Ok`.
     #[inline]
-    pub fn try_new(value: impl Into<bytes::Bytes>) -> Result<Self, core::convert::Infallible> {
-        Ok(Self(value.into()))
+    pub fn try_new(value: impl Into<bytes::Bytes>) -> Result<Self, PayloadError> {
+        let value = value.into();
+        if value.len() > u64::MAX as usize {
+            // This check should never fail in practice since sizeof(u64) == sizeof(usize) on
+            // basically all platforms, but we include it for completeness.
+            return Err(PayloadError);
+        }
+
+        // SAFETY: Invariants have been checked above.
+        Ok(unsafe { Self::new_unchecked(value.into()) })
     }
 
     /// Constructs a [`Payload`] from any value convertible into [`bytes::Bytes`].
@@ -44,7 +50,7 @@ impl Payload {
     /// This constructor is infallible and never panics.
     #[inline]
     pub fn new(value: impl Into<bytes::Bytes>) -> Self {
-        Self::try_new(value).expect("Payload::try_new is infallible")
+        Self::try_new(value).expect("Payload::new received an invalid MQTT payload")
     }
 
     /// Creates a [`Payload`] without applying additional checks.
@@ -71,11 +77,12 @@ impl BinaryData {
     #[inline]
     pub fn try_new(value: impl Into<bytes::Bytes>) -> Result<Self, BinaryDataError> {
         let value = value.into();
-        if value.len() <= u16::MAX as usize {
-            Ok(Self(value))
-        } else {
-            Err(BinaryDataError)
+        if value.len() > u16::MAX as usize {
+            return Err(BinaryDataError);
         }
+
+        // SAFETY: Invariants have been checked above.
+        Ok(unsafe { Self::new_unchecked(value) })
     }
 
     /// Constructs a [`BinaryData`] from any value convertible into [`bytes::Bytes`].
@@ -83,7 +90,7 @@ impl BinaryData {
     /// Panics with `"BinaryData::new received invalid MQTT binary data"` when validation fails.
     #[inline]
     pub fn new(value: impl Into<bytes::Bytes>) -> Self {
-        Self::try_new(value).expect("BinaryData::new received invalid MQTT binary data")
+        Self::try_new(value).expect("BinaryData::new received an invalid MQTT binary data")
     }
 
     /// Creates a [`BinaryData`] without enforcing the MQTT length limit.
@@ -111,15 +118,16 @@ impl Utf8String {
     pub fn try_new(value: impl Into<bytes::Bytes>) -> Result<Self, Utf8StringError> {
         let value = value.into();
         if value.len() > u16::MAX as usize {
-            return Err(Utf8StringError::TooLong);
+            return Err(Utf8StringError);
         }
 
-        let value_str = core::str::from_utf8(&value).map_err(|_| Utf8StringError::InvalidUtf8)?;
+        let value_str = core::str::from_utf8(&value).map_err(|_| Utf8StringError)?;
         if value_str.chars().any(Self::is_invalid_character) {
-            return Err(Utf8StringError::DisallowedCharacter);
+            return Err(Utf8StringError);
         }
 
-        Ok(Self(value))
+        // SAFETY: Invariants have been checked above.
+        Ok(unsafe { Self::new_unchecked(value) })
     }
 
     /// Constructs a [`Utf8String`] from any value convertible into [`bytes::Bytes`].
@@ -127,7 +135,7 @@ impl Utf8String {
     /// Panics with `"Utf8String::new received invalid MQTT utf8 string"` when validation fails.
     #[inline]
     pub fn new(value: impl Into<bytes::Bytes>) -> Self {
-        Self::try_new(value).expect("Utf8String::new received invalid MQTT utf8 string")
+        Self::try_new(value).expect("Utf8String::new received an invalid MQTT utf8 string")
     }
 
     /// Creates a [`Utf8String`] without UTF-8 or MQTT character validation.
@@ -163,7 +171,7 @@ impl Topic {
     /// Panics with `"Topic::new received invalid MQTT topic"` when validation fails.
     #[inline]
     pub fn new(value: impl Into<bytes::Bytes>) -> Self {
-        Self::try_new(value).expect("Topic::new received invalid MQTT topic")
+        Self::try_new(value).expect("Topic::new received an invalid MQTT topic")
     }
 
     /// Creates a [`Topic`] without validating wildcard constraints.
@@ -206,17 +214,10 @@ impl core::borrow::Borrow<bytes::Bytes> for Payload {
     }
 }
 
-impl From<bytes::Bytes> for Payload {
-    #[inline]
-    fn from(value: bytes::Bytes) -> Self {
-        Self(value)
-    }
-}
-
 impl From<Payload> for bytes::Bytes {
     #[inline]
     fn from(value: Payload) -> Self {
-        value.0
+        value.into_inner()
     }
 }
 
@@ -311,10 +312,10 @@ impl TryFrom<Utf8String> for Topic {
     #[inline]
     fn try_from(value: Utf8String) -> Result<Self, Self::Error> {
         if value.contains(['#', '+']) {
-            Err(TopicError)
-        } else {
-            Ok(Self(value))
+            return Err(TopicError);
         }
+        // SAFETY: Invariants have been checked above.
+        Ok(unsafe { Self::new_unchecked(value) })
     }
 }
 
