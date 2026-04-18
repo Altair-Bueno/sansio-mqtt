@@ -1,0 +1,60 @@
+use sansio_mqtt_v5_types::{BinaryData, Payload, Topic, Utf8String};
+
+#[test]
+fn payload_try_new_accepts_into_bytes() {
+    let payload =
+        Payload::try_new(vec![1_u8, 2, 3]).expect("payload construction must be infallible");
+    assert_eq!(&payload[..], &[1, 2, 3]);
+}
+
+#[test]
+fn payload_new_accepts_into_bytes() {
+    let payload = Payload::new(vec![4_u8, 5, 6]);
+    assert_eq!(&payload[..], &[4, 5, 6]);
+}
+
+#[test]
+fn binary_data_try_new_validates_input() {
+    let binary_data =
+        BinaryData::try_new(vec![7_u8, 8, 9]).expect("valid binary data must construct");
+    assert_eq!(&binary_data[..], &[7, 8, 9]);
+
+    let invalid = vec![0_u8; (u16::MAX as usize) + 1];
+    assert!(BinaryData::try_new(invalid).is_err());
+}
+
+#[test]
+#[should_panic(expected = "BinaryData::new received invalid MQTT binary data")]
+fn binary_data_new_panics_on_invalid_input() {
+    let invalid = vec![0_u8; (u16::MAX as usize) + 1];
+    let _ = BinaryData::new(invalid);
+}
+
+#[test]
+fn utf8_string_try_new_validates_input() {
+    let value = Utf8String::try_new("hello").expect("valid utf8 string must construct");
+    assert_eq!(&*value, "hello");
+
+    assert!(Utf8String::try_new(vec![0xFF_u8]).is_err());
+}
+
+#[test]
+#[should_panic(expected = "Utf8String::new received invalid MQTT utf8 string")]
+fn utf8_string_new_panics_on_invalid_input() {
+    let _ = Utf8String::new(vec![0xFF_u8]);
+}
+
+#[test]
+fn topic_try_new_validates_input() {
+    let topic = Topic::try_new("home/living-room").expect("valid topic must construct");
+    let topic_inner: &Utf8String = &topic;
+    assert_eq!(&**topic_inner, "home/living-room");
+
+    assert!(Topic::try_new("home/#").is_err());
+}
+
+#[test]
+#[should_panic(expected = "Topic::new received invalid MQTT topic")]
+fn topic_new_panics_on_invalid_input() {
+    let _ = Topic::new("home/+");
+}
