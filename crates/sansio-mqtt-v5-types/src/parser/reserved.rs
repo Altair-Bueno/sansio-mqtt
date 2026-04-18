@@ -2,7 +2,7 @@ use super::*;
 
 impl ReservedHeaderFlags {
     #[inline]
-    pub fn parse<Input, Error>(input: &mut (Input, usize)) -> Result<Self, Error>
+    pub fn parser<Input, Error>(input: &mut (Input, usize)) -> Result<Self, Error>
     where
         Input: Stream<Token = u8> + StreamIsPartial + Clone,
         Error: ParserError<(Input, usize)> + AddContext<(Input, usize), StrContext>,
@@ -18,8 +18,8 @@ impl ReservedHeaderFlags {
 
 impl Reserved {
     #[inline]
-    pub fn parse<ByteInput, ByteError>(
-        _parser_settings: &Settings,
+    pub fn parser<ByteInput, ByteError>(
+        _parser_settings: &ParserSettings,
     ) -> impl Parser<ByteInput, Self, ByteError> + use<'_, ByteInput, ByteError>
     where
         ByteInput: StreamIsPartial + Stream + Clone + UpdateSlice,

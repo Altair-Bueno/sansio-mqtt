@@ -26,8 +26,8 @@ use winnow::Parser;
 #[case::response_topic(vec![16, 27, 0, 4, 77, 81, 84, 84, 5, 2, 0, 60, 11, 8, 0, 5, 116, 111, 112, 105, 99, 0, 0])]
 #[case::authentication_data_without_method(vec![16, 27, 0, 4, 77, 81, 84, 84, 5, 2, 0, 60, 11, 22, 0, 4, 1, 2, 3, 4, 0, 0])]
 fn connect_rejects_invalid_property(#[case] bytes: Vec<u8>) {
-    let settings = Settings::default();
-    let mut parser = ControlPacket::parse::<_, ContextError, ContextError>(&settings);
+    let settings = ParserSettings::default();
+    let mut parser = ControlPacket::parser::<_, ContextError, ContextError>(&settings);
     assert!(parser.parse(&bytes[..]).is_err());
 }
 
@@ -36,8 +36,8 @@ fn connect_rejects_invalid_property(#[case] bytes: Vec<u8>) {
 #[case::reason_string(vec![16, 36, 0, 4, 77, 81, 84, 84, 5, 54, 0, 60, 5, 0, 0, 11, 31, 0, 4, 116, 101, 115, 116, 0, 5, 116, 111, 112, 105, 99, 0, 4, 116, 101, 115, 116])]
 #[case::receive_maximum(vec![16, 32, 0, 4, 77, 81, 84, 84, 5, 54, 0, 60, 5, 0, 0, 7, 33, 0, 100, 0, 5, 116, 111, 112, 105, 99, 0, 4, 116, 101, 115, 116])]
 fn will_rejects_invalid_property(#[case] bytes: Vec<u8>) {
-    let settings = Settings::default();
-    let mut parser = ControlPacket::parse::<_, ContextError, ContextError>(&settings);
+    let settings = ParserSettings::default();
+    let mut parser = ControlPacket::parser::<_, ContextError, ContextError>(&settings);
     assert!(parser.parse(&bytes[..]).is_err());
 }
 
@@ -48,8 +48,8 @@ fn will_rejects_invalid_property(#[case] bytes: Vec<u8>) {
 #[case::request_problem_information(vec![32, 7, 0, 0, 3, 23, 1])]
 #[case::topic_alias(vec![32, 9, 0, 0, 5, 35, 0, 100])]
 fn connack_rejects_invalid_property(#[case] bytes: Vec<u8>) {
-    let settings = Settings::default();
-    let mut parser = ControlPacket::parse::<_, ContextError, ContextError>(&settings);
+    let settings = ParserSettings::default();
+    let mut parser = ControlPacket::parser::<_, ContextError, ContextError>(&settings);
     assert!(parser.parse(&bytes[..]).is_err());
 }
 
@@ -61,8 +61,8 @@ fn connack_rejects_invalid_property(#[case] bytes: Vec<u8>) {
 #[case::wildcard_subscription_available(vec![48, 17, 0, 4, 116, 101, 115, 116, 0, 1, 5, 40, 1, 116, 101, 115, 116])]
 #[case::authentication_method(vec![48, 22, 0, 4, 116, 101, 115, 116, 0, 1, 10, 21, 0, 4, 116, 101, 115, 116, 116, 101, 115, 116])]
 fn publish_rejects_invalid_property(#[case] bytes: Vec<u8>) {
-    let settings = Settings::default();
-    let mut parser = ControlPacket::parse::<_, ContextError, ContextError>(&settings);
+    let settings = ParserSettings::default();
+    let mut parser = ControlPacket::parser::<_, ContextError, ContextError>(&settings);
     assert!(parser.parse(&bytes[..]).is_err());
 }
 
@@ -71,8 +71,8 @@ fn publish_rejects_invalid_property(#[case] bytes: Vec<u8>) {
 #[case::reason_string(vec![130, 11, 0, 1, 6, 31, 0, 4, 116, 101, 115, 116, 5, 0, 4, 116, 101, 115, 116, 0])]
 #[case::message_expiry_interval(vec![130, 11, 0, 1, 6, 2, 0, 0, 0, 100, 5, 0, 4, 116, 101, 115, 116, 0])]
 fn subscribe_rejects_invalid_property(#[case] bytes: Vec<u8>) {
-    let settings = Settings::default();
-    let mut parser = ControlPacket::parse::<_, ContextError, ContextError>(&settings);
+    let settings = ParserSettings::default();
+    let mut parser = ControlPacket::parser::<_, ContextError, ContextError>(&settings);
     assert!(parser.parse(&bytes[..]).is_err());
 }
 
@@ -81,8 +81,8 @@ fn subscribe_rejects_invalid_property(#[case] bytes: Vec<u8>) {
 #[case::session_expiry_interval(vec![144, 12, 0, 1, 8, 17, 0, 0, 0, 100, 1, 0])]
 #[case::subscription_identifier(vec![144, 8, 0, 1, 4, 11, 42, 1, 0])]
 fn suback_rejects_invalid_property(#[case] bytes: Vec<u8>) {
-    let settings = Settings::default();
-    let mut parser = ControlPacket::parse::<_, ContextError, ContextError>(&settings);
+    let settings = ParserSettings::default();
+    let mut parser = ControlPacket::parser::<_, ContextError, ContextError>(&settings);
     assert!(parser.parse(&bytes[..]).is_err());
 }
 
@@ -91,32 +91,32 @@ fn suback_rejects_invalid_property(#[case] bytes: Vec<u8>) {
 #[case::message_expiry_interval(vec![96, 13, 0, 1, 0, 8, 2, 0, 0, 0, 100])]
 #[case::topic_alias(vec![96, 12, 0, 1, 0, 7, 35, 0, 100])]
 fn puback_rejects_invalid_property(#[case] bytes: Vec<u8>) {
-    let settings = Settings::default();
-    let mut parser = ControlPacket::parse::<_, ContextError, ContextError>(&settings);
+    let settings = ParserSettings::default();
+    let mut parser = ControlPacket::parser::<_, ContextError, ContextError>(&settings);
     assert!(parser.parse(&bytes[..]).is_err());
 }
 
 #[rstest]
 #[case::subscription_identifier(vec![85, 10, 0, 1, 0, 4, 11, 42])]
 fn pubrec_rejects_invalid_property(#[case] bytes: Vec<u8>) {
-    let settings = Settings::default();
-    let mut parser = ControlPacket::parse::<_, ContextError, ContextError>(&settings);
+    let settings = ParserSettings::default();
+    let mut parser = ControlPacket::parser::<_, ContextError, ContextError>(&settings);
     assert!(parser.parse(&bytes[..]).is_err());
 }
 
 #[rstest]
 #[case::content_type(vec![98, 13, 0, 1, 0, 7, 3, 0, 4, 116, 101, 115, 116])]
 fn pubrel_rejects_invalid_property(#[case] bytes: Vec<u8>) {
-    let settings = Settings::default();
-    let mut parser = ControlPacket::parse::<_, ContextError, ContextError>(&settings);
+    let settings = ParserSettings::default();
+    let mut parser = ControlPacket::parser::<_, ContextError, ContextError>(&settings);
     assert!(parser.parse(&bytes[..]).is_err());
 }
 
 #[rstest]
 #[case::topic_alias(vec![112, 12, 0, 1, 0, 7, 35, 0, 100])]
 fn pubcomp_rejects_invalid_property(#[case] bytes: Vec<u8>) {
-    let settings = Settings::default();
-    let mut parser = ControlPacket::parse::<_, ContextError, ContextError>(&settings);
+    let settings = ParserSettings::default();
+    let mut parser = ControlPacket::parser::<_, ContextError, ContextError>(&settings);
     assert!(parser.parse(&bytes[..]).is_err());
 }
 
@@ -124,8 +124,8 @@ fn pubcomp_rejects_invalid_property(#[case] bytes: Vec<u8>) {
 #[case::reason_string(vec![162, 17, 0, 1, 11, 31, 0, 4, 116, 101, 115, 116, 5, 0, 4, 116, 101, 115, 116])]
 #[case::subscription_identifier(vec![162, 11, 0, 1, 5, 11, 42, 5, 0, 4, 116, 101, 115, 116])]
 fn unsubscribe_rejects_invalid_property(#[case] bytes: Vec<u8>) {
-    let settings = Settings::default();
-    let mut parser = ControlPacket::parse::<_, ContextError, ContextError>(&settings);
+    let settings = ParserSettings::default();
+    let mut parser = ControlPacket::parser::<_, ContextError, ContextError>(&settings);
     assert!(parser.parse(&bytes[..]).is_err());
 }
 
@@ -133,8 +133,8 @@ fn unsubscribe_rejects_invalid_property(#[case] bytes: Vec<u8>) {
 #[case::payload_format_indicator(vec![176, 8, 0, 1, 4, 1, 1, 1, 0])]
 #[case::subscription_identifier(vec![176, 8, 0, 1, 4, 11, 42, 1, 0])]
 fn unsuback_rejects_invalid_property(#[case] bytes: Vec<u8>) {
-    let settings = Settings::default();
-    let mut parser = ControlPacket::parse::<_, ContextError, ContextError>(&settings);
+    let settings = ParserSettings::default();
+    let mut parser = ControlPacket::parser::<_, ContextError, ContextError>(&settings);
     assert!(parser.parse(&bytes[..]).is_err());
 }
 
@@ -145,8 +145,8 @@ fn unsuback_rejects_invalid_property(#[case] bytes: Vec<u8>) {
 #[case::topic_alias(vec![224, 9, 0, 5, 35, 0, 100])]
 #[case::authentication_method(vec![224, 13, 0, 9, 21, 0, 4, 116, 101, 115, 116])]
 fn disconnect_rejects_invalid_property(#[case] bytes: Vec<u8>) {
-    let settings = Settings::default();
-    let mut parser = ControlPacket::parse::<_, ContextError, ContextError>(&settings);
+    let settings = ParserSettings::default();
+    let mut parser = ControlPacket::parser::<_, ContextError, ContextError>(&settings);
     assert!(parser.parse(&bytes[..]).is_err());
 }
 
@@ -156,8 +156,8 @@ fn disconnect_rejects_invalid_property(#[case] bytes: Vec<u8>) {
 #[case::message_expiry_interval(vec![240, 13, 0, 9, 21, 0, 4, 116, 101, 115, 116, 2, 0, 0, 0, 100])]
 #[case::subscription_identifier(vec![240, 11, 0, 7, 21, 0, 4, 116, 101, 115, 116, 11, 42])]
 fn auth_rejects_invalid_property(#[case] bytes: Vec<u8>) {
-    let settings = Settings::default();
-    let mut parser = ControlPacket::parse::<_, ContextError, ContextError>(&settings);
+    let settings = ParserSettings::default();
+    let mut parser = ControlPacket::parser::<_, ContextError, ContextError>(&settings);
     assert!(parser.parse(&bytes[..]).is_err());
 }
 
@@ -165,16 +165,16 @@ fn auth_rejects_invalid_property(#[case] bytes: Vec<u8>) {
 #[case::session_expiry_interval(vec![16, 37, 0, 4, 77, 81, 84, 84, 5, 2, 0, 60, 21, 17, 0, 0, 0, 100, 17, 0, 0, 0, 200, 0, 0])]
 #[case::receive_maximum(vec![16, 31, 0, 4, 77, 81, 84, 84, 5, 2, 0, 60, 15, 33, 0, 100, 33, 0, 200, 0, 0])]
 fn connect_rejects_duplicate_property(#[case] bytes: Vec<u8>) {
-    let settings = Settings::default();
-    let mut parser = ControlPacket::parse::<_, ContextError, ContextError>(&settings);
+    let settings = ParserSettings::default();
+    let mut parser = ControlPacket::parser::<_, ContextError, ContextError>(&settings);
     assert!(parser.parse(&bytes[..]).is_err());
 }
 
 #[rstest]
 #[case::subscription_identifier(vec![48, 26, 0, 4, 116, 101, 115, 116, 0, 1, 14, 11, 42, 11, 43, 116, 101, 115, 116])]
 fn publish_rejects_duplicate_property(#[case] bytes: Vec<u8>) {
-    let settings = Settings::default();
-    let mut parser = ControlPacket::parse::<_, ContextError, ContextError>(&settings);
+    let settings = ParserSettings::default();
+    let mut parser = ControlPacket::parser::<_, ContextError, ContextError>(&settings);
     assert!(parser.parse(&bytes[..]).is_err());
 }
 
@@ -184,8 +184,8 @@ fn roundtrip(packet: &ControlPacket) -> Result<(), String> {
         .encode(&mut bytes)
         .map_err(|e| format!("Encode error: {:?}", e))?;
 
-    let settings = Settings::default();
-    let result = ControlPacket::parse::<_, ContextError, ContextError>(&settings)
+    let settings = ParserSettings::default();
+    let result = ControlPacket::parser::<_, ContextError, ContextError>(&settings)
         .parse(&bytes[..])
         .map_err(|e| format!("Parse error: {:?}", e))?;
 
@@ -488,8 +488,8 @@ fn pubrel_with_all_valid_properties_roundtrip() {
 #[test]
 fn pingreq_parsing_valid() {
     let bytes = vec![192, 0];
-    let settings = Settings::default();
-    let mut parser = ControlPacket::parse::<_, ContextError, ContextError>(&settings);
+    let settings = ParserSettings::default();
+    let mut parser = ControlPacket::parser::<_, ContextError, ContextError>(&settings);
     assert!(matches!(
         parser.parse(&bytes[..]),
         Ok(ControlPacket::PingReq(_))
@@ -499,16 +499,16 @@ fn pingreq_parsing_valid() {
 #[test]
 fn pingreq_rejects_with_payload() {
     let bytes = vec![192, 1, 0];
-    let settings = Settings::default();
-    let mut parser = ControlPacket::parse::<_, ContextError, ContextError>(&settings);
+    let settings = ParserSettings::default();
+    let mut parser = ControlPacket::parser::<_, ContextError, ContextError>(&settings);
     parser.parse(&bytes[..]).unwrap_err();
 }
 
 #[test]
 fn pingresp_parsing_valid() {
     let bytes = vec![208, 0];
-    let settings = Settings::default();
-    let mut parser = ControlPacket::parse::<_, ContextError, ContextError>(&settings);
+    let settings = ParserSettings::default();
+    let mut parser = ControlPacket::parser::<_, ContextError, ContextError>(&settings);
     assert!(matches!(
         parser.parse(&bytes[..]),
         Ok(ControlPacket::PingResp(_))
@@ -639,8 +639,8 @@ fn pubcomp_rejects_duplicate_property() {
     let bytes = vec![
         112, 17, 0, 1, 11, 31, 0, 4, 116, 101, 115, 116, 31, 0, 4, 97, 98, 99, 100,
     ];
-    let settings = Settings::default();
-    let mut parser = ControlPacket::parse::<_, ContextError, ContextError>(&settings);
+    let settings = ParserSettings::default();
+    let mut parser = ControlPacket::parser::<_, ContextError, ContextError>(&settings);
     parser.parse(&bytes[..]).unwrap_err();
 }
 
@@ -649,8 +649,8 @@ fn pubrec_rejects_duplicate_property() {
     let bytes = vec![
         85, 17, 0, 1, 11, 31, 0, 4, 116, 101, 115, 116, 31, 0, 4, 97, 98, 99, 100,
     ];
-    let settings = Settings::default();
-    let mut parser = ControlPacket::parse::<_, ContextError, ContextError>(&settings);
+    let settings = ParserSettings::default();
+    let mut parser = ControlPacket::parser::<_, ContextError, ContextError>(&settings);
     parser.parse(&bytes[..]).unwrap_err();
 }
 
@@ -659,8 +659,8 @@ fn pubrel_rejects_duplicate_property() {
     let bytes = vec![
         98, 17, 0, 1, 0, 11, 31, 0, 4, 116, 101, 115, 116, 31, 0, 4, 97, 98, 99, 100,
     ];
-    let settings = Settings::default();
-    let mut parser = ControlPacket::parse::<_, ContextError, ContextError>(&settings);
+    let settings = ParserSettings::default();
+    let mut parser = ControlPacket::parser::<_, ContextError, ContextError>(&settings);
     parser.parse(&bytes[..]).unwrap_err();
 }
 
@@ -681,8 +681,8 @@ fn pingresp_encode_and_decode() {
 #[test]
 fn reserved_packet_parsing() {
     let bytes = vec![0, 0];
-    let settings = Settings::default();
-    let mut parser = ControlPacket::parse::<_, ContextError, ContextError>(&settings);
+    let settings = ParserSettings::default();
+    let mut parser = ControlPacket::parser::<_, ContextError, ContextError>(&settings);
     assert!(matches!(
         parser.parse(&bytes[..]),
         Ok(ControlPacket::Reserved(_))
@@ -692,8 +692,8 @@ fn reserved_packet_parsing() {
 #[test]
 fn reserved_packet_rejects_with_payload() {
     let bytes = vec![0, 1, 0];
-    let settings = Settings::default();
-    let mut parser = ControlPacket::parse::<_, ContextError, ContextError>(&settings);
+    let settings = ParserSettings::default();
+    let mut parser = ControlPacket::parser::<_, ContextError, ContextError>(&settings);
     parser.parse(&bytes[..]).unwrap_err();
 }
 
@@ -706,7 +706,7 @@ fn reserved_packet_roundtrip() {
 
 #[test]
 fn settings_default() {
-    let settings = Settings::default();
+    let settings = ParserSettings::default();
     assert_eq!(settings.max_bytes_string, 5 * 1024);
     assert_eq!(settings.max_bytes_binary_data, 5 * 1024);
     assert_eq!(settings.max_remaining_bytes, 1024 * 1024);
@@ -716,7 +716,7 @@ fn settings_default() {
 
 #[test]
 fn settings_unlimited() {
-    let settings = Settings::unlimited();
+    let settings = ParserSettings::unlimited();
     assert_eq!(settings.max_bytes_string, u16::MAX);
     assert_eq!(settings.max_bytes_binary_data, u16::MAX);
     assert_eq!(settings.max_remaining_bytes, u64::MAX);

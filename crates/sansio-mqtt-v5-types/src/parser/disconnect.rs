@@ -1,7 +1,7 @@
 use super::*;
 impl DisconnectHeaderFlags {
     #[inline]
-    pub fn parse<Input, Error>(input: &mut (Input, usize)) -> Result<Self, Error>
+    pub fn parser<Input, Error>(input: &mut (Input, usize)) -> Result<Self, Error>
     where
         Input: Stream<Token = u8> + StreamIsPartial + Clone,
         Error: ParserError<(Input, usize)> + AddContext<(Input, usize), StrContext>,
@@ -17,8 +17,8 @@ impl DisconnectHeaderFlags {
 
 impl Disconnect {
     #[inline]
-    pub fn parse<'input, 'settings, ByteInput, ByteError, BitError>(
-        parser_settings: &'settings Settings,
+    pub fn parser<'input, 'settings, ByteInput, ByteError, BitError>(
+        parser_settings: &'settings ParserSettings,
     ) -> impl Parser<ByteInput, Self, ByteError> + use<'input, 'settings, ByteInput, ByteError, BitError>
     where
         ByteInput: StreamIsPartial + Stream<Token = u8, Slice = &'input [u8]> + Clone + UpdateSlice,
@@ -47,8 +47,8 @@ impl Disconnect {
                     combinator::eof,
                 ),
                 (
-                    DisconnectReasonCode::parse,
-                    DisconnectProperties::parse(parser_settings),
+                    DisconnectReasonCode::parser,
+                    DisconnectProperties::parser(parser_settings),
                     combinator::eof,
                 ),
             ))
@@ -62,8 +62,8 @@ impl Disconnect {
 
 impl DisconnectProperties {
     #[inline]
-    pub fn parse<'input, 'settings, Input, Error>(
-        parser_settings: &'settings Settings,
+    pub fn parser<'input, 'settings, Input, Error>(
+        parser_settings: &'settings ParserSettings,
     ) -> impl Parser<Input, Self, Error> + use<'input, 'settings, Input, Error>
     where
         Input: Stream<Token = u8, Slice = &'input [u8]> + UpdateSlice + StreamIsPartial + Clone,
@@ -84,7 +84,7 @@ impl DisconnectProperties {
             binary::length_and_then(
                 variable_byte_integer,
                 (
-                    combinator::repeat(.., Property::parse(parser_settings)).try_fold(
+                    combinator::repeat(.., Property::parser(parser_settings)).try_fold(
                         Self::default,
                         |mut properties, property| {
                             let property_type = PropertyType::from(&property);

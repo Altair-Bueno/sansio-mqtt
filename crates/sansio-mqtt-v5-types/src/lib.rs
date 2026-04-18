@@ -7,5 +7,5 @@ mod types;
 extern crate alloc;
 
 pub use encoder::EncodeError;
-pub use parser::Settings;
+pub use parser::ParserSettings;
 pub use types::*;

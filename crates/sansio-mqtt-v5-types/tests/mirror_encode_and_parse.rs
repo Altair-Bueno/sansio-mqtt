@@ -10,8 +10,8 @@ use winnow::error::ContextError;
 use winnow::Parser;
 
 #[rstest::fixture]
-fn settings() -> Settings {
-    Settings::default()
+fn settings() -> ParserSettings {
+    ParserSettings::default()
 }
 
 #[rstest::rstest]
@@ -22,10 +22,10 @@ fn settings() -> Settings {
 #[case(vec! [16, 255, 255, 255, 255, 128])]
 #[case(vec! [16, 255, 255, 255, 255, 255, 1])]
 fn assert_that_parsing_fails_with_invalid_variable_byte_integers(
-    settings: Settings,
+    settings: ParserSettings,
     #[case] input: Vec<u8>,
 ) {
-    ControlPacket::parse::<_, ContextError, ContextError>(&settings)
+    ControlPacket::parser::<_, ContextError, ContextError>(&settings)
         .parse(&input[..])
         .unwrap_err();
 }
@@ -171,10 +171,10 @@ fn assert_that_parsing_fails_with_invalid_variable_byte_integers(
     ]
 )]
 fn assert_that_parsing_an_invalid_field_on_connect_fails(
-    settings: Settings,
+    settings: ParserSettings,
     #[case] input: Vec<u8>,
 ) {
-    ControlPacket::parse::<_, ContextError, ContextError>(&settings)
+    ControlPacket::parser::<_, ContextError, ContextError>(&settings)
         .parse(&input[..])
         .unwrap_err();
 }
@@ -201,10 +201,10 @@ fn assert_that_parsing_an_invalid_field_on_connect_fails(
     ]
 )]
 fn assert_that_parsing_an_invalid_field_on_connack_fails(
-    settings: Settings,
+    settings: ParserSettings,
     #[case] input: Vec<u8>,
 ) {
-    ControlPacket::parse::<_, ContextError, ContextError>(&settings)
+    ControlPacket::parser::<_, ContextError, ContextError>(&settings)
         .parse(&input[..])
         .unwrap_err();
 }
@@ -224,10 +224,10 @@ fn assert_that_parsing_an_invalid_field_on_connack_fails(
     ]
 )]
 fn assert_that_parsing_an_invalid_field_on_publish_fails(
-    settings: Settings,
+    settings: ParserSettings,
     #[case] input: Vec<u8>,
 ) {
-    ControlPacket::parse::<_, ContextError, ContextError>(&settings)
+    ControlPacket::parser::<_, ContextError, ContextError>(&settings)
         .parse(&input[..])
         .unwrap_err();
 }
@@ -240,10 +240,10 @@ fn assert_that_parsing_an_invalid_field_on_publish_fails(
     ]
 )]
 fn assert_that_parsing_an_invalid_field_on_subscribe_fails(
-    settings: Settings,
+    settings: ParserSettings,
     #[case] input: Vec<u8>,
 ) {
-    ControlPacket::parse::<_, ContextError, ContextError>(&settings)
+    ControlPacket::parser::<_, ContextError, ContextError>(&settings)
         .parse(&input[..])
         .unwrap_err();
 }
@@ -256,10 +256,10 @@ fn assert_that_parsing_an_invalid_field_on_subscribe_fails(
     ]
 )]
 fn assert_that_parsing_an_invalid_field_on_suback_fails(
-    settings: Settings,
+    settings: ParserSettings,
     #[case] input: Vec<u8>,
 ) {
-    ControlPacket::parse::<_, ContextError, ContextError>(&settings)
+    ControlPacket::parser::<_, ContextError, ContextError>(&settings)
         .parse(&input[..])
         .unwrap_err();
 }
@@ -272,10 +272,10 @@ fn assert_that_parsing_an_invalid_field_on_suback_fails(
     ]
 )]
 fn assert_that_parsing_an_invalid_field_on_unsubscribe_fails(
-    settings: Settings,
+    settings: ParserSettings,
     #[case] input: Vec<u8>,
 ) {
-    ControlPacket::parse::<_, ContextError, ContextError>(&settings)
+    ControlPacket::parser::<_, ContextError, ContextError>(&settings)
         .parse(&input[..])
         .unwrap_err();
 }
@@ -295,10 +295,10 @@ fn assert_that_parsing_an_invalid_field_on_unsubscribe_fails(
     ]
 )]
 fn assert_that_parsing_an_invalid_field_on_unsuback_fails(
-    settings: Settings,
+    settings: ParserSettings,
     #[case] input: Vec<u8>,
 ) {
-    ControlPacket::parse::<_, ContextError, ContextError>(&settings)
+    ControlPacket::parser::<_, ContextError, ContextError>(&settings)
         .parse(&input[..])
         .unwrap_err();
 }
@@ -841,11 +841,11 @@ fn assert_that_parsing_an_invalid_field_on_unsuback_fails(
     })
 )]
 fn assert_that_different_packets_can_be_decoded_and_encoded(
-    settings: Settings,
+    settings: ParserSettings,
     #[case] encoded_packet_buffer: Vec<u8>,
     #[case] expected_packet: ControlPacket,
 ) {
-    let decoded_packet = ControlPacket::parse::<_, ContextError, ContextError>(&settings)
+    let decoded_packet = ControlPacket::parser::<_, ContextError, ContextError>(&settings)
         .parse(&*encoded_packet_buffer)
         .unwrap();
     assert_eq!(
@@ -855,8 +855,8 @@ fn assert_that_different_packets_can_be_decoded_and_encoded(
 
     let mut encoded_packet_buffer = Vec::with_capacity(expected_packet.encoded_size().unwrap());
     expected_packet.encode(&mut encoded_packet_buffer).unwrap();
-    let settings = Settings::default();
-    let re_decoded_packet = ControlPacket::parse::<_, ContextError, ContextError>(&settings)
+    let settings = ParserSettings::default();
+    let re_decoded_packet = ControlPacket::parser::<_, ContextError, ContextError>(&settings)
         .parse(&encoded_packet_buffer[..])
         .unwrap();
     assert_eq!(

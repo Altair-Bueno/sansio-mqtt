@@ -20,7 +20,7 @@ where
             bits::bool,
             bits::bool,
             bits::bool,
-            Qos::parse,
+            Qos::parser,
             bits::bool,
             bits::bool,
             bits::pattern(0u8, 1usize),
@@ -38,8 +38,8 @@ where
 
 impl Connect {
     #[inline]
-    pub fn parse<'input, 'settings, ByteInput, ByteError, BitError>(
-        parser_settings: &'settings Settings,
+    pub fn parser<'input, 'settings, ByteInput, ByteError, BitError>(
+        parser_settings: &'settings ParserSettings,
     ) -> impl Parser<ByteInput, Self, ByteError> + use<'input, 'settings, ByteInput, ByteError, BitError>
     where
         ByteInput: StreamIsPartial + Stream<Token = u8, Slice = &'input [u8]> + Clone + UpdateSlice,
@@ -69,7 +69,7 @@ impl Connect {
                 properties,
                 client_identifier,
             ) = (
-                combinator::trace("Protocol name", Utf8String::parse(parser_settings)),
+                combinator::trace("Protocol name", Utf8String::parser(parser_settings)),
                 combinator::trace("Protocol version", token::any),
                 self::flags::<_, BitError, _>.verify(
                     |(_, _, will_retain, will_qos, will_flag, _)| {
@@ -81,8 +81,8 @@ impl Connect {
                     },
                 ),
                 combinator::trace("Keep alive", self::two_byte_integer.map(NonZero::new)),
-                ConnectProperties::parse(parser_settings),
-                combinator::trace("Client identifier", Utf8String::parse(parser_settings)),
+                ConnectProperties::parser(parser_settings),
+                combinator::trace("Client identifier", Utf8String::parser(parser_settings)),
             )
                 .parse_next(input)?;
 
@@ -92,9 +92,9 @@ impl Connect {
                     combinator::cond(
                         will_flag,
                         (
-                            WillProperties::parse(parser_settings),
-                            Topic::parse(parser_settings),
-                            BinaryData::parse(parser_settings),
+                            WillProperties::parser(parser_settings),
+                            Topic::parser(parser_settings),
+                            BinaryData::parser(parser_settings),
                         )
                             .map(|(properties, topic, payload)| Will {
                                 properties,
@@ -109,14 +109,14 @@ impl Connect {
                     "username",
                     combinator::cond(
                         username_flag,
-                        Utf8String::parse(parser_settings).map(Into::into),
+                        Utf8String::parser(parser_settings).map(Into::into),
                     ),
                 ),
                 combinator::trace(
                     "password",
                     combinator::cond(
                         password_flag,
-                        BinaryData::parse(parser_settings).map(Into::into),
+                        BinaryData::parser(parser_settings).map(Into::into),
                     ),
                 ),
                 combinator::eof,
@@ -140,7 +140,7 @@ impl Connect {
 
 impl ConnectHeaderFlags {
     #[inline]
-    pub fn parse<Input, Error>(input: &mut (Input, usize)) -> Result<Self, Error>
+    pub fn parser<Input, Error>(input: &mut (Input, usize)) -> Result<Self, Error>
     where
         Input: Stream<Token = u8> + StreamIsPartial + Clone,
         Error: ParserError<(Input, usize)> + AddContext<(Input, usize), StrContext>,
@@ -156,8 +156,8 @@ impl ConnectHeaderFlags {
 
 impl ConnectProperties {
     #[inline]
-    pub fn parse<'input, 'settings, Input, Error>(
-        parser_settings: &'settings Settings,
+    pub fn parser<'input, 'settings, Input, Error>(
+        parser_settings: &'settings ParserSettings,
     ) -> impl Parser<Input, Self, Error> + use<'input, 'settings, Input, Error>
     where
         Input: Stream<Token = u8, Slice = &'input [u8]> + UpdateSlice + StreamIsPartial + Clone,
@@ -178,7 +178,7 @@ impl ConnectProperties {
             binary::length_and_then(
                 variable_byte_integer,
                 (
-                    combinator::repeat(.., Property::parse(parser_settings))
+                    combinator::repeat(.., Property::parser(parser_settings))
                         .try_fold(
                             Default::default,
                             |(
@@ -309,8 +309,8 @@ impl ConnectProperties {
 
 impl WillProperties {
     #[inline]
-    pub fn parse<'input, 'settings, Input, Error>(
-        parser_settings: &'settings Settings,
+    pub fn parser<'input, 'settings, Input, Error>(
+        parser_settings: &'settings ParserSettings,
     ) -> impl Parser<Input, Self, Error> + use<'input, 'settings, Input, Error>
     where
         Input: Stream<Token = u8, Slice = &'input [u8]> + UpdateSlice + StreamIsPartial + Clone,
@@ -331,7 +331,7 @@ impl WillProperties {
             binary::length_and_then(
                 variable_byte_integer,
                 (
-                    combinator::repeat(.., Property::parse(parser_settings)).try_fold(
+                    combinator::repeat(.., Property::parser(parser_settings)).try_fold(
                         Self::default,
                         |mut properties, property| {
                             let property_type = PropertyType::from(&property);

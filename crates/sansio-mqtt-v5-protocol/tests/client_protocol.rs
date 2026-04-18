@@ -9,9 +9,9 @@ use sansio_mqtt_v5_protocol::{
 use sansio_mqtt_v5_types::{
     Auth, AuthProperties, AuthReasonCode, ConnAck, ConnAckKind, ConnAckProperties,
     ConnackReasonCode, ControlPacket, Disconnect, DisconnectProperties, DisconnectReasonCode,
-    GuaranteedQoS, MaximumQoS, Payload, PubAck, PubAckProperties, PubAckReasonCode, PubComp,
-    PubCompProperties, PubCompReasonCode, PubRec, PubRecProperties, PubRecReasonCode, PubRel,
-    PubRelProperties, PubRelReasonCode, Publish, PublishKind, PublishProperties, Qos, Settings,
+    GuaranteedQoS, MaximumQoS, ParserSettings, Payload, PubAck, PubAckProperties, PubAckReasonCode,
+    PubComp, PubCompProperties, PubCompReasonCode, PubRec, PubRecProperties, PubRecReasonCode,
+    PubRel, PubRelProperties, PubRelReasonCode, Publish, PublishKind, PublishProperties, Qos,
     Topic, Utf8String,
 };
 use winnow::error::ContextError;
@@ -101,7 +101,7 @@ fn user_write_out_exposes_qos_delivery_events_with_packet_id() {
 #[test]
 fn config_and_error_are_instantiable() {
     let config = Config::default();
-    let settings = Settings::default();
+    let settings = ParserSettings::default();
     assert_eq!(config.parser_max_bytes_string, settings.max_bytes_string);
     assert_eq!(
         config.parser_max_bytes_binary_data,
@@ -184,7 +184,7 @@ fn connect_encodes_receive_maximum_when_configured() {
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     let connect_bytes = client.poll_write().expect("connect frame expected");
 
-    let packet = ControlPacket::parse::<_, ContextError, ContextError>(&Settings::default())
+    let packet = ControlPacket::parser::<_, ContextError, ContextError>(&ParserSettings::default())
         .parse(connect_bytes.as_ref())
         .expect("connect packet should decode");
 
@@ -215,7 +215,7 @@ fn connect_encodes_maximum_packet_size_when_configured() {
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     let connect_bytes = client.poll_write().expect("connect frame expected");
 
-    let packet = ControlPacket::parse::<_, ContextError, ContextError>(&Settings::default())
+    let packet = ControlPacket::parser::<_, ContextError, ContextError>(&ParserSettings::default())
         .parse(connect_bytes.as_ref())
         .expect("connect packet should decode");
 

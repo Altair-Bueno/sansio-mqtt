@@ -59,8 +59,8 @@ where
 
 impl Payload {
     #[inline]
-    pub fn parse<'input, Input, Error>(
-        _: &Settings,
+    pub fn parser<'input, Input, Error>(
+        _: &ParserSettings,
     ) -> impl Parser<Input, Self, Error> + use<'input, Input, Error>
     where
         Input: StreamIsPartial + Stream<Token = u8, Slice = &'input [u8]>,
@@ -81,8 +81,8 @@ impl Payload {
 
 impl BinaryData {
     #[inline]
-    pub fn parse<'input, Input, Error>(
-        parser_settings: &Settings,
+    pub fn parser<'input, Input, Error>(
+        parser_settings: &ParserSettings,
     ) -> impl Parser<Input, Self, Error> + use<'input, Input, Error>
     where
         Input: StreamIsPartial + Stream<Token = u8, Slice = &'input [u8]>,
@@ -106,7 +106,7 @@ impl BinaryData {
 
 #[inline]
 pub fn string_pair<'input, 'settings, Input, Error>(
-    parser_settings: &'settings Settings,
+    parser_settings: &'settings ParserSettings,
 ) -> impl Parser<Input, (Utf8String, Utf8String), Error> + use<'input, 'settings, Input, Error>
 where
     Input: StreamIsPartial + Stream<Token = u8, Slice = &'input [u8]>,
@@ -118,8 +118,8 @@ where
     combinator::trace(
         "string_pair",
         (
-            Utf8String::parse(parser_settings),
-            Utf8String::parse(parser_settings),
+            Utf8String::parser(parser_settings),
+            Utf8String::parser(parser_settings),
         ),
     )
     .context(StrContext::Label("string_pair"))
@@ -127,8 +127,8 @@ where
 
 impl Utf8String {
     #[inline]
-    pub fn parse<'input, Input, Error>(
-        parser_settings: &Settings,
+    pub fn parser<'input, Input, Error>(
+        parser_settings: &ParserSettings,
     ) -> impl Parser<Input, Self, Error> + use<'input, Input, Error>
     where
         Input: StreamIsPartial + Stream<Token = u8, Slice = &'input [u8]>,
@@ -153,8 +153,8 @@ impl Utf8String {
 
 impl Topic {
     #[inline]
-    pub fn parse<'input, Input, Error>(
-        parser_settings: &Settings,
+    pub fn parser<'input, Input, Error>(
+        parser_settings: &ParserSettings,
     ) -> impl Parser<Input, Self, Error> + use<'input, Input, Error>
     where
         Input: StreamIsPartial + Stream<Token = u8, Slice = &'input [u8]>,
@@ -166,7 +166,7 @@ impl Topic {
     {
         combinator::trace(
             type_name::<Self>(),
-            Utf8String::parse(parser_settings).try_map(Self::try_from),
+            Utf8String::parser(parser_settings).try_map(Self::try_from),
         )
         .context(StrContext::Label(type_name::<Self>()))
         .context(StrContext::Expected(StrContextValue::Description(
@@ -177,7 +177,7 @@ impl Topic {
 
 impl ControlPacketType {
     #[inline]
-    pub fn parse<Input, Error>(input: &mut (Input, usize)) -> Result<Self, Error>
+    pub fn parser<Input, Error>(input: &mut (Input, usize)) -> Result<Self, Error>
     where
         Input: Stream<Token = u8> + StreamIsPartial + Clone,
         Error: ParserError<(Input, usize)>
@@ -198,7 +198,7 @@ impl ControlPacketType {
 
 impl Qos {
     #[inline]
-    pub fn parse<Input, Error>(input: &mut (Input, usize)) -> Result<Self, Error>
+    pub fn parser<Input, Error>(input: &mut (Input, usize)) -> Result<Self, Error>
     where
         Input: Stream<Token = u8> + StreamIsPartial + Clone,
         Error: ParserError<(Input, usize)>
@@ -218,7 +218,7 @@ impl Qos {
 }
 impl FormatIndicator {
     #[inline]
-    pub fn parse<'input, Input, Error>(input: &mut Input) -> Result<Self, Error>
+    pub fn parser<'input, Input, Error>(input: &mut Input) -> Result<Self, Error>
     where
         Input: StreamIsPartial + Stream<Token = u8, Slice = &'input [u8]>,
         Error: ParserError<Input>
@@ -235,7 +235,7 @@ impl FormatIndicator {
 }
 impl RetainHandling {
     #[inline]
-    pub fn parse<Input, Error>(input: &mut (Input, usize)) -> Result<Self, Error>
+    pub fn parser<Input, Error>(input: &mut (Input, usize)) -> Result<Self, Error>
     where
         Input: Stream<Token = u8> + StreamIsPartial + Clone,
         Error: ParserError<(Input, usize)>
@@ -256,8 +256,8 @@ impl RetainHandling {
 
 impl Subscription {
     #[inline]
-    pub fn parse<'input, 'settings, ByteInput, ByteError, BitError>(
-        parser_settings: &'settings Settings,
+    pub fn parser<'input, 'settings, ByteInput, ByteError, BitError>(
+        parser_settings: &'settings ParserSettings,
     ) -> impl Parser<ByteInput, Self, ByteError> + use<'input, 'settings, ByteInput, ByteError, BitError>
     where
         ByteInput: StreamIsPartial + Stream<Token = u8, Slice = &'input [u8]> + Clone + UpdateSlice,
@@ -274,13 +274,13 @@ impl Subscription {
         combinator::trace(
             type_name::<Self>(),
             (
-                Utf8String::parse(parser_settings),
+                Utf8String::parser(parser_settings),
                 bits::bits::<_, _, BitError, _, _>((
                     bits::pattern(0u8, 2usize),
-                    RetainHandling::parse,
+                    RetainHandling::parser,
                     bits::bool,
                     bits::bool,
-                    Qos::parse,
+                    Qos::parser,
                 )),
             )
                 .map(
@@ -306,7 +306,7 @@ macro_rules! impl_parser_for_reason_code {
     ($name:ty) => {
         impl $name {
             #[inline]
-            pub fn parse<Input, Error>(input: &mut Input) -> Result<Self, Error>
+            pub fn parser<Input, Error>(input: &mut Input) -> Result<Self, Error>
             where
                 Input: Stream<Token = u8> + StreamIsPartial + Clone,
                 Error: ParserError<Input>

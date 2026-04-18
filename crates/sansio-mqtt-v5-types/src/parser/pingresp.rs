@@ -1,7 +1,7 @@
 use super::*;
 impl PingRespHeaderFlags {
     #[inline]
-    pub fn parse<Input, Error>(input: &mut (Input, usize)) -> Result<Self, Error>
+    pub fn parser<Input, Error>(input: &mut (Input, usize)) -> Result<Self, Error>
     where
         Input: Stream<Token = u8> + StreamIsPartial + Clone,
         Error: ParserError<(Input, usize)> + AddContext<(Input, usize), StrContext>,
@@ -17,8 +17,8 @@ impl PingRespHeaderFlags {
 
 impl PingResp {
     #[inline]
-    pub fn parse<'input, 'settings, ByteInput, ByteError, BitError>(
-        _parser_settings: &'settings Settings,
+    pub fn parser<'input, 'settings, ByteInput, ByteError, BitError>(
+        _parser_settings: &'settings ParserSettings,
     ) -> impl Parser<ByteInput, Self, ByteError> + use<'input, 'settings, ByteInput, ByteError, BitError>
     where
         ByteInput: StreamIsPartial + Stream<Token = u8, Slice = &'input [u8]> + Clone + UpdateSlice,

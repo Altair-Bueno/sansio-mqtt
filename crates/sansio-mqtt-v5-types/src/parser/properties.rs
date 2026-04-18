@@ -2,7 +2,7 @@ use super::*;
 
 impl PropertyType {
     #[inline]
-    pub fn parse<Input, Error>(input: &mut Input) -> Result<Self, Error>
+    pub fn parser<Input, Error>(input: &mut Input) -> Result<Self, Error>
     where
         Input: Stream<Token = u8> + StreamIsPartial,
         Error: ParserError<Input>
@@ -23,8 +23,8 @@ impl PropertyType {
 
 impl Property {
     #[inline]
-    pub fn parse<'input, 'settings, Input, Error>(
-        parser_settings: &'settings Settings,
+    pub fn parser<'input, 'settings, Input, Error>(
+        parser_settings: &'settings ParserSettings,
     ) -> impl Parser<Input, Self, Error> + use<'input, 'settings, Input, Error>
     where
         Input: Stream<Token = u8, Slice = &'input [u8]> + StreamIsPartial + Clone,
@@ -40,11 +40,11 @@ impl Property {
             + AddContext<Input, StrContext>,
     {
         combinator::trace(type_name::<Self>(), move |input: &mut Input| {
-            let property_type = PropertyType::parse.parse_next(input)?;
+            let property_type = PropertyType::parser.parse_next(input)?;
             match property_type {
                 PropertyType::PayloadFormatIndicator => combinator::trace(
                     "PayloadFormatIndicator",
-                    FormatIndicator::parse.map(Property::PayloadFormatIndicator),
+                    FormatIndicator::parser.map(Property::PayloadFormatIndicator),
                 )
                 .context(StrContext::Label("PayloadFormatIndicator"))
                 .context(StrContext::Expected(StrContextValue::Description(
@@ -62,7 +62,7 @@ impl Property {
                 .parse_next(input),
                 PropertyType::ContentType => combinator::trace(
                     "ContentType",
-                    Utf8String::parse(parser_settings).map(Property::ContentType),
+                    Utf8String::parser(parser_settings).map(Property::ContentType),
                 )
                 .context(StrContext::Label("ContentType"))
                 .context(StrContext::Expected(StrContextValue::Description(
@@ -71,7 +71,7 @@ impl Property {
                 .parse_next(input),
                 PropertyType::ResponseTopic => combinator::trace(
                     "ResponseTopic",
-                    Topic::parse(parser_settings).map(Property::ResponseTopic),
+                    Topic::parser(parser_settings).map(Property::ResponseTopic),
                 )
                 .context(StrContext::Label("ResponseTopic"))
                 .context(StrContext::Expected(StrContextValue::Description(
@@ -80,7 +80,7 @@ impl Property {
                 .parse_next(input),
                 PropertyType::CorrelationData => combinator::trace(
                     "CorrelationData",
-                    BinaryData::parse(parser_settings)
+                    BinaryData::parser(parser_settings)
                         .output_into()
                         .map(Property::CorrelationData),
                 )
@@ -111,7 +111,7 @@ impl Property {
                 .parse_next(input),
                 PropertyType::AssignedClientIdentifier => combinator::trace(
                     "assignedClientIdentifier",
-                    Utf8String::parse(parser_settings).map(Property::AssignedClientIdentifier),
+                    Utf8String::parser(parser_settings).map(Property::AssignedClientIdentifier),
                 )
                 .context(StrContext::Label("assignedClientIdentifier"))
                 .context(StrContext::Expected(StrContextValue::Description(
@@ -129,7 +129,7 @@ impl Property {
                 .parse_next(input),
                 PropertyType::AuthenticationMethod => combinator::trace(
                     "authenticationMethod",
-                    Utf8String::parse(parser_settings).map(Property::AuthenticationMethod),
+                    Utf8String::parser(parser_settings).map(Property::AuthenticationMethod),
                 )
                 .context(StrContext::Label("authenticationMethod"))
                 .context(StrContext::Expected(StrContextValue::Description(
@@ -138,7 +138,7 @@ impl Property {
                 .parse_next(input),
                 PropertyType::AuthenticationData => combinator::trace(
                     "authenticationData",
-                    BinaryData::parse(parser_settings)
+                    BinaryData::parser(parser_settings)
                         .output_into()
                         .map(Property::AuthenticationData),
                 )
@@ -180,7 +180,7 @@ impl Property {
                 .parse_next(input),
                 PropertyType::ResponseInformation => combinator::trace(
                     "ResponseInformation",
-                    Utf8String::parse(parser_settings).map(Property::ResponseInformation),
+                    Utf8String::parser(parser_settings).map(Property::ResponseInformation),
                 )
                 .context(StrContext::Label("ResponseInformation"))
                 .context(StrContext::Expected(StrContextValue::Description(
@@ -189,7 +189,7 @@ impl Property {
                 .parse_next(input),
                 PropertyType::ServerReference => combinator::trace(
                     "ServerReference",
-                    Utf8String::parse(parser_settings).map(Property::ServerReference),
+                    Utf8String::parser(parser_settings).map(Property::ServerReference),
                 )
                 .context(StrContext::Label("ServerReference"))
                 .context(StrContext::Expected(StrContextValue::Description(
@@ -198,7 +198,7 @@ impl Property {
                 .parse_next(input),
                 PropertyType::ReasonString => combinator::trace(
                     "ReasonString",
-                    Utf8String::parse(parser_settings).map(Property::ReasonString),
+                    Utf8String::parser(parser_settings).map(Property::ReasonString),
                 )
                 .context(StrContext::Label("ReasonString"))
                 .context(StrContext::Expected(StrContextValue::Description(

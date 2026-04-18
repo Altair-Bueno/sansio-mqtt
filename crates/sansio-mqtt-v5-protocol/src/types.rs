@@ -5,9 +5,9 @@ use alloc::vec::Vec;
 use sansio_mqtt_v5_types::AuthenticationKind;
 use sansio_mqtt_v5_types::BinaryData;
 use sansio_mqtt_v5_types::FormatIndicator;
+use sansio_mqtt_v5_types::ParserSettings;
 use sansio_mqtt_v5_types::Payload;
 use sansio_mqtt_v5_types::Qos;
-use sansio_mqtt_v5_types::Settings;
 use sansio_mqtt_v5_types::Topic;
 use sansio_mqtt_v5_types::Utf8String;
 
@@ -22,7 +22,7 @@ pub struct Config {
 
 impl Default for Config {
     fn default() -> Self {
-        let settings = Settings::default();
+        let settings = ParserSettings::default();
 
         Self {
             parser_max_bytes_string: settings.max_bytes_string,

@@ -35,7 +35,7 @@ use winnow::stream::*;
 use winnow::token;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Settings {
+pub struct ParserSettings {
     pub max_bytes_string: u16,
     pub max_bytes_binary_data: u16,
     pub max_remaining_bytes: u64,
@@ -43,7 +43,7 @@ pub struct Settings {
     pub max_user_properties_len: usize,
 }
 
-impl Settings {
+impl ParserSettings {
     #[inline]
     pub const fn new() -> Self {
         Self {
@@ -67,7 +67,7 @@ impl Settings {
     }
 }
 
-impl Default for Settings {
+impl Default for ParserSettings {
     #[inline]
     fn default() -> Self {
         Self::new()

@@ -2,7 +2,7 @@ use super::*;
 
 impl PublishHeaderFlags {
     #[inline]
-    pub fn parse<Input, Error>(input: &mut (Input, usize)) -> Result<Self, Error>
+    pub fn parser<Input, Error>(input: &mut (Input, usize)) -> Result<Self, Error>
     where
         Input: Stream<Token = u8> + StreamIsPartial + Clone,
         Error: ParserError<(Input, usize)>
@@ -13,7 +13,7 @@ impl PublishHeaderFlags {
             type_name::<Self>(),
             (
                 combinator::trace("dup", bits::bool).context(StrContext::Label("dup")),
-                Qos::parse,
+                Qos::parser,
                 combinator::trace("retain", bits::bool).context(StrContext::Label("retain")),
             )
                 // The DUP flag MUST be set to 0 for all QoS 0 messages [MQTT-3.3.1-2].
@@ -36,8 +36,8 @@ impl PublishHeaderFlags {
 
 impl Publish {
     #[inline]
-    pub fn parse<'input, 'settings, ByteInput, ByteError, BitError>(
-        parser_settings: &'settings Settings,
+    pub fn parser<'input, 'settings, ByteInput, ByteError, BitError>(
+        parser_settings: &'settings ParserSettings,
         header_flags: PublishHeaderFlags,
     ) -> impl Parser<ByteInput, Self, ByteError> + use<'input, 'settings, ByteInput, ByteError, BitError>
     where
@@ -58,7 +58,7 @@ impl Publish {
     {
         combinator::trace(type_name::<Self>(), move |input: &mut ByteInput| {
             let PublishHeaderFlags { kind, retain } = header_flags.clone();
-            let topic = Topic::parse(parser_settings).parse_next(input)?;
+            let topic = Topic::parser(parser_settings).parse_next(input)?;
             let kind = match kind {
                 PublishHeaderFlagsKind::Simple => PublishKind::FireAndForget,
                 PublishHeaderFlagsKind::Advanced { qos, dup } => {
@@ -72,8 +72,8 @@ impl Publish {
                     }
                 }
             };
-            let properties = PublishProperties::parse(parser_settings).parse_next(input)?;
-            let payload = Payload::parse(parser_settings).parse_next(input)?;
+            let properties = PublishProperties::parser(parser_settings).parse_next(input)?;
+            let payload = Payload::parser(parser_settings).parse_next(input)?;
             Ok(Publish {
                 kind,
                 retain,
@@ -87,8 +87,8 @@ impl Publish {
 
 impl PublishProperties {
     #[inline]
-    pub fn parse<'input, 'settings, Input, Error>(
-        parser_settings: &'settings Settings,
+    pub fn parser<'input, 'settings, Input, Error>(
+        parser_settings: &'settings ParserSettings,
     ) -> impl Parser<Input, Self, Error> + use<'input, 'settings, Input, Error>
     where
         Input: Stream<Token = u8, Slice = &'input [u8]> + UpdateSlice + StreamIsPartial + Clone,
@@ -109,7 +109,7 @@ impl PublishProperties {
             binary::length_and_then(
                 variable_byte_integer,
                 (
-                    combinator::repeat(.., Property::parse(parser_settings)).try_fold(
+                    combinator::repeat(.., Property::parser(parser_settings)).try_fold(
                         Self::default,
                         |mut properties, property| {
                             let property_type = PropertyType::from(&property);

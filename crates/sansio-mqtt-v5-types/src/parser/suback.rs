@@ -1,7 +1,7 @@
 use super::*;
 impl SubAckHeaderFlags {
     #[inline]
-    pub fn parse<Input, Error>(input: &mut (Input, usize)) -> Result<Self, Error>
+    pub fn parser<Input, Error>(input: &mut (Input, usize)) -> Result<Self, Error>
     where
         Input: Stream<Token = u8> + StreamIsPartial + Clone,
         Error: ParserError<(Input, usize)> + AddContext<(Input, usize), StrContext>,
@@ -17,8 +17,8 @@ impl SubAckHeaderFlags {
 
 impl SubAck {
     #[inline]
-    pub fn parse<'input, 'settings, ByteInput, ByteError, BitError>(
-        parser_settings: &'settings Settings,
+    pub fn parser<'input, 'settings, ByteInput, ByteError, BitError>(
+        parser_settings: &'settings ParserSettings,
     ) -> impl Parser<ByteInput, Self, ByteError> + use<'input, 'settings, ByteInput, ByteError, BitError>
     where
         ByteInput: StreamIsPartial + Stream<Token = u8, Slice = &'input [u8]> + Clone + UpdateSlice,
@@ -41,12 +41,12 @@ impl SubAck {
             type_name::<Self>(),
             (
                 combinator::trace("Packet ID", two_byte_integer.try_map(TryInto::try_into)),
-                SubAckProperties::parse(parser_settings),
+                SubAckProperties::parser(parser_settings),
                 combinator::trace(
                     "reason codes",
                     combinator::repeat_till(
                         ..=parser_settings.max_subscriptions_len as usize,
-                        SubAckReasonCode::parse,
+                        SubAckReasonCode::parser,
                         combinator::eof,
                     ),
                 ),
@@ -62,8 +62,8 @@ impl SubAck {
 
 impl SubAckProperties {
     #[inline]
-    pub fn parse<'input, 'settings, Input, Error>(
-        parser_settings: &'settings Settings,
+    pub fn parser<'input, 'settings, Input, Error>(
+        parser_settings: &'settings ParserSettings,
     ) -> impl Parser<Input, Self, Error> + use<'input, 'settings, Input, Error>
     where
         Input: Stream<Token = u8, Slice = &'input [u8]> + UpdateSlice + StreamIsPartial + Clone,
@@ -84,7 +84,7 @@ impl SubAckProperties {
             binary::length_and_then(
                 variable_byte_integer,
                 (
-                    combinator::repeat(.., Property::parse(parser_settings)).try_fold(
+                    combinator::repeat(.., Property::parser(parser_settings)).try_fold(
                         Self::default,
                         |mut properties, property| {
                             let property_type = PropertyType::from(&property);

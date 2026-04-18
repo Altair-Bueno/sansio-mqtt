@@ -2,7 +2,7 @@ use super::*;
 
 impl AuthHeaderFlags {
     #[inline]
-    pub fn parse<Input, Error>(input: &mut (Input, usize)) -> Result<Self, Error>
+    pub fn parser<Input, Error>(input: &mut (Input, usize)) -> Result<Self, Error>
     where
         Input: Stream<Token = u8> + StreamIsPartial + Clone,
         Error: ParserError<(Input, usize)> + AddContext<(Input, usize), StrContext>,
@@ -18,8 +18,8 @@ impl AuthHeaderFlags {
 
 impl Auth {
     #[inline]
-    pub fn parse<'input, 'settings, ByteInput, ByteError, BitError>(
-        parser_settings: &'settings Settings,
+    pub fn parser<'input, 'settings, ByteInput, ByteError, BitError>(
+        parser_settings: &'settings ParserSettings,
     ) -> impl Parser<ByteInput, Self, ByteError> + use<'input, 'settings, ByteInput, ByteError, BitError>
     where
         ByteInput: StreamIsPartial + Stream<Token = u8, Slice = &'input [u8]> + Clone + UpdateSlice,
@@ -46,8 +46,8 @@ impl Auth {
                     combinator::eof,
                 ),
                 (
-                    AuthReasonCode::parse,
-                    AuthProperties::parse(parser_settings),
+                    AuthReasonCode::parser,
+                    AuthProperties::parser(parser_settings),
                     combinator::eof,
                 ),
             ))
@@ -61,8 +61,8 @@ impl Auth {
 
 impl AuthProperties {
     #[inline]
-    pub fn parse<'input, 'settings, Input, Error>(
-        parser_settings: &'settings Settings,
+    pub fn parser<'input, 'settings, Input, Error>(
+        parser_settings: &'settings ParserSettings,
     ) -> impl Parser<Input, Self, Error> + use<'input, 'settings, Input, Error>
     where
         Input: Stream<Token = u8, Slice = &'input [u8]> + UpdateSlice + StreamIsPartial + Clone,
@@ -83,7 +83,7 @@ impl AuthProperties {
             binary::length_and_then(
                 variable_byte_integer,
                 (
-                    combinator::repeat(.., Property::parse(parser_settings))
+                    combinator::repeat(.., Property::parser(parser_settings))
                         .try_fold(
                             Default::default,
                             |(

@@ -2,7 +2,7 @@ use super::*;
 
 impl UnsubscribeHeaderFlags {
     #[inline]
-    pub fn parse<Input, Error>(input: &mut (Input, usize)) -> Result<Self, Error>
+    pub fn parser<Input, Error>(input: &mut (Input, usize)) -> Result<Self, Error>
     where
         Input: Stream<Token = u8> + StreamIsPartial + Clone,
         Error: ParserError<(Input, usize)> + AddContext<(Input, usize), StrContext>,
@@ -21,8 +21,8 @@ impl UnsubscribeHeaderFlags {
 
 impl Unsubscribe {
     #[inline]
-    pub fn parse<'input, 'settings, ByteInput, ByteError, BitError>(
-        parser_settings: &'settings Settings,
+    pub fn parser<'input, 'settings, ByteInput, ByteError, BitError>(
+        parser_settings: &'settings ParserSettings,
     ) -> impl Parser<ByteInput, Self, ByteError> + use<'input, 'settings, ByteInput, ByteError, BitError>
     where
         ByteInput: StreamIsPartial + Stream<Token = u8, Slice = &'input [u8]> + Clone + UpdateSlice,
@@ -44,12 +44,12 @@ impl Unsubscribe {
             type_name::<Self>(),
             (
                 combinator::trace("Packet ID", two_byte_integer.try_map(TryInto::try_into)),
-                UnsubscribeProperties::parse(parser_settings),
+                UnsubscribeProperties::parser(parser_settings),
                 combinator::trace(
                     "topics",
                     combinator::repeat_till(
                         1..=parser_settings.max_subscriptions_len as usize,
-                        Utf8String::parse(parser_settings),
+                        Utf8String::parser(parser_settings),
                         combinator::eof,
                     ),
                 ),
@@ -74,8 +74,8 @@ impl Unsubscribe {
 
 impl UnsubscribeProperties {
     #[inline]
-    pub fn parse<'input, 'settings, Input, Error>(
-        parser_settings: &'settings Settings,
+    pub fn parser<'input, 'settings, Input, Error>(
+        parser_settings: &'settings ParserSettings,
     ) -> impl Parser<Input, Self, Error> + use<'input, 'settings, Input, Error>
     where
         Input: Stream<Token = u8, Slice = &'input [u8]> + UpdateSlice + StreamIsPartial + Clone,
@@ -96,7 +96,7 @@ impl UnsubscribeProperties {
             binary::length_and_then(
                 variable_byte_integer,
                 (
-                    combinator::repeat(.., Property::parse(parser_settings)).try_fold(
+                    combinator::repeat(.., Property::parser(parser_settings)).try_fold(
                         Self::default,
                         |mut properties, property| {
                             let property_type = PropertyType::from(&property);

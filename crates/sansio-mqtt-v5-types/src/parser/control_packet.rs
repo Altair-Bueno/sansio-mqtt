@@ -2,8 +2,8 @@ use super::*;
 
 impl ControlPacket {
     #[inline]
-    pub fn parse<'input, 'settings, ByteInput, ByteError, BitError>(
-        parser_settings: &'settings Settings,
+    pub fn parser<'input, 'settings, ByteInput, ByteError, BitError>(
+        parser_settings: &'settings ParserSettings,
     ) -> impl Parser<ByteInput, Self, ByteError> + use<'input, 'settings, ByteInput, ByteError, BitError>
     where
         ByteInput: StreamIsPartial + Stream<Token = u8, Slice = &'input [u8]> + Clone + UpdateSlice,
@@ -28,7 +28,7 @@ impl ControlPacket {
     {
         combinator::trace(type_name::<Self>(), |input: &mut ByteInput| {
             let control_packet_type =
-                combinator::peek(bits::bits(ControlPacketType::parse::<_, BitError>))
+                combinator::peek(bits::bits(ControlPacketType::parser::<_, BitError>))
                     .parse_next(input)?;
 
             let remaining_len_parser = combinator::trace(
@@ -41,22 +41,22 @@ impl ControlPacket {
                 ControlPacketType::Reserved => {
                     let (_, _header_flags) = bits::bits((
                         bits::take::<_, u8, _, BitError>(4usize),
-                        ReservedHeaderFlags::parse,
+                        ReservedHeaderFlags::parser,
                     ))
                     .parse_next(input)?;
-                    binary::length_and_then(remaining_len_parser, Reserved::parse(parser_settings))
+                    binary::length_and_then(remaining_len_parser, Reserved::parser(parser_settings))
                         .map(ControlPacket::Reserved)
                         .parse_next(input)
                 }
                 ControlPacketType::Connect => {
                     let (_, _header_flags) = bits::bits((
                         bits::take::<_, u8, _, BitError>(4usize),
-                        ConnectHeaderFlags::parse,
+                        ConnectHeaderFlags::parser,
                     ))
                     .parse_next(input)?;
                     binary::length_and_then(
                         remaining_len_parser,
-                        Connect::parse::<_, _, BitError>(parser_settings),
+                        Connect::parser::<_, _, BitError>(parser_settings),
                     )
                     .map(ControlPacket::Connect)
                     .parse_next(input)
@@ -64,12 +64,12 @@ impl ControlPacket {
                 ControlPacketType::ConnAck => {
                     let (_, _header_flags) = bits::bits((
                         bits::take::<_, u8, _, BitError>(4usize),
-                        ConnAckHeaderFlags::parse,
+                        ConnAckHeaderFlags::parser,
                     ))
                     .parse_next(input)?;
                     binary::length_and_then(
                         remaining_len_parser,
-                        ConnAck::parse::<_, _, BitError>(parser_settings),
+                        ConnAck::parser::<_, _, BitError>(parser_settings),
                     )
                     .map(ControlPacket::ConnAck)
                     .parse_next(input)
@@ -77,12 +77,12 @@ impl ControlPacket {
                 ControlPacketType::Publish => {
                     let (_, header_flags) = bits::bits((
                         bits::take::<_, u8, _, BitError>(4usize),
-                        PublishHeaderFlags::parse,
+                        PublishHeaderFlags::parser,
                     ))
                     .parse_next(input)?;
                     binary::length_and_then(
                         remaining_len_parser,
-                        Publish::parse::<_, _, BitError>(parser_settings, header_flags),
+                        Publish::parser::<_, _, BitError>(parser_settings, header_flags),
                     )
                     .map(ControlPacket::Publish)
                     .parse_next(input)
@@ -90,12 +90,12 @@ impl ControlPacket {
                 ControlPacketType::PubAck => {
                     let (_, _header_flags) = bits::bits((
                         bits::take::<_, u8, _, BitError>(4usize),
-                        PubAckHeaderFlags::parse,
+                        PubAckHeaderFlags::parser,
                     ))
                     .parse_next(input)?;
                     binary::length_and_then(
                         remaining_len_parser,
-                        PubAck::parse::<_, _, BitError>(parser_settings),
+                        PubAck::parser::<_, _, BitError>(parser_settings),
                     )
                     .map(ControlPacket::PubAck)
                     .parse_next(input)
@@ -103,12 +103,12 @@ impl ControlPacket {
                 ControlPacketType::PubRec => {
                     let (_, _header_flags) = bits::bits((
                         bits::take::<_, u8, _, BitError>(4usize),
-                        PubRecHeaderFlags::parse,
+                        PubRecHeaderFlags::parser,
                     ))
                     .parse_next(input)?;
                     binary::length_and_then(
                         remaining_len_parser,
-                        PubRec::parse::<_, _, BitError>(parser_settings),
+                        PubRec::parser::<_, _, BitError>(parser_settings),
                     )
                     .map(ControlPacket::PubRec)
                     .parse_next(input)
@@ -116,12 +116,12 @@ impl ControlPacket {
                 ControlPacketType::PubRel => {
                     let (_, _header_flags) = bits::bits((
                         bits::take::<_, u8, _, BitError>(4usize),
-                        PubRelHeaderFlags::parse,
+                        PubRelHeaderFlags::parser,
                     ))
                     .parse_next(input)?;
                     binary::length_and_then(
                         remaining_len_parser,
-                        PubRel::parse::<_, _, BitError>(parser_settings),
+                        PubRel::parser::<_, _, BitError>(parser_settings),
                     )
                     .map(ControlPacket::PubRel)
                     .parse_next(input)
@@ -129,12 +129,12 @@ impl ControlPacket {
                 ControlPacketType::PubComp => {
                     let (_, _header_flags) = bits::bits((
                         bits::take::<_, u8, _, BitError>(4usize),
-                        PubCompHeaderFlags::parse,
+                        PubCompHeaderFlags::parser,
                     ))
                     .parse_next(input)?;
                     binary::length_and_then(
                         remaining_len_parser,
-                        PubComp::parse::<_, _, BitError>(parser_settings),
+                        PubComp::parser::<_, _, BitError>(parser_settings),
                     )
                     .map(ControlPacket::PubComp)
                     .parse_next(input)
@@ -142,12 +142,12 @@ impl ControlPacket {
                 ControlPacketType::Subscribe => {
                     let (_, _header_flags) = bits::bits((
                         bits::take::<_, u8, _, BitError>(4usize),
-                        SubscribeHeaderFlags::parse,
+                        SubscribeHeaderFlags::parser,
                     ))
                     .parse_next(input)?;
                     binary::length_and_then(
                         remaining_len_parser,
-                        Subscribe::parse::<_, _, BitError>(parser_settings),
+                        Subscribe::parser::<_, _, BitError>(parser_settings),
                     )
                     .map(ControlPacket::Subscribe)
                     .parse_next(input)
@@ -155,12 +155,12 @@ impl ControlPacket {
                 ControlPacketType::SubAck => {
                     let (_, _header_flags) = bits::bits((
                         bits::take::<_, u8, _, BitError>(4usize),
-                        SubAckHeaderFlags::parse,
+                        SubAckHeaderFlags::parser,
                     ))
                     .parse_next(input)?;
                     binary::length_and_then(
                         remaining_len_parser,
-                        SubAck::parse::<_, _, BitError>(parser_settings),
+                        SubAck::parser::<_, _, BitError>(parser_settings),
                     )
                     .map(ControlPacket::SubAck)
                     .parse_next(input)
@@ -168,12 +168,12 @@ impl ControlPacket {
                 ControlPacketType::Unsubscribe => {
                     let (_, _header_flags) = bits::bits((
                         bits::take::<_, u8, _, BitError>(4usize),
-                        UnsubscribeHeaderFlags::parse,
+                        UnsubscribeHeaderFlags::parser,
                     ))
                     .parse_next(input)?;
                     binary::length_and_then(
                         remaining_len_parser,
-                        Unsubscribe::parse::<_, _, BitError>(parser_settings),
+                        Unsubscribe::parser::<_, _, BitError>(parser_settings),
                     )
                     .map(ControlPacket::Unsubscribe)
                     .parse_next(input)
@@ -181,12 +181,12 @@ impl ControlPacket {
                 ControlPacketType::UnsubAck => {
                     let (_, _header_flags) = bits::bits((
                         bits::take::<_, u8, _, BitError>(4usize),
-                        UnsubAckHeaderFlags::parse,
+                        UnsubAckHeaderFlags::parser,
                     ))
                     .parse_next(input)?;
                     binary::length_and_then(
                         remaining_len_parser,
-                        UnsubAck::parse::<_, _, BitError>(parser_settings),
+                        UnsubAck::parser::<_, _, BitError>(parser_settings),
                     )
                     .map(ControlPacket::UnsubAck)
                     .parse_next(input)
@@ -194,13 +194,13 @@ impl ControlPacket {
                 ControlPacketType::PingReq => {
                     let (_, _header_flags) = bits::bits((
                         bits::take::<_, u8, _, BitError>(4usize),
-                        PingReqHeaderFlags::parse,
+                        PingReqHeaderFlags::parser,
                     ))
                     .parse_next(input)?;
 
                     binary::length_and_then(
                         remaining_len_parser,
-                        PingReq::parse::<_, _, BitError>(parser_settings),
+                        PingReq::parser::<_, _, BitError>(parser_settings),
                     )
                     .map(ControlPacket::PingReq)
                     .parse_next(input)
@@ -208,12 +208,12 @@ impl ControlPacket {
                 ControlPacketType::PingResp => {
                     let (_, _header_flags) = bits::bits((
                         bits::take::<_, u8, _, BitError>(4usize),
-                        PingRespHeaderFlags::parse,
+                        PingRespHeaderFlags::parser,
                     ))
                     .parse_next(input)?;
                     binary::length_and_then(
                         remaining_len_parser,
-                        PingResp::parse::<_, _, BitError>(parser_settings),
+                        PingResp::parser::<_, _, BitError>(parser_settings),
                     )
                     .map(ControlPacket::PingResp)
                     .parse_next(input)
@@ -221,12 +221,12 @@ impl ControlPacket {
                 ControlPacketType::Disconnect => {
                     let (_, _header_flags) = bits::bits((
                         bits::take::<_, u8, _, BitError>(4usize),
-                        DisconnectHeaderFlags::parse,
+                        DisconnectHeaderFlags::parser,
                     ))
                     .parse_next(input)?;
                     binary::length_and_then(
                         remaining_len_parser,
-                        Disconnect::parse::<_, _, BitError>(parser_settings),
+                        Disconnect::parser::<_, _, BitError>(parser_settings),
                     )
                     .map(ControlPacket::Disconnect)
                     .parse_next(input)
@@ -234,12 +234,12 @@ impl ControlPacket {
                 ControlPacketType::Auth => {
                     let (_, _header_flags) = bits::bits((
                         bits::take::<_, u8, _, BitError>(4usize),
-                        AuthHeaderFlags::parse,
+                        AuthHeaderFlags::parser,
                     ))
                     .parse_next(input)?;
                     binary::length_and_then(
                         remaining_len_parser,
-                        Auth::parse::<_, _, BitError>(parser_settings),
+                        Auth::parser::<_, _, BitError>(parser_settings),
                     )
                     .map(ControlPacket::Auth)
                     .parse_next(input)

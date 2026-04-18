@@ -20,6 +20,7 @@ use sansio_mqtt_v5_types::DisconnectReasonCode;
 use sansio_mqtt_v5_types::EncodeError;
 use sansio_mqtt_v5_types::GuaranteedQoS;
 use sansio_mqtt_v5_types::MaximumQoS;
+use sansio_mqtt_v5_types::ParserSettings;
 use sansio_mqtt_v5_types::PingReq;
 use sansio_mqtt_v5_types::PubAck;
 use sansio_mqtt_v5_types::PubAckProperties;
@@ -38,7 +39,6 @@ use sansio_mqtt_v5_types::PublishKind;
 use sansio_mqtt_v5_types::PublishProperties;
 use sansio_mqtt_v5_types::Qos;
 use sansio_mqtt_v5_types::RetainHandling;
-use sansio_mqtt_v5_types::Settings;
 use sansio_mqtt_v5_types::Subscribe;
 use sansio_mqtt_v5_types::SubscribeProperties;
 use sansio_mqtt_v5_types::Subscription;
@@ -250,8 +250,8 @@ impl<Time> Client<Time> {
         })
     }
 
-    fn parser_settings(&self) -> Settings {
-        Settings {
+    fn parser_settings(&self) -> ParserSettings {
+        ParserSettings {
             max_bytes_string: self.config.parser_max_bytes_string,
             max_bytes_binary_data: self.config.parser_max_bytes_binary_data,
             max_remaining_bytes: self.config.parser_max_remaining_bytes,
@@ -879,7 +879,7 @@ where
         while !slice.is_empty() {
             let mut input = Partial::new(slice);
 
-            match ControlPacket::parse::<_, ErrMode<()>, ErrMode<()>>(&parser_settings)
+            match ControlPacket::parser::<_, ErrMode<()>, ErrMode<()>>(&parser_settings)
                 .parse_next(&mut input)
             {
                 Ok(packet) => {
