@@ -62,8 +62,8 @@ pub struct ConnectionOptions {
 
     pub session_expiry_interval: Option<u32>,
     pub topic_alias_maximum: Option<u16>,
-    // pub receive_maximum: Option<NonZero<u16>>,
-    // pub maximum_packet_size: Option<NonZero<u32>>,
+    pub receive_maximum: Option<NonZero<u16>>,
+    pub maximum_packet_size: Option<NonZero<u32>>,
     pub request_response_information: Option<bool>,
     pub request_problem_information: Option<bool>,
     pub authentication: Option<AuthenticationKind>,
@@ -74,6 +74,8 @@ pub struct ConnectionOptions {
 pub struct Will {
     pub topic: Topic,
     pub payload: Payload,
+    pub qos: Qos,
+    pub retain: bool,
     pub payload_format_indicator: Option<FormatIndicator>,
     pub message_expiry_interval: Option<Duration>,
     pub topic_alias: Option<NonZero<u16>>,
@@ -88,6 +90,7 @@ pub struct Will {
 pub struct ClientMessage {
     pub topic: Topic,
     pub qos: Qos,
+    pub retain: bool,
     pub payload: Payload,
     pub payload_format_indicator: Option<FormatIndicator>,
     pub message_expiry_interval: Option<Duration>,

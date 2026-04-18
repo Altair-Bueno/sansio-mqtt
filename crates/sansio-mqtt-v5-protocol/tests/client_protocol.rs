@@ -9,10 +9,13 @@ use sansio_mqtt_v5_protocol::{
 use sansio_mqtt_v5_types::{
     Auth, AuthProperties, AuthReasonCode, ConnAck, ConnAckKind, ConnAckProperties,
     ConnackReasonCode, ControlPacket, Disconnect, DisconnectProperties, DisconnectReasonCode,
-    GuaranteedQoS, Payload, PubAck, PubAckProperties, PubAckReasonCode, PubComp, PubCompProperties,
-    PubCompReasonCode, PubRec, PubRecProperties, PubRecReasonCode, PubRel, PubRelProperties,
-    PubRelReasonCode, Publish, PublishKind, PublishProperties, Qos, Settings, Topic, Utf8String,
+    GuaranteedQoS, MaximumQoS, Payload, PubAck, PubAckProperties, PubAckReasonCode, PubComp,
+    PubCompProperties, PubCompReasonCode, PubRec, PubRecProperties, PubRecReasonCode, PubRel,
+    PubRelProperties, PubRelReasonCode, Publish, PublishKind, PublishProperties, Qos, Settings,
+    Topic, Utf8String,
 };
+use winnow::error::ContextError;
+use winnow::Parser;
 
 fn encode_packet(packet: &ControlPacket) -> Bytes {
     let mut out = Vec::new();
@@ -160,6 +163,68 @@ fn socket_connected_emits_connect_bytes() {
             0x00,
         ]))
     );
+}
+
+#[test]
+fn connect_encodes_receive_maximum_when_configured() {
+    let mut client = Client::<u64>::default();
+
+    assert_eq!(
+        client.handle_write(UserWriteIn::Connect(ConnectionOptions {
+            receive_maximum: NonZero::new(42),
+            ..ConnectionOptions::default()
+        })),
+        Ok(())
+    );
+    assert_eq!(
+        client.poll_event(),
+        Some(sansio_mqtt_v5_protocol::DriverEventOut::OpenSocket)
+    );
+
+    assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
+    let connect_bytes = client.poll_write().expect("connect frame expected");
+
+    let packet = ControlPacket::parse::<_, ContextError, ContextError>(&Settings::default())
+        .parse(connect_bytes.as_ref())
+        .expect("connect packet should decode");
+
+    let connect = match packet {
+        ControlPacket::Connect(connect) => connect,
+        other => panic!("expected CONNECT, got {other:?}"),
+    };
+
+    assert_eq!(connect.properties.receive_maximum, NonZero::new(42));
+}
+
+#[test]
+fn connect_encodes_maximum_packet_size_when_configured() {
+    let mut client = Client::<u64>::default();
+
+    assert_eq!(
+        client.handle_write(UserWriteIn::Connect(ConnectionOptions {
+            maximum_packet_size: NonZero::new(8192),
+            ..ConnectionOptions::default()
+        })),
+        Ok(())
+    );
+    assert_eq!(
+        client.poll_event(),
+        Some(sansio_mqtt_v5_protocol::DriverEventOut::OpenSocket)
+    );
+
+    assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
+    let connect_bytes = client.poll_write().expect("connect frame expected");
+
+    let packet = ControlPacket::parse::<_, ContextError, ContextError>(&Settings::default())
+        .parse(connect_bytes.as_ref())
+        .expect("connect packet should decode");
+
+    let connect = match packet {
+        ControlPacket::Connect(connect) => connect,
+        other => panic!("expected CONNECT, got {other:?}"),
+    };
+
+    assert_eq!(connect.properties.maximum_packet_size, NonZero::new(8192));
 }
 
 #[test]
@@ -332,6 +397,229 @@ fn inbound_publish_qos0_is_forwarded_to_user_queue() {
         }
         other => panic!("expected received message, got {other:?}"),
     }
+}
+
+#[test]
+fn inbound_publish_registers_topic_alias_then_resolves_alias_only_publish() {
+    let mut client = Client::<u64>::default();
+
+    assert_eq!(
+        client.handle_write(UserWriteIn::Connect(ConnectionOptions {
+            topic_alias_maximum: Some(10),
+            ..ConnectionOptions::default()
+        })),
+        Ok(())
+    );
+    assert_eq!(
+        client.poll_event(),
+        Some(sansio_mqtt_v5_protocol::DriverEventOut::OpenSocket)
+    );
+    assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
+    assert!(client.poll_write().is_some());
+
+    let connack = ControlPacket::ConnAck(ConnAck {
+        kind: ConnAckKind::Other {
+            reason_code: ConnackReasonCode::Success,
+        },
+        properties: ConnAckProperties::default(),
+    });
+    assert_eq!(client.handle_read(encode_packet(&connack)), Ok(()));
+    assert_eq!(client.poll_read(), Some(UserWriteOut::Connected));
+
+    let alias = NonZero::new(1).expect("non-zero alias");
+    let topic = Topic::try_from(Utf8String::try_from("alias/topic").expect("valid utf8"))
+        .expect("valid topic");
+
+    let register_publish = ControlPacket::Publish(Publish {
+        kind: PublishKind::FireAndForget,
+        retain: false,
+        payload: Payload::from(&b"first"[..]),
+        topic: topic.clone(),
+        properties: PublishProperties {
+            topic_alias: Some(alias),
+            ..PublishProperties::default()
+        },
+    });
+    assert_eq!(client.handle_read(encode_packet(&register_publish)), Ok(()));
+
+    match client.poll_read() {
+        Some(UserWriteOut::ReceivedMessage(message)) => {
+            assert_eq!(message.topic, topic);
+            assert_eq!(message.payload, Payload::from(&b"first"[..]));
+            assert_eq!(message.topic_alias, Some(alias));
+        }
+        other => panic!("expected received message, got {other:?}"),
+    }
+
+    let alias_only_publish = ControlPacket::Publish(Publish {
+        kind: PublishKind::FireAndForget,
+        retain: false,
+        payload: Payload::from(&b"second"[..]),
+        topic: Topic::try_from(Utf8String::try_from("").expect("valid utf8")).expect("valid topic"),
+        properties: PublishProperties {
+            topic_alias: Some(alias),
+            ..PublishProperties::default()
+        },
+    });
+    assert_eq!(
+        client.handle_read(encode_packet(&alias_only_publish)),
+        Ok(())
+    );
+
+    match client.poll_read() {
+        Some(UserWriteOut::ReceivedMessage(message)) => {
+            assert_eq!(
+                message.topic,
+                Topic::try_from(Utf8String::try_from("alias/topic").expect("valid utf8"))
+                    .expect("valid topic")
+            );
+            assert_eq!(message.payload, Payload::from(&b"second"[..]));
+            assert_eq!(message.topic_alias, Some(alias));
+        }
+        other => panic!("expected received message, got {other:?}"),
+    }
+}
+
+#[test]
+fn inbound_publish_alias_only_unknown_alias_is_protocol_error() {
+    let mut client = Client::<u64>::default();
+
+    assert_eq!(
+        client.handle_write(UserWriteIn::Connect(ConnectionOptions {
+            topic_alias_maximum: Some(10),
+            ..ConnectionOptions::default()
+        })),
+        Ok(())
+    );
+    assert_eq!(
+        client.poll_event(),
+        Some(sansio_mqtt_v5_protocol::DriverEventOut::OpenSocket)
+    );
+    assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
+    assert!(client.poll_write().is_some());
+
+    let connack = ControlPacket::ConnAck(ConnAck {
+        kind: ConnAckKind::Other {
+            reason_code: ConnackReasonCode::Success,
+        },
+        properties: ConnAckProperties::default(),
+    });
+    assert_eq!(client.handle_read(encode_packet(&connack)), Ok(()));
+    assert_eq!(client.poll_read(), Some(UserWriteOut::Connected));
+
+    let unknown_alias_publish = ControlPacket::Publish(Publish {
+        kind: PublishKind::FireAndForget,
+        retain: false,
+        payload: Payload::from(&b"unknown"[..]),
+        topic: Topic::try_from(Utf8String::try_from("").expect("valid utf8")).expect("valid topic"),
+        properties: PublishProperties {
+            topic_alias: Some(NonZero::new(1).expect("non-zero alias")),
+            ..PublishProperties::default()
+        },
+    });
+
+    assert_eq!(
+        client.handle_read(encode_packet(&unknown_alias_publish)),
+        Err(Error::ProtocolError)
+    );
+    assert_eq!(
+        client.poll_write(),
+        Some(Bytes::from_static(&[0xE0, 0x02, 0x82, 0x00]))
+    );
+    assert_eq!(
+        client.poll_event(),
+        Some(sansio_mqtt_v5_protocol::DriverEventOut::CloseSocket)
+    );
+    assert_eq!(client.poll_read(), None);
+}
+
+#[test]
+fn inbound_publish_empty_topic_without_alias_is_protocol_error() {
+    let mut client = Client::<u64>::default();
+
+    assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
+    assert!(client.poll_write().is_some());
+
+    let connack = ControlPacket::ConnAck(ConnAck {
+        kind: ConnAckKind::Other {
+            reason_code: ConnackReasonCode::Success,
+        },
+        properties: ConnAckProperties::default(),
+    });
+    assert_eq!(client.handle_read(encode_packet(&connack)), Ok(()));
+    assert_eq!(client.poll_read(), Some(UserWriteOut::Connected));
+
+    let invalid_publish = ControlPacket::Publish(Publish {
+        kind: PublishKind::FireAndForget,
+        retain: false,
+        payload: Payload::from(&b"invalid"[..]),
+        topic: Topic::try_from(Utf8String::try_from("").expect("valid utf8")).expect("valid topic"),
+        properties: PublishProperties::default(),
+    });
+
+    assert_eq!(
+        client.handle_read(encode_packet(&invalid_publish)),
+        Err(Error::ProtocolError)
+    );
+    assert_eq!(
+        client.poll_event(),
+        Some(sansio_mqtt_v5_protocol::DriverEventOut::CloseSocket)
+    );
+    assert_eq!(client.poll_read(), None);
+}
+
+#[test]
+fn inbound_publish_alias_exceeds_client_alias_max_is_protocol_error() {
+    let mut client = Client::<u64>::default();
+
+    assert_eq!(
+        client.handle_write(UserWriteIn::Connect(ConnectionOptions {
+            topic_alias_maximum: Some(1),
+            ..ConnectionOptions::default()
+        })),
+        Ok(())
+    );
+    assert_eq!(
+        client.poll_event(),
+        Some(sansio_mqtt_v5_protocol::DriverEventOut::OpenSocket)
+    );
+    assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
+    assert!(client.poll_write().is_some());
+
+    let connack = ControlPacket::ConnAck(ConnAck {
+        kind: ConnAckKind::Other {
+            reason_code: ConnackReasonCode::Success,
+        },
+        properties: ConnAckProperties::default(),
+    });
+    assert_eq!(client.handle_read(encode_packet(&connack)), Ok(()));
+    assert_eq!(client.poll_read(), Some(UserWriteOut::Connected));
+
+    let alias_too_large_publish = ControlPacket::Publish(Publish {
+        kind: PublishKind::FireAndForget,
+        retain: false,
+        payload: Payload::from(&b"value"[..]),
+        topic: Topic::try_from(Utf8String::try_from("alias/topic").expect("valid utf8"))
+            .expect("valid topic"),
+        properties: PublishProperties {
+            topic_alias: Some(NonZero::new(2).expect("non-zero alias")),
+            ..PublishProperties::default()
+        },
+    });
+
+    assert_eq!(
+        client.handle_read(encode_packet(&alias_too_large_publish)),
+        Err(Error::ProtocolError)
+    );
+    assert_eq!(
+        client.poll_write(),
+        Some(Bytes::from_static(&[0xE0, 0x02, 0x82, 0x00]))
+    );
+    assert_eq!(
+        client.poll_event(),
+        Some(sansio_mqtt_v5_protocol::DriverEventOut::CloseSocket)
+    );
+    assert_eq!(client.poll_read(), None);
 }
 
 #[test]
@@ -1352,9 +1640,84 @@ fn reconnect_ignores_previous_connack_maximum_packet_size_for_connect() {
 }
 
 #[test]
+fn connack_resume_with_clean_start_is_protocol_error() {
+    let mut client = Client::<u64>::default();
+
+    assert_eq!(
+        client.handle_write(UserWriteIn::Connect(ConnectionOptions {
+            clean_start: true,
+            ..ConnectionOptions::default()
+        })),
+        Ok(())
+    );
+    assert_eq!(
+        client.poll_event(),
+        Some(sansio_mqtt_v5_protocol::DriverEventOut::OpenSocket)
+    );
+
+    assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
+    assert!(client.poll_write().is_some());
+
+    let resumed_connack = ControlPacket::ConnAck(ConnAck {
+        kind: ConnAckKind::ResumePreviousSession,
+        properties: ConnAckProperties::default(),
+    });
+
+    assert_eq!(
+        client.handle_read(encode_packet(&resumed_connack)),
+        Err(Error::ProtocolError)
+    );
+    assert_eq!(
+        client.poll_event(),
+        Some(sansio_mqtt_v5_protocol::DriverEventOut::CloseSocket)
+    );
+    assert_eq!(client.poll_read(), None);
+}
+
+#[test]
+fn connack_resume_without_local_state_is_accepted_when_clean_start_false() {
+    let mut client = Client::<u64>::default();
+
+    assert_eq!(
+        client.handle_write(UserWriteIn::Connect(ConnectionOptions {
+            clean_start: false,
+            ..ConnectionOptions::default()
+        })),
+        Ok(())
+    );
+    assert_eq!(
+        client.poll_event(),
+        Some(sansio_mqtt_v5_protocol::DriverEventOut::OpenSocket)
+    );
+
+    assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
+    assert!(client.poll_write().is_some());
+
+    let resumed_connack = ControlPacket::ConnAck(ConnAck {
+        kind: ConnAckKind::ResumePreviousSession,
+        properties: ConnAckProperties::default(),
+    });
+
+    assert_eq!(client.handle_read(encode_packet(&resumed_connack)), Ok(()));
+    assert_eq!(client.poll_read(), Some(UserWriteOut::Connected));
+    assert_eq!(client.poll_event(), None);
+}
+
+#[test]
 fn resumed_session_replays_outbound_qos_publish_with_dup_set() {
     let mut client = Client::<u64>::default();
 
+    assert_eq!(
+        client.handle_write(UserWriteIn::Connect(ConnectionOptions {
+            session_expiry_interval: Some(30),
+            ..ConnectionOptions::default()
+        })),
+        Ok(())
+    );
+    assert_eq!(
+        client.poll_event(),
+        Some(sansio_mqtt_v5_protocol::DriverEventOut::OpenSocket)
+    );
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     assert!(client.poll_write().is_some());
 
@@ -1441,6 +1804,17 @@ fn resumed_session_replays_outbound_qos_publish_with_dup_set() {
 fn resumed_session_replay_failure_does_not_emit_connected_and_closes() {
     let mut client = Client::<u64>::default();
 
+    assert_eq!(
+        client.handle_write(UserWriteIn::Connect(ConnectionOptions {
+            session_expiry_interval: Some(30),
+            ..ConnectionOptions::default()
+        })),
+        Ok(())
+    );
+    assert_eq!(
+        client.poll_event(),
+        Some(sansio_mqtt_v5_protocol::DriverEventOut::OpenSocket)
+    );
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     assert!(client.poll_write().is_some());
 
@@ -1508,9 +1882,20 @@ fn resumed_session_replay_failure_does_not_emit_connected_and_closes() {
 }
 
 #[test]
-fn resumed_session_with_qos2_await_pubcomp_continues_without_replay_publish() {
+fn resumed_session_replays_unacknowledged_pubrel() {
     let mut client = Client::<u64>::default();
 
+    assert_eq!(
+        client.handle_write(UserWriteIn::Connect(ConnectionOptions {
+            session_expiry_interval: Some(30),
+            ..ConnectionOptions::default()
+        })),
+        Ok(())
+    );
+    assert_eq!(
+        client.poll_event(),
+        Some(sansio_mqtt_v5_protocol::DriverEventOut::OpenSocket)
+    );
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     assert!(client.poll_write().is_some());
 
@@ -1580,7 +1965,14 @@ fn resumed_session_with_qos2_await_pubcomp_continues_without_replay_publish() {
     });
     assert_eq!(client.handle_read(encode_packet(&resumed_connack)), Ok(()));
     assert_eq!(client.poll_read(), Some(UserWriteOut::Connected));
-    assert_eq!(client.poll_write(), None);
+    assert_eq!(
+        client.poll_write(),
+        Some(encode_packet(&ControlPacket::PubRel(PubRel {
+            packet_id,
+            reason_code: PubRelReasonCode::Success,
+            properties: PubRelProperties::default(),
+        })))
+    );
 
     let pubcomp = ControlPacket::PubComp(PubComp {
         packet_id,
@@ -1601,6 +1993,17 @@ fn resumed_session_with_qos2_await_pubcomp_continues_without_replay_publish() {
 fn non_resumed_session_drops_inflight_and_emits_publish_dropped_events() {
     let mut client = Client::<u64>::default();
 
+    assert_eq!(
+        client.handle_write(UserWriteIn::Connect(ConnectionOptions {
+            session_expiry_interval: Some(30),
+            ..ConnectionOptions::default()
+        })),
+        Ok(())
+    );
+    assert_eq!(
+        client.poll_event(),
+        Some(sansio_mqtt_v5_protocol::DriverEventOut::OpenSocket)
+    );
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     assert!(client.poll_write().is_some());
 
@@ -1741,6 +2144,174 @@ fn non_resumed_session_drops_inflight_and_emits_publish_dropped_events() {
             reason_code: PubCompReasonCode::PacketIdentifierNotFound,
             properties: PubCompProperties::default(),
         })))
+    );
+}
+
+#[test]
+fn non_resumed_connack_discards_all_local_session_state() {
+    let mut client = Client::<u64>::default();
+
+    assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
+    assert!(client.poll_write().is_some());
+
+    let initial_connack = ControlPacket::ConnAck(ConnAck {
+        kind: ConnAckKind::Other {
+            reason_code: ConnackReasonCode::Success,
+        },
+        properties: ConnAckProperties::default(),
+    });
+    assert_eq!(client.handle_read(encode_packet(&initial_connack)), Ok(()));
+    assert_eq!(client.poll_read(), Some(UserWriteOut::Connected));
+
+    let topic = Topic::try_from(Utf8String::try_from("state/topic").expect("valid utf8"))
+        .expect("valid topic");
+    let outbound_qos1 = ClientMessage {
+        topic: topic.clone(),
+        qos: Qos::AtLeastOnce,
+        payload: Payload::from(&b"qos1"[..]),
+        ..ClientMessage::default()
+    };
+    assert_eq!(
+        client.handle_write(UserWriteIn::PublishMessage(outbound_qos1)),
+        Ok(())
+    );
+    assert!(client.poll_write().is_some());
+
+    let inbound_packet_id = NonZero::new(55).expect("non-zero packet id");
+    let inbound_publish = ControlPacket::Publish(Publish {
+        kind: PublishKind::Repetible {
+            packet_id: inbound_packet_id,
+            qos: GuaranteedQoS::ExactlyOnce,
+            dup: false,
+        },
+        retain: false,
+        payload: Payload::from(&b"inbound"[..]),
+        topic: Topic::try_from(Utf8String::try_from("state/inbound").expect("valid utf8"))
+            .expect("valid topic"),
+        properties: PublishProperties::default(),
+    });
+    assert_eq!(client.handle_read(encode_packet(&inbound_publish)), Ok(()));
+    let _ = client.poll_read();
+    assert_eq!(
+        client.poll_write(),
+        Some(encode_packet(&ControlPacket::PubRec(PubRec {
+            packet_id: inbound_packet_id,
+            reason_code: PubRecReasonCode::Success,
+            properties: PubRecProperties::default(),
+        })))
+    );
+
+    let subscribe = SubscribeOptions {
+        subscriptions: vec![Utf8String::try_from("state/sub").expect("valid utf8")]
+            .try_into()
+            .expect("one topic"),
+        ..SubscribeOptions::default()
+    };
+    assert_eq!(
+        client.handle_write(UserWriteIn::Subscribe(subscribe)),
+        Ok(())
+    );
+    let _ = client.poll_write().expect("subscribe frame expected");
+
+    let unsubscribe = sansio_mqtt_v5_protocol::UnsubscribeOptions {
+        subscriptions: vec![Utf8String::try_from("state/sub").expect("valid utf8")]
+            .try_into()
+            .expect("one topic"),
+        ..Default::default()
+    };
+    assert_eq!(
+        client.handle_write(UserWriteIn::Unsubscribe(unsubscribe)),
+        Ok(())
+    );
+    let _ = client.poll_write().expect("unsubscribe frame expected");
+
+    assert_eq!(client.handle_event(DriverEventIn::SocketClosed), Ok(()));
+    assert_eq!(client.poll_read(), Some(UserWriteOut::Disconnected));
+
+    assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
+    assert!(client.poll_write().is_some());
+
+    let non_resumed_connack = ControlPacket::ConnAck(ConnAck {
+        kind: ConnAckKind::Other {
+            reason_code: ConnackReasonCode::Success,
+        },
+        properties: ConnAckProperties::default(),
+    });
+    assert_eq!(
+        client.handle_read(encode_packet(&non_resumed_connack)),
+        Ok(())
+    );
+    assert_eq!(client.poll_read(), Some(UserWriteOut::Connected));
+
+    let pubrel = ControlPacket::PubRel(PubRel {
+        packet_id: inbound_packet_id,
+        reason_code: PubRelReasonCode::Success,
+        properties: PubRelProperties::default(),
+    });
+    assert_eq!(client.handle_read(encode_packet(&pubrel)), Ok(()));
+    assert_eq!(
+        client.poll_write(),
+        Some(encode_packet(&ControlPacket::PubComp(PubComp {
+            packet_id: inbound_packet_id,
+            reason_code: PubCompReasonCode::PacketIdentifierNotFound,
+            properties: PubCompProperties::default(),
+        })))
+    );
+
+    let stale_suback = ControlPacket::SubAck(sansio_mqtt_v5_types::SubAck {
+        packet_id: NonZero::new(2).expect("non-zero"),
+        properties: sansio_mqtt_v5_types::SubAckProperties::default(),
+        reason_codes: vec![sansio_mqtt_v5_types::SubAckReasonCode::SuccessQoS0],
+    });
+    assert_eq!(
+        client.handle_read(encode_packet(&stale_suback)),
+        Err(Error::ProtocolError)
+    );
+    assert_eq!(
+        client.poll_event(),
+        Some(sansio_mqtt_v5_protocol::DriverEventOut::CloseSocket)
+    );
+
+    let mut client = Client::<u64>::default();
+    assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
+    assert!(client.poll_write().is_some());
+    assert_eq!(client.handle_read(encode_packet(&initial_connack)), Ok(()));
+    assert_eq!(client.poll_read(), Some(UserWriteOut::Connected));
+
+    let unsubscribe = sansio_mqtt_v5_protocol::UnsubscribeOptions {
+        subscriptions: vec![Utf8String::try_from("state/unsub").expect("valid utf8")]
+            .try_into()
+            .expect("one topic"),
+        ..Default::default()
+    };
+    assert_eq!(
+        client.handle_write(UserWriteIn::Unsubscribe(unsubscribe)),
+        Ok(())
+    );
+    let _ = client.poll_write().expect("unsubscribe frame expected");
+
+    assert_eq!(client.handle_event(DriverEventIn::SocketClosed), Ok(()));
+    assert_eq!(client.poll_read(), Some(UserWriteOut::Disconnected));
+    assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
+    assert!(client.poll_write().is_some());
+    assert_eq!(
+        client.handle_read(encode_packet(&non_resumed_connack)),
+        Ok(())
+    );
+    assert_eq!(client.poll_read(), Some(UserWriteOut::Connected));
+
+    let stale_unsuback = ControlPacket::UnsubAck(sansio_mqtt_v5_types::UnsubAck {
+        packet_id: NonZero::new(1).expect("non-zero"),
+        properties: sansio_mqtt_v5_types::UnsubAckProperties::default(),
+        reason_codes: vec![sansio_mqtt_v5_types::UnsubAckReasonCode::Success],
+    });
+    assert_eq!(
+        client.handle_read(encode_packet(&stale_unsuback)),
+        Err(Error::ProtocolError)
+    );
+    assert_eq!(
+        client.poll_event(),
+        Some(sansio_mqtt_v5_protocol::DriverEventOut::CloseSocket)
     );
 }
 
@@ -2060,12 +2631,30 @@ fn timeout_is_cleared_on_close() {
 fn connecting_accepts_auth_and_stays_open() {
     let mut client = Client::<u64>::default();
 
+    assert_eq!(
+        client.handle_write(UserWriteIn::Connect(ConnectionOptions {
+            authentication: Some(sansio_mqtt_v5_types::AuthenticationKind::WithoutData {
+                method: Utf8String::try_from("SCRAM").expect("valid utf8"),
+            }),
+            ..ConnectionOptions::default()
+        })),
+        Ok(())
+    );
+    assert_eq!(
+        client.poll_event(),
+        Some(sansio_mqtt_v5_protocol::DriverEventOut::OpenSocket)
+    );
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     assert!(client.poll_write().is_some());
 
     let auth = ControlPacket::Auth(Auth {
         reason_code: AuthReasonCode::ContinueAuthentication,
-        properties: AuthProperties::default(),
+        properties: AuthProperties {
+            authentication: Some(sansio_mqtt_v5_types::AuthenticationKind::WithoutData {
+                method: Utf8String::try_from("SCRAM").expect("valid utf8"),
+            }),
+            ..AuthProperties::default()
+        },
     });
     assert_eq!(client.handle_read(encode_packet(&auth)), Ok(()));
     assert_eq!(client.poll_event(), None);
@@ -2075,12 +2664,30 @@ fn connecting_accepts_auth_and_stays_open() {
 fn connecting_auth_then_connack_success_transitions_connected() {
     let mut client = Client::<u64>::default();
 
+    assert_eq!(
+        client.handle_write(UserWriteIn::Connect(ConnectionOptions {
+            authentication: Some(sansio_mqtt_v5_types::AuthenticationKind::WithoutData {
+                method: Utf8String::try_from("SCRAM").expect("valid utf8"),
+            }),
+            ..ConnectionOptions::default()
+        })),
+        Ok(())
+    );
+    assert_eq!(
+        client.poll_event(),
+        Some(sansio_mqtt_v5_protocol::DriverEventOut::OpenSocket)
+    );
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     assert!(client.poll_write().is_some());
 
     let auth = ControlPacket::Auth(Auth {
         reason_code: AuthReasonCode::ContinueAuthentication,
-        properties: AuthProperties::default(),
+        properties: AuthProperties {
+            authentication: Some(sansio_mqtt_v5_types::AuthenticationKind::WithoutData {
+                method: Utf8String::try_from("SCRAM").expect("valid utf8"),
+            }),
+            ..AuthProperties::default()
+        },
     });
     assert_eq!(client.handle_read(encode_packet(&auth)), Ok(()));
 
@@ -2095,6 +2702,336 @@ fn connecting_auth_then_connack_success_transitions_connected() {
 }
 
 #[test]
+fn connecting_auth_without_configured_authentication_is_protocol_error() {
+    let mut client = Client::<u64>::default();
+
+    assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
+    assert!(client.poll_write().is_some());
+
+    let auth = ControlPacket::Auth(Auth {
+        reason_code: AuthReasonCode::ContinueAuthentication,
+        properties: AuthProperties::default(),
+    });
+    assert_eq!(
+        client.handle_read(encode_packet(&auth)),
+        Err(Error::ProtocolError)
+    );
+    assert_eq!(
+        client.poll_event(),
+        Some(sansio_mqtt_v5_protocol::DriverEventOut::CloseSocket)
+    );
+}
+
+#[test]
+fn connecting_auth_with_reason_other_than_continue_is_protocol_error() {
+    let mut client = Client::<u64>::default();
+
+    assert_eq!(
+        client.handle_write(UserWriteIn::Connect(ConnectionOptions {
+            authentication: Some(sansio_mqtt_v5_types::AuthenticationKind::WithoutData {
+                method: Utf8String::try_from("SCRAM").expect("valid utf8"),
+            }),
+            ..ConnectionOptions::default()
+        })),
+        Ok(())
+    );
+    assert_eq!(
+        client.poll_event(),
+        Some(sansio_mqtt_v5_protocol::DriverEventOut::OpenSocket)
+    );
+    assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
+    assert!(client.poll_write().is_some());
+
+    let auth = ControlPacket::Auth(Auth {
+        reason_code: AuthReasonCode::Success,
+        properties: AuthProperties {
+            authentication: Some(sansio_mqtt_v5_types::AuthenticationKind::WithoutData {
+                method: Utf8String::try_from("SCRAM").expect("valid utf8"),
+            }),
+            ..AuthProperties::default()
+        },
+    });
+    assert_eq!(
+        client.handle_read(encode_packet(&auth)),
+        Err(Error::ProtocolError)
+    );
+    assert_eq!(
+        client.poll_event(),
+        Some(sansio_mqtt_v5_protocol::DriverEventOut::CloseSocket)
+    );
+}
+
+#[test]
+fn publish_qos_above_server_maximum_qos_is_rejected() {
+    let mut client = Client::<u64>::default();
+
+    assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
+    assert!(client.poll_write().is_some());
+
+    let connack = ControlPacket::ConnAck(ConnAck {
+        kind: ConnAckKind::Other {
+            reason_code: ConnackReasonCode::Success,
+        },
+        properties: ConnAckProperties {
+            maximum_qos: Some(MaximumQoS::AtMostOnce),
+            ..ConnAckProperties::default()
+        },
+    });
+    assert_eq!(client.handle_read(encode_packet(&connack)), Ok(()));
+    assert_eq!(client.poll_read(), Some(UserWriteOut::Connected));
+
+    let message = ClientMessage {
+        topic: Topic::try_from(Utf8String::try_from("qos/guard").expect("valid utf8"))
+            .expect("valid topic"),
+        qos: Qos::AtLeastOnce,
+        payload: Payload::from(&b"payload"[..]),
+        ..ClientMessage::default()
+    };
+
+    assert_eq!(
+        client.handle_write(UserWriteIn::PublishMessage(message)),
+        Err(Error::ProtocolError)
+    );
+    assert_eq!(client.poll_write(), None);
+}
+
+#[test]
+fn publish_retain_when_server_retain_not_available_is_rejected() {
+    let mut client = Client::<u64>::default();
+
+    assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
+    assert!(client.poll_write().is_some());
+
+    let connack = ControlPacket::ConnAck(ConnAck {
+        kind: ConnAckKind::Other {
+            reason_code: ConnackReasonCode::Success,
+        },
+        properties: ConnAckProperties {
+            retain_available: Some(false),
+            ..ConnAckProperties::default()
+        },
+    });
+    assert_eq!(client.handle_read(encode_packet(&connack)), Ok(()));
+    assert_eq!(client.poll_read(), Some(UserWriteOut::Connected));
+
+    let message = ClientMessage {
+        topic: Topic::try_from(Utf8String::try_from("retain/guard").expect("valid utf8"))
+            .expect("valid topic"),
+        payload: Payload::from(&b"payload"[..]),
+        ..ClientMessage::default()
+    };
+
+    assert_eq!(
+        client.handle_write(UserWriteIn::PublishMessage(ClientMessage {
+            retain: true,
+            ..message
+        })),
+        Err(Error::ProtocolError)
+    );
+    assert_eq!(client.poll_write(), None);
+}
+
+#[test]
+fn subscribe_shared_with_no_local_is_rejected() {
+    let mut client = Client::<u64>::default();
+
+    assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
+    assert!(client.poll_write().is_some());
+
+    let connack = ControlPacket::ConnAck(ConnAck {
+        kind: ConnAckKind::Other {
+            reason_code: ConnackReasonCode::Success,
+        },
+        properties: ConnAckProperties::default(),
+    });
+    assert_eq!(client.handle_read(encode_packet(&connack)), Ok(()));
+    assert_eq!(client.poll_read(), Some(UserWriteOut::Connected));
+
+    let subscribe = SubscribeOptions {
+        subscriptions: vec![Utf8String::try_from("$share/group/topic").expect("valid utf8")]
+            .try_into()
+            .expect("one topic"),
+        no_local: true,
+        ..SubscribeOptions::default()
+    };
+
+    assert_eq!(
+        client.handle_write(UserWriteIn::Subscribe(subscribe)),
+        Err(Error::ProtocolError)
+    );
+    assert_eq!(client.poll_write(), None);
+}
+
+#[test]
+fn subscribe_wildcard_when_server_disallows_is_rejected() {
+    let mut client = Client::<u64>::default();
+
+    assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
+    assert!(client.poll_write().is_some());
+
+    let connack = ControlPacket::ConnAck(ConnAck {
+        kind: ConnAckKind::Other {
+            reason_code: ConnackReasonCode::Success,
+        },
+        properties: ConnAckProperties {
+            wildcard_subscription_available: Some(false),
+            ..ConnAckProperties::default()
+        },
+    });
+    assert_eq!(client.handle_read(encode_packet(&connack)), Ok(()));
+    assert_eq!(client.poll_read(), Some(UserWriteOut::Connected));
+
+    let subscribe = SubscribeOptions {
+        subscriptions: vec![Utf8String::try_from("topic/#").expect("valid utf8")]
+            .try_into()
+            .expect("one topic"),
+        ..SubscribeOptions::default()
+    };
+
+    assert_eq!(
+        client.handle_write(UserWriteIn::Subscribe(subscribe)),
+        Err(Error::ProtocolError)
+    );
+    assert_eq!(client.poll_write(), None);
+}
+
+#[test]
+fn subscribe_shared_when_server_disallows_is_rejected() {
+    let mut client = Client::<u64>::default();
+
+    assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
+    assert!(client.poll_write().is_some());
+
+    let connack = ControlPacket::ConnAck(ConnAck {
+        kind: ConnAckKind::Other {
+            reason_code: ConnackReasonCode::Success,
+        },
+        properties: ConnAckProperties {
+            shared_subscription_available: Some(false),
+            ..ConnAckProperties::default()
+        },
+    });
+    assert_eq!(client.handle_read(encode_packet(&connack)), Ok(()));
+    assert_eq!(client.poll_read(), Some(UserWriteOut::Connected));
+
+    let subscribe = SubscribeOptions {
+        subscriptions: vec![Utf8String::try_from("$share/g/topic").expect("valid utf8")]
+            .try_into()
+            .expect("one topic"),
+        ..SubscribeOptions::default()
+    };
+
+    assert_eq!(
+        client.handle_write(UserWriteIn::Subscribe(subscribe)),
+        Err(Error::ProtocolError)
+    );
+    assert_eq!(client.poll_write(), None);
+}
+
+#[test]
+fn subscribe_identifier_when_server_disallows_is_rejected() {
+    let mut client = Client::<u64>::default();
+
+    assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
+    assert!(client.poll_write().is_some());
+
+    let connack = ControlPacket::ConnAck(ConnAck {
+        kind: ConnAckKind::Other {
+            reason_code: ConnackReasonCode::Success,
+        },
+        properties: ConnAckProperties {
+            subscription_identifiers_available: Some(false),
+            ..ConnAckProperties::default()
+        },
+    });
+    assert_eq!(client.handle_read(encode_packet(&connack)), Ok(()));
+    assert_eq!(client.poll_read(), Some(UserWriteOut::Connected));
+
+    let subscribe = SubscribeOptions {
+        subscriptions: vec![Utf8String::try_from("topic/a").expect("valid utf8")]
+            .try_into()
+            .expect("one topic"),
+        subscription_identifier: NonZero::new(1),
+        ..SubscribeOptions::default()
+    };
+
+    assert_eq!(
+        client.handle_write(UserWriteIn::Subscribe(subscribe)),
+        Err(Error::ProtocolError)
+    );
+    assert_eq!(client.poll_write(), None);
+}
+
+#[test]
+fn connecting_auth_continue_then_connack_success_connects() {
+    let mut client = Client::<u64>::default();
+
+    let options = ConnectionOptions {
+        authentication: Some(sansio_mqtt_v5_types::AuthenticationKind::WithoutData {
+            method: Utf8String::try_from("SCRAM").expect("valid utf8"),
+        }),
+        ..ConnectionOptions::default()
+    };
+    assert_eq!(client.handle_write(UserWriteIn::Connect(options)), Ok(()));
+    assert_eq!(
+        client.poll_event(),
+        Some(sansio_mqtt_v5_protocol::DriverEventOut::OpenSocket)
+    );
+    assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
+    assert!(client.poll_write().is_some());
+
+    let auth = ControlPacket::Auth(Auth {
+        reason_code: AuthReasonCode::ContinueAuthentication,
+        properties: AuthProperties {
+            authentication: Some(sansio_mqtt_v5_types::AuthenticationKind::WithoutData {
+                method: Utf8String::try_from("SCRAM").expect("valid utf8"),
+            }),
+            ..AuthProperties::default()
+        },
+    });
+    assert_eq!(client.handle_read(encode_packet(&auth)), Ok(()));
+
+    let connack = ControlPacket::ConnAck(ConnAck {
+        kind: ConnAckKind::Other {
+            reason_code: ConnackReasonCode::Success,
+        },
+        properties: ConnAckProperties::default(),
+    });
+    assert_eq!(client.handle_read(encode_packet(&connack)), Ok(()));
+    assert_eq!(client.poll_read(), Some(UserWriteOut::Connected));
+}
+
+#[test]
+fn auth_in_connected_without_support_is_protocol_error() {
+    let mut client = Client::<u64>::default();
+
+    assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
+    assert!(client.poll_write().is_some());
+
+    let connack = ControlPacket::ConnAck(ConnAck {
+        kind: ConnAckKind::Other {
+            reason_code: ConnackReasonCode::Success,
+        },
+        properties: ConnAckProperties::default(),
+    });
+    assert_eq!(client.handle_read(encode_packet(&connack)), Ok(()));
+    assert_eq!(client.poll_read(), Some(UserWriteOut::Connected));
+
+    let auth = ControlPacket::Auth(Auth {
+        reason_code: AuthReasonCode::ContinueAuthentication,
+        properties: AuthProperties::default(),
+    });
+    assert_eq!(
+        client.handle_read(encode_packet(&auth)),
+        Err(Error::ProtocolError)
+    );
+    assert_eq!(
+        client.poll_event(),
+        Some(sansio_mqtt_v5_protocol::DriverEventOut::CloseSocket)
+    );
+}
+
+#[test]
 fn keepalive_disabled_without_interval_no_pingreq() {
     let mut client = Client::<u64>::default();
 
@@ -2106,6 +3043,39 @@ fn keepalive_disabled_without_interval_no_pingreq() {
             reason_code: ConnackReasonCode::Success,
         },
         properties: ConnAckProperties::default(),
+    });
+    assert_eq!(client.handle_read(encode_packet(&connack)), Ok(()));
+    assert_eq!(client.poll_read(), Some(UserWriteOut::Connected));
+
+    assert_eq!(client.handle_timeout(1), Ok(()));
+    assert_eq!(client.poll_write(), None);
+    assert_eq!(client.poll_timeout(), None);
+}
+
+#[test]
+fn connack_server_keep_alive_zero_disables_keepalive_without_panic() {
+    let mut client = Client::<u64>::default();
+
+    let options = ConnectionOptions {
+        keep_alive: NonZero::new(10),
+        ..ConnectionOptions::default()
+    };
+    assert_eq!(client.handle_write(UserWriteIn::Connect(options)), Ok(()));
+    assert_eq!(
+        client.poll_event(),
+        Some(sansio_mqtt_v5_protocol::DriverEventOut::OpenSocket)
+    );
+    assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
+    let _ = client.poll_write().expect("connect frame expected");
+
+    let connack = ControlPacket::ConnAck(ConnAck {
+        kind: ConnAckKind::Other {
+            reason_code: ConnackReasonCode::Success,
+        },
+        properties: ConnAckProperties {
+            server_keep_alive: Some(0),
+            ..ConnAckProperties::default()
+        },
     });
     assert_eq!(client.handle_read(encode_packet(&connack)), Ok(()));
     assert_eq!(client.poll_read(), Some(UserWriteOut::Connected));
@@ -2224,9 +3194,15 @@ fn clean_start_true_clears_local_session_before_connect() {
         kind: ConnAckKind::ResumePreviousSession,
         properties: ConnAckProperties::default(),
     });
-    assert_eq!(client.handle_read(encode_packet(&resumed_connack)), Ok(()));
-    assert_eq!(client.poll_read(), Some(UserWriteOut::Connected));
-    assert_eq!(client.poll_write(), None);
+    assert_eq!(
+        client.handle_read(encode_packet(&resumed_connack)),
+        Err(Error::ProtocolError)
+    );
+    assert_eq!(
+        client.poll_event(),
+        Some(sansio_mqtt_v5_protocol::DriverEventOut::CloseSocket)
+    );
+    assert_eq!(client.poll_read(), None);
 }
 
 #[test]
@@ -2346,6 +3322,136 @@ fn zero_session_expiry_clears_inflight_on_disconnect() {
     assert_eq!(client.handle_read(encode_packet(&resumed_connack)), Ok(()));
     assert_eq!(client.poll_read(), Some(UserWriteOut::Connected));
     assert_eq!(client.poll_write(), None);
+    assert_eq!(client.poll_event(), None);
+}
+
+#[test]
+fn zero_session_expiry_clears_inflight_on_socket_closed() {
+    let mut client = Client::<u64>::default();
+
+    let options = ConnectionOptions {
+        session_expiry_interval: Some(0),
+        ..ConnectionOptions::default()
+    };
+    assert_eq!(client.handle_write(UserWriteIn::Connect(options)), Ok(()));
+    assert_eq!(
+        client.poll_event(),
+        Some(sansio_mqtt_v5_protocol::DriverEventOut::OpenSocket)
+    );
+    assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
+    assert!(client.poll_write().is_some());
+
+    let connack = ControlPacket::ConnAck(ConnAck {
+        kind: ConnAckKind::Other {
+            reason_code: ConnackReasonCode::Success,
+        },
+        properties: ConnAckProperties::default(),
+    });
+    assert_eq!(client.handle_read(encode_packet(&connack)), Ok(()));
+    assert_eq!(client.poll_read(), Some(UserWriteOut::Connected));
+
+    let qos1_message = ClientMessage {
+        topic: Topic::try_from(Utf8String::try_from("session/close-clear").expect("valid utf8"))
+            .expect("valid topic"),
+        qos: Qos::AtLeastOnce,
+        payload: Payload::from(&b"clear"[..]),
+        ..ClientMessage::default()
+    };
+    assert_eq!(
+        client.handle_write(UserWriteIn::PublishMessage(qos1_message)),
+        Ok(())
+    );
+    let first_publish = client.poll_write().expect("publish expected");
+
+    assert_eq!(client.handle_event(DriverEventIn::SocketClosed), Ok(()));
+    assert_eq!(client.poll_read(), Some(UserWriteOut::Disconnected));
+
+    assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
+    assert!(client.poll_write().is_some());
+
+    let resumed_connack = ControlPacket::ConnAck(ConnAck {
+        kind: ConnAckKind::ResumePreviousSession,
+        properties: ConnAckProperties::default(),
+    });
+    assert_eq!(client.handle_read(encode_packet(&resumed_connack)), Ok(()));
+    assert_eq!(client.poll_read(), Some(UserWriteOut::Connected));
+
+    let replay = client.poll_write();
+    assert_eq!(replay, None);
+    assert_ne!(replay, Some(first_publish));
+}
+
+#[test]
+fn keepalive_timeout_with_session_expiry_preserves_inflight_for_resume() {
+    let mut client = Client::<u64>::default();
+
+    let options = ConnectionOptions {
+        keep_alive: NonZero::new(10),
+        session_expiry_interval: Some(30),
+        ..ConnectionOptions::default()
+    };
+    assert_eq!(client.handle_write(UserWriteIn::Connect(options)), Ok(()));
+    assert_eq!(
+        client.poll_event(),
+        Some(sansio_mqtt_v5_protocol::DriverEventOut::OpenSocket)
+    );
+    assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
+    assert!(client.poll_write().is_some());
+
+    let connack = ControlPacket::ConnAck(ConnAck {
+        kind: ConnAckKind::Other {
+            reason_code: ConnackReasonCode::Success,
+        },
+        properties: ConnAckProperties::default(),
+    });
+    assert_eq!(client.handle_read(encode_packet(&connack)), Ok(()));
+    assert_eq!(client.poll_read(), Some(UserWriteOut::Connected));
+
+    let qos1_message = ClientMessage {
+        topic: Topic::try_from(
+            Utf8String::try_from("session/timeout-persist").expect("valid utf8"),
+        )
+        .expect("valid topic"),
+        qos: Qos::AtLeastOnce,
+        payload: Payload::from(&b"persist"[..]),
+        ..ClientMessage::default()
+    };
+    assert_eq!(
+        client.handle_write(UserWriteIn::PublishMessage(qos1_message)),
+        Ok(())
+    );
+    let first_publish = client.poll_write().expect("publish expected");
+
+    assert_eq!(client.handle_timeout(1), Ok(()));
+    assert_eq!(client.poll_write(), None);
+
+    assert_eq!(client.handle_timeout(2), Ok(()));
+    assert_eq!(client.poll_write(), Some(Bytes::from_static(&[0xC0, 0x00])));
+
+    assert_eq!(client.handle_timeout(3), Err(Error::ProtocolError));
+    assert_eq!(
+        client.poll_write(),
+        Some(Bytes::from_static(&[0xE0, 0x02, 0x8D, 0x00]))
+    );
+    assert_eq!(
+        client.poll_event(),
+        Some(sansio_mqtt_v5_protocol::DriverEventOut::CloseSocket)
+    );
+
+    assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
+    assert!(client.poll_write().is_some());
+
+    let resumed_connack = ControlPacket::ConnAck(ConnAck {
+        kind: ConnAckKind::ResumePreviousSession,
+        properties: ConnAckProperties::default(),
+    });
+    assert_eq!(client.handle_read(encode_packet(&resumed_connack)), Ok(()));
+    assert_eq!(client.poll_read(), Some(UserWriteOut::Connected));
+
+    let replay_publish = client.poll_write().expect("replayed publish expected");
+    assert_eq!(replay_publish.len(), first_publish.len());
+    assert_eq!(replay_publish[0], first_publish[0] | 0b0000_1000);
+    assert_eq!(&replay_publish[1..], &first_publish[1..]);
 }
 
 #[test]

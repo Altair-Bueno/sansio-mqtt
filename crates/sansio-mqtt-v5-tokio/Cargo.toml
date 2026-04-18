@@ -11,6 +11,7 @@ sansio-mqtt-v5-types = { workspace = true, default-features = false }
 bytes = { workspace = true, default-features = false }
 tokio = { workspace = true, features = ["macros", "net", "io-util", "io-std", "signal", "rt", "sync", "time"] }
 tokio-util = { workspace = true, features = ["time"] }
+tracing = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "net", "io-util", "io-std", "signal", "rt-multi-thread", "sync", "time"] }

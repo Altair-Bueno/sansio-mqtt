@@ -19,6 +19,7 @@ use sansio_mqtt_v5_types::DisconnectProperties;
 use sansio_mqtt_v5_types::DisconnectReasonCode;
 use sansio_mqtt_v5_types::EncodeError;
 use sansio_mqtt_v5_types::GuaranteedQoS;
+use sansio_mqtt_v5_types::MaximumQoS;
 use sansio_mqtt_v5_types::PingReq;
 use sansio_mqtt_v5_types::PubAck;
 use sansio_mqtt_v5_types::PubAckProperties;
@@ -41,6 +42,7 @@ use sansio_mqtt_v5_types::Settings;
 use sansio_mqtt_v5_types::Subscribe;
 use sansio_mqtt_v5_types::SubscribeProperties;
 use sansio_mqtt_v5_types::Subscription;
+use sansio_mqtt_v5_types::Topic;
 use sansio_mqtt_v5_types::Unsubscribe;
 use sansio_mqtt_v5_types::UnsubscribeProperties;
 use sansio_mqtt_v5_types::Utf8String;
@@ -56,6 +58,11 @@ struct NegotiatedLimits {
     maximum_packet_size: Option<NonZero<u32>>,
     topic_alias_maximum: u16,
     server_keep_alive: Option<u16>,
+    maximum_qos: Option<MaximumQoS>,
+    retain_available: bool,
+    wildcard_subscription_available: bool,
+    shared_subscription_available: bool,
+    subscription_identifiers_available: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -73,6 +80,11 @@ impl Default for NegotiatedLimits {
             maximum_packet_size: None,
             topic_alias_maximum: 0,
             server_keep_alive: None,
+            maximum_qos: None,
+            retain_available: true,
+            wildcard_subscription_available: true,
+            shared_subscription_available: true,
+            subscription_identifiers_available: true,
         }
     }
 }
@@ -84,6 +96,12 @@ enum ClientState {
     Disconnected,
     Connecting,
     Connected,
+}
+
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+enum ConnectingPhase {
+    AwaitConnAck,
+    AuthInProgress,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -111,6 +129,7 @@ where
     on_flight_received: BTreeMap<NonZero<u16>, ()>,
     pending_subscribe: BTreeMap<NonZero<u16>, ()>,
     pending_unsubscribe: BTreeMap<NonZero<u16>, ()>,
+    inbound_topic_aliases: BTreeMap<NonZero<u16>, Topic>,
 
     keep_alive: KeepAliveState,
     session_should_persist: bool,
@@ -121,6 +140,7 @@ where
     action_queue: VecDeque<DriverEventOut>,
     next_timeout: Option<Time>,
     next_packet_id: u16,
+    connecting_phase: ConnectingPhase,
 }
 
 impl<Time> Default for Client<Time> {
@@ -135,6 +155,7 @@ impl<Time> Default for Client<Time> {
             on_flight_received: BTreeMap::new(),
             pending_subscribe: BTreeMap::new(),
             pending_unsubscribe: BTreeMap::new(),
+            inbound_topic_aliases: BTreeMap::new(),
             keep_alive: KeepAliveState::default(),
             session_should_persist: false,
             read_queue: VecDeque::new(),
@@ -142,6 +163,7 @@ impl<Time> Default for Client<Time> {
             action_queue: VecDeque::new(),
             next_timeout: None,
             next_packet_id: 1,
+            connecting_phase: ConnectingPhase::AwaitConnAck,
         }
     }
 }
@@ -190,8 +212,8 @@ impl<Time> Client<Time> {
                 Ok(ConnectWill {
                     topic: will.topic.clone(),
                     payload,
-                    qos: Qos::AtMostOnce,
-                    retain: false,
+                    qos: will.qos,
+                    retain: will.retain,
                     properties: WillProperties {
                         will_delay_interval: will.will_delay_interval,
                         payload_format_indicator: will.payload_format_indicator,
@@ -217,8 +239,8 @@ impl<Time> Client<Time> {
             keep_alive: options.keep_alive,
             properties: ConnectProperties {
                 session_expiry_interval: options.session_expiry_interval,
-                receive_maximum: None,
-                maximum_packet_size: None,
+                receive_maximum: options.receive_maximum,
+                maximum_packet_size: options.maximum_packet_size,
                 topic_alias_maximum: options.topic_alias_maximum,
                 request_response_information: options.request_response_information,
                 request_problem_information: options.request_problem_information,
@@ -296,8 +318,60 @@ impl<Time> Client<Time> {
         Ok(())
     }
 
+    fn validate_outbound_publish_capabilities(&self, msg: &ClientMessage) -> Result<(), Error> {
+        if let Some(maximum_qos) = self.negotiated_limits.maximum_qos {
+            let exceeds = match maximum_qos {
+                MaximumQoS::AtMostOnce => !matches!(msg.qos, Qos::AtMostOnce),
+                MaximumQoS::AtLeastOnce => matches!(msg.qos, Qos::ExactlyOnce),
+            };
+
+            if exceeds {
+                return Err(Error::ProtocolError);
+            }
+        }
+
+        if msg.retain && !self.negotiated_limits.retain_available {
+            return Err(Error::ProtocolError);
+        }
+
+        Ok(())
+    }
+
     fn reset_negotiated_limits(&mut self) {
         self.negotiated_limits = NegotiatedLimits::default();
+        self.inbound_topic_aliases.clear();
+    }
+
+    fn apply_inbound_publish_topic_alias(&mut self, publish: &mut Publish) -> Result<(), Error> {
+        let topic: &str = publish.topic.as_ref().as_ref();
+        if topic.is_empty() && publish.properties.topic_alias.is_none() {
+            return Err(Error::ProtocolError);
+        }
+
+        let Some(topic_alias) = publish.properties.topic_alias else {
+            return Ok(());
+        };
+
+        let topic_alias_maximum = self
+            .pending_connect_options
+            .topic_alias_maximum
+            .unwrap_or(0);
+        if topic_alias.get() > topic_alias_maximum {
+            return Err(Error::ProtocolError);
+        }
+
+        if topic.is_empty() {
+            publish.topic = self
+                .inbound_topic_aliases
+                .get(&topic_alias)
+                .cloned()
+                .ok_or(Error::ProtocolError)?;
+        } else {
+            self.inbound_topic_aliases
+                .insert(topic_alias, publish.topic.clone());
+        }
+
+        Ok(())
     }
 
     fn reset_inflight_transactions(&mut self) {
@@ -354,7 +428,14 @@ impl<Time> Client<Time> {
                     }
                     publish
                 }
-                OutboundInflightState::Qos2AwaitPubComp => continue,
+                OutboundInflightState::Qos2AwaitPubComp => {
+                    self.enqueue_packet(ControlPacket::PubRel(PubRel {
+                        packet_id,
+                        reason_code: PubRelReasonCode::Success,
+                        properties: PubRelProperties::default(),
+                    }))?;
+                    continue;
+                }
             };
 
             self.enqueue_packet(ControlPacket::Publish(publish.clone()))?;
@@ -396,7 +477,7 @@ impl<Time> Client<Time> {
         self.read_buffer.clear();
         self.reset_keepalive();
         self.reset_negotiated_limits();
-        self.reset_session_state();
+        self.maybe_reset_session_state();
 
         Ok(())
     }
@@ -482,11 +563,26 @@ impl<Time> Client<Time> {
                             connack.properties.topic_alias_maximum.unwrap_or(0);
                         self.negotiated_limits.server_keep_alive =
                             connack.properties.server_keep_alive;
-                        self.keep_alive.interval_secs = self
-                            .negotiated_limits
-                            .server_keep_alive
-                            .map(|v| NonZero::new(v).expect("server keep alive must be non-zero"))
-                            .or(self.pending_connect_options.keep_alive);
+                        self.negotiated_limits.maximum_qos = connack.properties.maximum_qos;
+                        self.negotiated_limits.retain_available =
+                            connack.properties.retain_available.unwrap_or(true);
+                        self.negotiated_limits.wildcard_subscription_available = connack
+                            .properties
+                            .wildcard_subscription_available
+                            .unwrap_or(true);
+                        self.negotiated_limits.subscription_identifiers_available = connack
+                            .properties
+                            .subscription_identifiers_available
+                            .unwrap_or(true);
+                        self.negotiated_limits.shared_subscription_available = connack
+                            .properties
+                            .shared_subscription_available
+                            .unwrap_or(true);
+                        self.keep_alive.interval_secs =
+                            match self.negotiated_limits.server_keep_alive {
+                                Some(server_keep_alive) => NonZero::new(server_keep_alive),
+                                None => self.pending_connect_options.keep_alive,
+                            };
                         self.keep_alive.saw_network_activity = false;
                         self.keep_alive.ping_outstanding = false;
 
@@ -494,6 +590,13 @@ impl<Time> Client<Time> {
 
                         match connack.kind {
                             sansio_mqtt_v5_types::ConnAckKind::ResumePreviousSession => {
+                                // [MQTT-3.2.2-2] Session Present=1 is only valid when CONNECT had Clean Start=0.
+                                if self.pending_connect_options.clean_start {
+                                    self.fail_protocol_and_disconnect(
+                                        DisconnectReasonCode::ProtocolError,
+                                    )?;
+                                    return Err(Error::ProtocolError);
+                                }
                                 // [MQTT-4.4.0-1] [MQTT-4.4.0-2] Session Present=1 resumes in-flight QoS transactions and replay path.
                                 if self.replay_outbound_inflight_with_dup().is_err() {
                                     self.fail_protocol_and_disconnect(
@@ -508,7 +611,7 @@ impl<Time> Client<Time> {
                                 self.read_queue.push_back(UserWriteOut::Connected);
                                 connected_emitted = true;
                                 self.emit_publish_dropped_for_all_inflight();
-                                self.reset_inflight_transactions();
+                                self.reset_session_state();
                             }
                             _ => unreachable!("successful CONNACK kind already matched"),
                         }
@@ -526,48 +629,74 @@ impl<Time> Client<Time> {
                         Err(Error::ProtocolError)
                     }
                 }
-                ControlPacket::Auth(_) => Ok(()),
+                ControlPacket::Auth(auth) => {
+                    if self.pending_connect_options.authentication.is_none() {
+                        self.fail_protocol_and_disconnect(DisconnectReasonCode::ProtocolError)?;
+                        return Err(Error::ProtocolError);
+                    }
+
+                    if !matches!(
+                        auth.reason_code,
+                        sansio_mqtt_v5_types::AuthReasonCode::ContinueAuthentication
+                    ) {
+                        self.fail_protocol_and_disconnect(DisconnectReasonCode::ProtocolError)?;
+                        return Err(Error::ProtocolError);
+                    }
+
+                    self.connecting_phase = ConnectingPhase::AuthInProgress;
+                    Ok(())
+                }
                 _ => {
                     self.fail_protocol_and_disconnect(DisconnectReasonCode::ProtocolError)?;
                     Err(Error::ProtocolError)
                 }
             },
             ClientState::Connected => match packet {
-                ControlPacket::Publish(publish) => match publish.kind {
-                    PublishKind::FireAndForget => {
-                        self.read_queue.push_back(UserWriteOut::ReceivedMessage(
-                            Self::map_inbound_publish_to_broker_message(publish),
-                        ));
-                        Ok(())
+                ControlPacket::Publish(mut publish) => {
+                    if self
+                        .apply_inbound_publish_topic_alias(&mut publish)
+                        .is_err()
+                    {
+                        self.fail_protocol_and_disconnect(DisconnectReasonCode::ProtocolError)?;
+                        return Err(Error::ProtocolError);
                     }
-                    PublishKind::Repetible {
-                        packet_id,
-                        qos: GuaranteedQoS::AtLeastOnce,
-                        ..
-                    } => {
-                        // [MQTT-4.3.2-2] QoS1 receiver acknowledges inbound PUBLISH with PUBACK using the same Packet Identifier.
-                        self.read_queue.push_back(UserWriteOut::ReceivedMessage(
-                            Self::map_inbound_publish_to_broker_message(publish),
-                        ));
-                        self.enqueue_puback_or_fail_protocol(packet_id)
-                    }
-                    PublishKind::Repetible {
-                        packet_id,
-                        qos: GuaranteedQoS::ExactlyOnce,
-                        ..
-                    } => {
-                        // [MQTT-4.3.3-9] [MQTT-4.3.3-10] QoS2 receiver must treat duplicate Packet Identifier as duplicate delivery and re-send PUBREC.
-                        if self.on_flight_received.contains_key(&packet_id) {
-                            self.enqueue_pubrec_or_fail_protocol(packet_id)
-                        } else {
+
+                    match publish.kind {
+                        PublishKind::FireAndForget => {
                             self.read_queue.push_back(UserWriteOut::ReceivedMessage(
                                 Self::map_inbound_publish_to_broker_message(publish),
                             ));
-                            self.on_flight_received.insert(packet_id, ());
-                            self.enqueue_pubrec_or_fail_protocol(packet_id)
+                            Ok(())
+                        }
+                        PublishKind::Repetible {
+                            packet_id,
+                            qos: GuaranteedQoS::AtLeastOnce,
+                            ..
+                        } => {
+                            // [MQTT-4.3.2-2] QoS1 receiver acknowledges inbound PUBLISH with PUBACK using the same Packet Identifier.
+                            self.read_queue.push_back(UserWriteOut::ReceivedMessage(
+                                Self::map_inbound_publish_to_broker_message(publish),
+                            ));
+                            self.enqueue_puback_or_fail_protocol(packet_id)
+                        }
+                        PublishKind::Repetible {
+                            packet_id,
+                            qos: GuaranteedQoS::ExactlyOnce,
+                            ..
+                        } => {
+                            // [MQTT-4.3.3-9] [MQTT-4.3.3-10] QoS2 receiver must treat duplicate Packet Identifier as duplicate delivery and re-send PUBREC.
+                            if self.on_flight_received.contains_key(&packet_id) {
+                                self.enqueue_pubrec_or_fail_protocol(packet_id)
+                            } else {
+                                self.read_queue.push_back(UserWriteOut::ReceivedMessage(
+                                    Self::map_inbound_publish_to_broker_message(publish),
+                                ));
+                                self.on_flight_received.insert(packet_id, ());
+                                self.enqueue_pubrec_or_fail_protocol(packet_id)
+                            }
                         }
                     }
-                },
+                }
                 ControlPacket::PubRel(pubrel) => {
                     let packet_id = pubrel.packet_id;
 
@@ -808,6 +937,7 @@ where
                 }
 
                 self.validate_outbound_topic_alias(msg.topic_alias)?;
+                self.validate_outbound_publish_capabilities(&msg)?;
 
                 if matches!(msg.qos, Qos::AtLeastOnce | Qos::ExactlyOnce) {
                     // [MQTT-4.9.0-1] Apply peer Receive Maximum before sending QoS1/QoS2 PUBLISH.
@@ -848,7 +978,7 @@ where
                     Qos::AtLeastOnce => Some(OutboundInflightState::Qos1AwaitPubAck {
                         publish: Publish {
                             kind: kind.clone(),
-                            retain: false,
+                            retain: msg.retain,
                             payload: msg.payload.clone(),
                             topic: msg.topic.clone(),
                             properties: properties.clone(),
@@ -857,7 +987,7 @@ where
                     Qos::ExactlyOnce => Some(OutboundInflightState::Qos2AwaitPubRec {
                         publish: Publish {
                             kind: kind.clone(),
-                            retain: false,
+                            retain: msg.retain,
                             payload: msg.payload.clone(),
                             topic: msg.topic.clone(),
                             properties: properties.clone(),
@@ -866,7 +996,7 @@ where
                 };
                 let packet = ControlPacket::Publish(Publish {
                     kind: kind.clone(),
-                    retain: false,
+                    retain: msg.retain,
                     payload: msg.payload,
                     topic: msg.topic,
                     properties,
@@ -889,17 +1019,46 @@ where
 
                 let retain_handling = RetainHandling::try_from(options.retain_handling)
                     .map_err(|_| Error::ProtocolError)?;
+
+                if options.subscription_identifier.is_some()
+                    && !self.negotiated_limits.subscription_identifiers_available
+                {
+                    return Err(Error::ProtocolError);
+                }
+
                 let subscriptions = options
                     .subscriptions
                     .into_iter()
-                    .map(|topic_filter| Subscription {
-                        topic_filter,
-                        qos: options.qos,
-                        no_local: options.no_local,
-                        retain_as_published: options.retain_as_published,
-                        retain_handling,
+                    .map(|topic_filter| {
+                        let topic_filter_str: &str = topic_filter.as_ref();
+                        let is_shared = topic_filter_str.starts_with("$share/");
+                        let has_wildcard =
+                            topic_filter_str.contains('+') || topic_filter_str.contains('#');
+
+                        if has_wildcard && !self.negotiated_limits.wildcard_subscription_available {
+                            return Err(Error::ProtocolError);
+                        }
+
+                        if is_shared {
+                            if !self.negotiated_limits.shared_subscription_available {
+                                return Err(Error::ProtocolError);
+                            }
+
+                            // [MQTT-3.8.3-4] A Shared Subscription cannot be used with No Local.
+                            if options.no_local {
+                                return Err(Error::ProtocolError);
+                            }
+                        }
+
+                        Ok(Subscription {
+                            topic_filter,
+                            qos: options.qos,
+                            no_local: options.no_local,
+                            retain_as_published: options.retain_as_published,
+                            retain_handling,
+                        })
                     })
-                    .collect::<Vec<_>>()
+                    .collect::<Result<Vec<_>, Error>>()?
                     .try_into()
                     .map_err(|_| Error::ProtocolError)?;
                 let packet_id = self.next_packet_id_checked()?;
@@ -973,6 +1132,7 @@ where
                 let connect_packet = self.build_connect_packet(&self.pending_connect_options)?;
                 self.enqueue_packet(ControlPacket::Connect(connect_packet))?;
                 self.state = ClientState::Connecting;
+                self.connecting_phase = ConnectingPhase::AwaitConnAck;
                 self.keep_alive.saw_network_activity = false;
                 self.keep_alive.ping_outstanding = false;
                 Ok(())
@@ -983,6 +1143,7 @@ where
                 self.read_buffer.clear();
                 self.reset_keepalive();
                 self.reset_negotiated_limits();
+                self.maybe_reset_session_state();
 
                 if !was_disconnected {
                     self.read_queue.push_back(UserWriteOut::Disconnected);
@@ -995,6 +1156,7 @@ where
                 self.read_buffer.clear();
                 self.reset_keepalive();
                 self.reset_negotiated_limits();
+                self.maybe_reset_session_state();
                 self.action_queue.push_back(DriverEventOut::CloseSocket);
                 Err(Error::ProtocolError)
             }
@@ -1099,6 +1261,8 @@ mod tests {
             topic: Topic::try_from(Utf8String::try_from("topic/will").expect("valid utf8"))
                 .expect("valid topic"),
             payload: Payload::from(&b"will payload"[..]),
+            qos: Qos::AtMostOnce,
+            retain: false,
             payload_format_indicator: Some(FormatIndicator::Utf8),
             message_expiry_interval: Some(Duration::from_secs(42)),
             topic_alias: None,
@@ -1165,6 +1329,28 @@ mod tests {
             client.build_connect_packet(&options),
             Err(Error::ProtocolError)
         );
+    }
+
+    #[test]
+    fn build_connect_packet_maps_will_qos_and_retain_from_options() {
+        let will = crate::types::Will {
+            qos: Qos::ExactlyOnce,
+            retain: true,
+            ..crate::types::Will::default()
+        };
+        let options = ConnectionOptions {
+            will: Some(will.clone()),
+            ..ConnectionOptions::default()
+        };
+
+        let client = Client::<u64>::default();
+        let connect = client
+            .build_connect_packet(&options)
+            .expect("connect packet should build");
+        let mapped_will = connect.will.expect("will should be present");
+
+        assert_eq!(mapped_will.qos, will.qos);
+        assert_eq!(mapped_will.retain, will.retain);
     }
 
     #[test]
