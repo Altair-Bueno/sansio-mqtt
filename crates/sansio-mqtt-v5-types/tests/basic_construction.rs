@@ -1,4 +1,5 @@
-use sansio_mqtt_v5_types::{BinaryData, Payload, Topic, Utf8String};
+use bytes::Bytes;
+use sansio_mqtt_v5_types::{BinaryData, Payload, Topic, Utf8String, Utf8StringError};
 
 #[test]
 fn payload_try_new_accepts_into_bytes() {
@@ -35,7 +36,18 @@ fn utf8_string_try_new_validates_input() {
     let value = Utf8String::try_new("hello").expect("valid utf8 string must construct");
     assert_eq!(&*value, "hello");
 
-    assert!(Utf8String::try_new(vec![0xFF_u8]).is_err());
+    let too_long = vec![b'a'; (u16::MAX as usize) + 1];
+    assert_eq!(Utf8String::try_new(too_long), Err(Utf8StringError::TooLong));
+
+    assert_eq!(
+        Utf8String::try_new(vec![0xFF_u8]),
+        Err(Utf8StringError::InvalidUtf8)
+    );
+
+    assert_eq!(
+        Utf8String::try_new("hello\u{0001}world"),
+        Err(Utf8StringError::DisallowedCharacter)
+    );
 }
 
 #[test]
@@ -51,6 +63,25 @@ fn topic_try_new_validates_input() {
     assert_eq!(&**topic_inner, "home/living-room");
 
     assert!(Topic::try_new("home/#").is_err());
+    assert!(Topic::try_new(vec![0xFF_u8]).is_err());
+}
+
+#[test]
+fn utf8_string_and_topic_boundary_lengths() {
+    let max = Bytes::from(vec![b'a'; u16::MAX as usize]);
+    let max_plus_one = Bytes::from(vec![b'a'; (u16::MAX as usize) + 1]);
+
+    let utf8 = Utf8String::try_new(max.clone()).expect("u16::MAX bytes should be accepted");
+    assert_eq!(utf8.as_bytes().len(), u16::MAX as usize);
+    assert_eq!(
+        Utf8String::try_new(max_plus_one.clone()),
+        Err(Utf8StringError::TooLong)
+    );
+
+    let topic = Topic::try_new(max).expect("u16::MAX-byte topic should be accepted");
+    let topic_inner: &Utf8String = &topic;
+    assert_eq!(topic_inner.as_bytes().len(), u16::MAX as usize);
+    assert!(Topic::try_new(max_plus_one).is_err());
 }
 
 #[test]

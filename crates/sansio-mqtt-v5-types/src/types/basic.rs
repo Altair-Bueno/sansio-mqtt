@@ -47,6 +47,12 @@ impl Payload {
         Self::try_new(value).expect("Payload::try_new is infallible")
     }
 
+    /// Creates a [`Payload`] without applying additional checks.
+    ///
+    /// # Safety
+    ///
+    /// Callers must ensure `value` satisfies all invariants expected by downstream
+    /// protocol logic that consumes `Payload`.
     #[inline]
     pub unsafe fn new_unchecked(value: bytes::Bytes) -> Self {
         Self(value)
@@ -80,6 +86,11 @@ impl BinaryData {
         Self::try_new(value).expect("BinaryData::new received invalid MQTT binary data")
     }
 
+    /// Creates a [`BinaryData`] without enforcing the MQTT length limit.
+    ///
+    /// # Safety
+    ///
+    /// Callers must ensure `value.len() <= u16::MAX as usize`.
     #[inline]
     pub unsafe fn new_unchecked(value: bytes::Bytes) -> Self {
         Self(value)
@@ -119,6 +130,12 @@ impl Utf8String {
         Self::try_new(value).expect("Utf8String::new received invalid MQTT utf8 string")
     }
 
+    /// Creates a [`Utf8String`] without UTF-8 or MQTT character validation.
+    ///
+    /// # Safety
+    ///
+    /// Callers must ensure `value` is valid UTF-8, has length at most `u16::MAX`,
+    /// and does not contain MQTT-disallowed characters.
     #[inline]
     pub unsafe fn new_unchecked(value: bytes::Bytes) -> Self {
         Self(value)
@@ -149,6 +166,12 @@ impl Topic {
         Self::try_new(value).expect("Topic::new received invalid MQTT topic")
     }
 
+    /// Creates a [`Topic`] without validating wildcard constraints.
+    ///
+    /// # Safety
+    ///
+    /// Callers must ensure the inner value is a valid MQTT topic string and does
+    /// not contain `#` or `+` wildcard characters.
     #[inline]
     pub unsafe fn new_unchecked(value: Utf8String) -> Self {
         Self(value)
