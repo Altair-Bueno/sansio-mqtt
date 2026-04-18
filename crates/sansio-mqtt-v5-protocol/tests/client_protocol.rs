@@ -1027,6 +1027,160 @@ fn manual_ack_or_reject_unknown_packet_id_is_protocol_error() {
 }
 
 #[test]
+fn reject_reason_maps_to_puback_failure_codes_for_qos1() {
+    let cases = [
+        (
+            IncomingRejectReason::UnspecifiedError,
+            PubAckReasonCode::UnspecifiedError,
+        ),
+        (
+            IncomingRejectReason::ImplementationSpecificError,
+            PubAckReasonCode::ImplementationSpecificError,
+        ),
+        (
+            IncomingRejectReason::NotAuthorized,
+            PubAckReasonCode::NotAuthorized,
+        ),
+        (
+            IncomingRejectReason::TopicNameInvalid,
+            PubAckReasonCode::TopicNameInvalid,
+        ),
+        (
+            IncomingRejectReason::QuotaExceeded,
+            PubAckReasonCode::QuotaExceeded,
+        ),
+        (
+            IncomingRejectReason::PayloadFormatInvalid,
+            PubAckReasonCode::PayloadFormatInvalid,
+        ),
+    ];
+
+    for (offset, (reject_reason, expected_reason_code)) in cases.iter().enumerate() {
+        let mut client = Client::<u64>::default();
+
+        assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
+        assert!(client.poll_write().is_some());
+
+        let connack = ControlPacket::ConnAck(ConnAck {
+            kind: ConnAckKind::Other {
+                reason_code: ConnackReasonCode::Success,
+            },
+            properties: ConnAckProperties::default(),
+        });
+        assert_eq!(client.handle_read(encode_packet(&connack)), Ok(()));
+        assert_eq!(client.poll_read(), Some(UserWriteOut::Connected));
+
+        let packet_id = NonZero::new((offset + 1) as u16).expect("non-zero packet id");
+        let publish = ControlPacket::Publish(Publish {
+            kind: PublishKind::Repetible {
+                packet_id,
+                qos: GuaranteedQoS::AtLeastOnce,
+                dup: false,
+            },
+            retain: false,
+            payload: Payload::new(b"mapping".as_slice()),
+            topic: Topic::try_new("reject/reason/qos1").expect("valid topic"),
+            properties: PublishProperties::default(),
+        });
+
+        assert_eq!(client.handle_read(encode_packet(&publish)), Ok(()));
+        assert!(matches!(
+            client.poll_read(),
+            Some(UserWriteOut::ReceivedMessage(Some(id), _)) if id == packet_id
+        ));
+
+        assert_eq!(
+            client.handle_write(UserWriteIn::RejectMessage(packet_id, *reject_reason)),
+            Ok(())
+        );
+
+        let expected_puback = ControlPacket::PubAck(PubAck {
+            packet_id,
+            reason_code: *expected_reason_code,
+            properties: PubAckProperties::default(),
+        });
+        assert_eq!(client.poll_write(), Some(encode_packet(&expected_puback)));
+    }
+}
+
+#[test]
+fn reject_reason_maps_to_pubrec_failure_codes_for_qos2() {
+    let cases = [
+        (
+            IncomingRejectReason::UnspecifiedError,
+            PubRecReasonCode::UnspecifiedError,
+        ),
+        (
+            IncomingRejectReason::ImplementationSpecificError,
+            PubRecReasonCode::ImplementationSpecificError,
+        ),
+        (
+            IncomingRejectReason::NotAuthorized,
+            PubRecReasonCode::NotAuthorized,
+        ),
+        (
+            IncomingRejectReason::TopicNameInvalid,
+            PubRecReasonCode::TopicNameInvalid,
+        ),
+        (
+            IncomingRejectReason::QuotaExceeded,
+            PubRecReasonCode::QuotaExceeded,
+        ),
+        (
+            IncomingRejectReason::PayloadFormatInvalid,
+            PubRecReasonCode::PayloadFormatInvalid,
+        ),
+    ];
+
+    for (offset, (reject_reason, expected_reason_code)) in cases.iter().enumerate() {
+        let mut client = Client::<u64>::default();
+
+        assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
+        assert!(client.poll_write().is_some());
+
+        let connack = ControlPacket::ConnAck(ConnAck {
+            kind: ConnAckKind::Other {
+                reason_code: ConnackReasonCode::Success,
+            },
+            properties: ConnAckProperties::default(),
+        });
+        assert_eq!(client.handle_read(encode_packet(&connack)), Ok(()));
+        assert_eq!(client.poll_read(), Some(UserWriteOut::Connected));
+
+        let packet_id = NonZero::new((offset + 1) as u16).expect("non-zero packet id");
+        let publish = ControlPacket::Publish(Publish {
+            kind: PublishKind::Repetible {
+                packet_id,
+                qos: GuaranteedQoS::ExactlyOnce,
+                dup: false,
+            },
+            retain: false,
+            payload: Payload::new(b"mapping".as_slice()),
+            topic: Topic::try_new("reject/reason/qos2").expect("valid topic"),
+            properties: PublishProperties::default(),
+        });
+
+        assert_eq!(client.handle_read(encode_packet(&publish)), Ok(()));
+        assert!(matches!(
+            client.poll_read(),
+            Some(UserWriteOut::ReceivedMessage(Some(id), _)) if id == packet_id
+        ));
+
+        assert_eq!(
+            client.handle_write(UserWriteIn::RejectMessage(packet_id, *reject_reason)),
+            Ok(())
+        );
+
+        let expected_pubrec = ControlPacket::PubRec(PubRec {
+            packet_id,
+            reason_code: *expected_reason_code,
+            properties: PubRecProperties::default(),
+        });
+        assert_eq!(client.poll_write(), Some(encode_packet(&expected_pubrec)));
+    }
+}
+
+#[test]
 fn inbound_qos2_unknown_pubrel_sends_pubcomp_packet_identifier_not_found() {
     let mut client = Client::<u64>::default();
 
