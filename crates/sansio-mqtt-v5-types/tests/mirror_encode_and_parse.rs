@@ -338,16 +338,16 @@ fn assert_that_parsing_an_invalid_field_on_unsuback_fails(
         4, 3, 2, 1, // Will payload
     ],
     ControlPacket::Connect(Connect {
-        protocol_name: Utf8String::try_from("MQTT").unwrap(),
+        protocol_name: Utf8String::new("MQTT"),
         protocol_version: 5,
         clean_start: true,
-        client_identifier: Utf8String::try_from("test").unwrap(),
+        client_identifier: Utf8String::new("test"),
         keep_alive: NonZero::new(30),
         user_name: None,
         password: None,
         will: Some(Will {
-            topic: Topic::try_new("topic").unwrap(),
-            payload: BinaryData::try_from(&[4, 3, 2, 1]).unwrap(),
+            topic: Topic::new("topic"),
+            payload: BinaryData::new([4, 3, 2, 1].as_slice()),
             qos: Qos::ExactlyOnce,
             retain: true,
             properties: WillProperties {
@@ -358,8 +358,8 @@ fn assert_that_parsing_an_invalid_field_on_unsuback_fails(
                 response_topic: Some(Topic::new("topic")),
                 correlation_data: BinaryData::try_from(&[1, 2, 3, 4]).ok(),
                 user_properties: vec! [(
-                    Utf8String::try_from("test").unwrap(),
-                    Utf8String::try_from("test").unwrap(),
+                    Utf8String::new("test"),
+                    Utf8String::new("test"),
                 )],
             },
         }),
@@ -371,12 +371,12 @@ fn assert_that_parsing_an_invalid_field_on_unsuback_fails(
             request_response_information: Some(true),
             request_problem_information: Some(true),
             authentication: Some(AuthenticationKind::WithData {
-                method: Utf8String::try_from("test").unwrap(),
-                data: BinaryData::try_from(&[1, 2, 3, 4]).unwrap(),
+                method: Utf8String::new("test"),
+                data: BinaryData::new([1, 2, 3, 4].as_slice()),
             }),
             user_properties: vec! [(
-                Utf8String::try_from("test").unwrap(),
-                Utf8String::try_from("test").unwrap(),
+                Utf8String::new("test"),
+                Utf8String::new("test"),
             )],
         },
     })
@@ -414,16 +414,16 @@ fn assert_that_parsing_an_invalid_field_on_unsuback_fails(
         0, 0, // Will payload length
     ],
     ControlPacket::Connect(Connect {
-        protocol_name: Utf8String::try_from("MQTT").unwrap(),
+        protocol_name: Utf8String::new("MQTT"),
         protocol_version: 5,
         clean_start: true,
-        client_identifier: Utf8String::try_from("test").unwrap(),
+        client_identifier: Utf8String::new("test"),
         keep_alive: NonZero::new(30),
         user_name: None,
         password: None,
         will: Some(Will {
-            topic: Topic::try_new("topic").unwrap(),
-            payload: BinaryData::try_from(&[]).unwrap(),
+            topic: Topic::new("topic"),
+            payload: BinaryData::default(),
             qos: Qos::ExactlyOnce,
             retain: true,
             properties: WillProperties {
@@ -434,8 +434,8 @@ fn assert_that_parsing_an_invalid_field_on_unsuback_fails(
                 response_topic: Some(Topic::new("topic")),
                 correlation_data: BinaryData::try_from(&[1, 2, 3, 4]).ok(),
                 user_properties: vec! [(
-                    Utf8String::try_from("test").unwrap(),
-                    Utf8String::try_from("test").unwrap(),
+                    Utf8String::new("test"),
+                    Utf8String::new("test"),
                 )],
             },
         }),
@@ -447,12 +447,12 @@ fn assert_that_parsing_an_invalid_field_on_unsuback_fails(
             request_response_information: Some(true),
             request_problem_information: Some(true),
             authentication: Some(AuthenticationKind::WithData {
-                method: Utf8String::try_from("test").unwrap(),
-                data: BinaryData::try_from(&[1, 2, 3, 4]).unwrap(),
+                method: Utf8String::new("test"),
+                data: BinaryData::new([1, 2, 3, 4].as_slice()),
             }),
             user_properties: vec! [(
-                Utf8String::try_from("test").unwrap(),
-                Utf8String::try_from("test").unwrap(),
+                Utf8String::new("test"),
+                Utf8String::new("test"),
             )],
         },
     })
@@ -484,16 +484,16 @@ fn assert_that_parsing_an_invalid_field_on_unsuback_fails(
         4, 3, 2, 1, // Will payload
     ],
     ControlPacket::Connect(Connect {
-        protocol_name: Utf8String::try_from("MQTT").unwrap(),
+        protocol_name: Utf8String::new("MQTT"),
         protocol_version: 5,
         clean_start: true,
-        client_identifier: Utf8String::try_from("test").unwrap(),
+        client_identifier: Utf8String::new("test"),
         keep_alive: NonZero::new(30),
         user_name: None,
         password: None,
         will: Some(Will {
-            topic: Topic::try_new("topic").unwrap(),
-            payload: BinaryData::try_from(&[4, 3, 2, 1]).unwrap(),
+            topic: Topic::new("topic"),
+            payload: BinaryData::new([4, 3, 2, 1].as_slice()),
             qos: Qos::ExactlyOnce,
             retain: true,
             properties: WillProperties::default(),
@@ -506,12 +506,12 @@ fn assert_that_parsing_an_invalid_field_on_unsuback_fails(
             request_response_information: Some(true),
             request_problem_information: Some(true),
             authentication: Some(AuthenticationKind::WithData {
-                method: Utf8String::try_from("test").unwrap(),
-                data: BinaryData::try_from(&[1, 2, 3, 4]).unwrap(),
+                method: Utf8String::new("test"),
+                data: BinaryData::new([1, 2, 3, 4].as_slice()),
             }),
             user_properties: vec! [(
-                Utf8String::try_from("test").unwrap(),
-                Utf8String::try_from("test").unwrap(),
+                Utf8String::new("test"),
+                Utf8String::new("test"),
             )],
         },
     })
@@ -529,10 +529,10 @@ fn assert_that_parsing_an_invalid_field_on_unsuback_fails(
         0, 0, // Client ID length
     ],
     ControlPacket::Connect(Connect {
-        protocol_name: Utf8String::try_from("MQTT").unwrap(),
+        protocol_name: Utf8String::new("MQTT"),
         protocol_version: 5,
         clean_start: true,
-        client_identifier: Utf8String::try_from("").unwrap(),
+        client_identifier: Utf8String::new(""),
         keep_alive: NonZero::new(60),
         user_name: None,
         password: None,
@@ -561,10 +561,10 @@ fn assert_that_parsing_an_invalid_field_on_unsuback_fails(
         240, 159, 156, 132, // 🜄 (utf-8: 0xf09f9c84)
     ],
     ControlPacket::Connect(Connect {
-        protocol_name: Utf8String::try_from("MQTT").unwrap(),
+        protocol_name: Utf8String::new("MQTT"),
         protocol_version: 5,
         clean_start: true,
-        client_identifier: Utf8String::try_from("Ŧėśt🜄").unwrap(),
+        client_identifier: Utf8String::new("Ŧėśt🜄"),
         keep_alive: NonZero::new(30),
         user_name: None,
         password: None,
@@ -708,22 +708,22 @@ fn assert_that_parsing_an_invalid_field_on_unsuback_fails(
             maximum_qos: Some(MaximumQoS::AtLeastOnce),
             retain_available: Some(true),
             maximum_packet_size: NonZero::new(100),
-            assigned_client_identifier: Some(Utf8String::try_from("test").unwrap()),
+            assigned_client_identifier: Some(Utf8String::new("test")),
             topic_alias_maximum: Some(456),
-            reason_string: Some(Utf8String::try_from("test").unwrap()),
+            reason_string: Some(Utf8String::new("test")),
             user_properties: vec! [(
-                Utf8String::try_from("test").unwrap(),
-                Utf8String::try_from("test").unwrap(),
+                Utf8String::new("test"),
+                Utf8String::new("test"),
             )],
             wildcard_subscription_available: Some(true),
             subscription_identifiers_available: Some(true),
             shared_subscription_available: Some(false),
             server_keep_alive: Some(1234),
-            response_information: Some(Utf8String::try_from("test").unwrap()),
-            server_reference: Some(Utf8String::try_from("test").unwrap()),
+            response_information: Some(Utf8String::new("test")),
+            server_reference: Some(Utf8String::new("test")),
             authentication: Some(AuthenticationKind::WithData {
-                method: Utf8String::try_from("test").unwrap(),
-                data: BinaryData::try_from(&[1, 2, 3, 4]).unwrap(),
+                method: Utf8String::new("test"),
+                data: BinaryData::new([1, 2, 3, 4].as_slice()),
             }),
         },
     })
@@ -761,28 +761,28 @@ fn assert_that_parsing_an_invalid_field_on_unsuback_fails(
             maximum_qos: Some(MaximumQoS::AtLeastOnce),
             retain_available: Some(true),
             maximum_packet_size: NonZero::new(100),
-            assigned_client_identifier: Some(Utf8String::try_from("test").unwrap()),
+            assigned_client_identifier: Some(Utf8String::new("test")),
             topic_alias_maximum: Some(456),
-            reason_string: Some(Utf8String::try_from("test").unwrap()),
+            reason_string: Some(Utf8String::new("test")),
             user_properties: vec! [
                 (
-                    Utf8String::try_from("test").unwrap(),
-                    Utf8String::try_from("test").unwrap(),
+                    Utf8String::new("test"),
+                    Utf8String::new("test"),
                 ),
                 (
-                    Utf8String::try_from("test").unwrap(),
-                    Utf8String::try_from("test").unwrap(),
+                    Utf8String::new("test"),
+                    Utf8String::new("test"),
                 ),
             ],
             wildcard_subscription_available: Some(true),
             subscription_identifiers_available: Some(true),
             shared_subscription_available: Some(false),
             server_keep_alive: Some(1234),
-            response_information: Some(Utf8String::try_from("test").unwrap()),
-            server_reference: Some(Utf8String::try_from("test").unwrap()),
+            response_information: Some(Utf8String::new("test")),
+            server_reference: Some(Utf8String::new("test")),
             authentication: Some(AuthenticationKind::WithData {
-                method: Utf8String::try_from("test").unwrap(),
-                data: BinaryData::try_from(&[1, 2, 3, 4]).unwrap(),
+                method: Utf8String::new("test"),
+                data: BinaryData::new([1, 2, 3, 4].as_slice()),
             }),
         },
     })
@@ -813,7 +813,7 @@ fn assert_that_parsing_an_invalid_field_on_unsuback_fails(
             dup: true,
         },
         retain: true,
-        topic: Topic::try_new("test").unwrap(),
+        topic: Topic::new("test"),
         payload: Payload::new([116, 101, 115, 116].as_slice()),
         properties: PublishProperties {
             payload_format_indicator: Some(FormatIndicator::Utf8),
@@ -823,16 +823,16 @@ fn assert_that_parsing_an_invalid_field_on_unsuback_fails(
             correlation_data: BinaryData::try_from(&[1, 2, 3, 4]).ok(),
             user_properties: vec! [
                 (
-                    Utf8String::try_from("test").unwrap(),
-                    Utf8String::try_from("test").unwrap(),
+                    Utf8String::new("test"),
+                    Utf8String::new("test"),
                 ),
                 (
-                    Utf8String::try_from("test").unwrap(),
-                    Utf8String::try_from("test").unwrap(),
+                    Utf8String::new("test"),
+                    Utf8String::new("test"),
                 ),
                 (
-                    Utf8String::try_from("test").unwrap(),
-                    Utf8String::try_from("test").unwrap(),
+                    Utf8String::new("test"),
+                    Utf8String::new("test"),
                 ),
             ],
             subscription_identifier: NonZero::new(120),
