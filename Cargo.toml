@@ -8,28 +8,21 @@ edition = "2021"
 rust-version = "1.83.0"
 
 [workspace.dependencies]
-sansio-mqtt-v5-types = { path = "crates/sansio-mqtt-v5-types", default-features = false }
-sansio-mqtt-v5-contract = { path = "crates/sansio-mqtt-v5-contract", default-features = false }
-sansio-mqtt-v5-state-machine = { path = "crates/sansio-mqtt-v5-state-machine", default-features = false }
 sansio-mqtt-v5-protocol = { path = "crates/sansio-mqtt-v5-protocol", default-features = false }
 sansio-mqtt-v5-tokio = { path = "crates/sansio-mqtt-v5-tokio", default-features = false }
-sansio-mqtt-v5-client = { path = "crates/sansio-mqtt-v5-client", default-features = false }
-sansio-mqtt-v5-client-tcp-std = { path = "crates/sansio-mqtt-v5-client-tcp-std", default-features = false }
+sansio-mqtt-v5-types = { path = "crates/sansio-mqtt-v5-types", default-features = false }
 
-tracing = { version = "0.1.41", default-features = false, features = ["attributes"] }
+tracing = { version = "0.1.41", default-features = false }
+tracing-subscriber = { version = "0.3.23", default-features = false }
 tokio = { version = "1", default-features = false }
 tokio-util = { version = "0.7", default-features = false }
 bytes = { version = "1", default-features = false }
-bon = { version = "3.6.1", default-features = false }
 thiserror = { version = "2", default-features = false }
 winnow = { version = "0.7.0", default-features = false }
 strum = { version = "0.27.0", default-features = false }
-beef = { version = "0.5.2", default-features = false }
 nutype = { version = "0.6.1", default-features = false }
 vec1 = { version = "1.12.1", default-features = false }
-encode = { version = "0.2.2", default-features = false }
+encode = { version = "1.0.0", default-features = false }
 rstest = { version = "0.25.0", default-features = false }
 sansio = { version = "1.0.1", default-features = false }
 futures = { version = "0.3", default-features = false }
-statig = { version =  "0.4.1", default-features = false }
-bimap =  {version = "0.6.3", default-features = false }

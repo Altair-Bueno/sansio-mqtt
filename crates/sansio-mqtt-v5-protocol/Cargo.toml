@@ -10,5 +10,5 @@ sansio-mqtt-v5-types = { workspace = true, default-features = false }
 thiserror = { workspace = true, default-features = false }
 bytes = { workspace = true, default-features = false }
 winnow = { workspace = true, default-features = false }
-tracing = { workspace = true, default-features = false }
+tracing = { workspace = true, default-features = false, features = ["attributes"] }
 encode = { workspace = true, default-features = false }

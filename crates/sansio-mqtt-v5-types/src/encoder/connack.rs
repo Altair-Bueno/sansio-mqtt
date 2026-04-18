@@ -101,7 +101,7 @@ where
         header_flags |= u8::from(ConnAckHeaderFlags);
         header_flags.encode(encoder)?;
 
-        let ack_flags = encode::combinators::Flags::new([
+        let ack_flags = [
             false,
             false,
             false,
@@ -110,7 +110,7 @@ where
             false,
             false,
             self.kind == ConnAckKind::ResumePreviousSession, // Session Present
-        ]);
+        ];
         let reason_code = if let ConnAckKind::Other { reason_code } = self.kind {
             reason_code
         } else {
