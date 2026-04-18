@@ -1,6 +1,6 @@
 use super::*;
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Connect {
     pub protocol_name: Utf8String,
     pub protocol_version: u8,
@@ -12,7 +12,7 @@ pub struct Connect {
     pub keep_alive: Option<NonZero<u16>>,
     pub properties: ConnectProperties,
 }
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct ConnectHeaderFlags;
 
 impl From<ConnectHeaderFlags> for u8 {
@@ -21,7 +21,7 @@ impl From<ConnectHeaderFlags> for u8 {
     }
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Will {
     pub topic: Topic,
     pub payload: BinaryData,
@@ -30,7 +30,7 @@ pub struct Will {
     pub properties: WillProperties,
 }
 
-#[derive(Debug, PartialEq, Clone, Default)]
+#[derive(Debug, PartialEq, Eq, Clone, Default)]
 pub struct WillProperties {
     pub will_delay_interval: Option<u32>,
     pub payload_format_indicator: Option<FormatIndicator>,
@@ -41,7 +41,7 @@ pub struct WillProperties {
     pub user_properties: Vec<(Utf8String, Utf8String)>,
 }
 
-#[derive(Debug, PartialEq, Clone, Default)]
+#[derive(Debug, PartialEq, Eq, Clone, Default)]
 pub struct ConnectProperties {
     pub session_expiry_interval: Option<u32>,
     pub receive_maximum: Option<NonZero<u16>>,

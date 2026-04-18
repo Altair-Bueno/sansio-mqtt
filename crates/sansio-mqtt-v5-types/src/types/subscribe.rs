@@ -1,6 +1,6 @@
 use super::*;
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 
 pub struct Subscribe {
     pub packet_id: NonZero<u16>,
@@ -9,7 +9,7 @@ pub struct Subscribe {
     pub properties: SubscribeProperties,
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 
 pub struct SubscribeHeaderFlags;
 
@@ -19,7 +19,7 @@ impl From<SubscribeHeaderFlags> for u8 {
     }
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 
 pub struct Subscription {
     pub topic_filter: Utf8String,
@@ -29,7 +29,7 @@ pub struct Subscription {
     pub retain_handling: RetainHandling,
 }
 
-#[derive(Debug, PartialEq, Clone, Default)]
+#[derive(Debug, PartialEq, Eq, Clone, Default)]
 
 pub struct SubscribeProperties {
     pub subscription_identifier: Option<NonZero<u64>>,

@@ -1,12 +1,12 @@
 use super::*;
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Auth {
     pub reason_code: AuthReasonCode,
     pub properties: AuthProperties,
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct AuthHeaderFlags;
 
 impl From<AuthHeaderFlags> for u8 {
@@ -15,7 +15,7 @@ impl From<AuthHeaderFlags> for u8 {
     }
 }
 
-#[derive(Debug, PartialEq, Clone, Default)]
+#[derive(Debug, PartialEq, Eq, Clone, Default)]
 pub struct AuthProperties {
     pub reason_string: Option<Utf8String>,
     pub authentication: Option<AuthenticationKind>,

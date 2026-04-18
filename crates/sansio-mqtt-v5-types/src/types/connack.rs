@@ -1,6 +1,6 @@
 use super::*;
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 
 pub struct ConnAck {
     pub kind: ConnAckKind,
@@ -8,14 +8,14 @@ pub struct ConnAck {
     pub properties: ConnAckProperties,
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 
 pub enum ConnAckKind {
     ResumePreviousSession,
     Other { reason_code: ConnackReasonCode },
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct ConnAckHeaderFlags;
 
 impl From<ConnAckHeaderFlags> for u8 {
@@ -24,7 +24,7 @@ impl From<ConnAckHeaderFlags> for u8 {
     }
 }
 
-#[derive(Debug, PartialEq, Clone, Default)]
+#[derive(Debug, PartialEq, Eq, Clone, Default)]
 
 pub struct ConnAckProperties {
     pub session_expiry_interval: Option<u32>,

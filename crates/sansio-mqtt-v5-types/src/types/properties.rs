@@ -1,6 +1,6 @@
 use super::*;
 
-#[derive(Debug, PartialEq, Clone, EnumDiscriminants)]
+#[derive(Debug, PartialEq, Eq, Clone, EnumDiscriminants)]
 #[strum_discriminants(derive(Hash, EnumIter, Display))]
 #[strum_discriminants(name(PropertyType))]
 pub enum Property {
@@ -35,7 +35,7 @@ pub enum Property {
     SharedSubscriptionAvailable(bool),
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum AuthenticationKind {
     WithoutData {
         method: Utf8String,
@@ -59,33 +59,33 @@ impl AuthenticationKind {
     }
 }
 
-#[derive(Debug, PartialEq, Clone, Copy, Error)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Error)]
 #[error("Invalid property type: {value}")]
 #[repr(transparent)]
 pub struct InvalidPropertyTypeError {
     pub value: u64,
 }
 
-#[derive(Debug, PartialEq, Clone, Copy, Error)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Error)]
 #[error("Property {property_type} is required to appear at most once, but is duplicated")]
 #[repr(transparent)]
 pub struct DuplicatedPropertyError {
     pub property_type: PropertyType,
 }
 
-#[derive(Debug, PartialEq, Clone, Copy, Error)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Error)]
 #[error("The packet cannot contain a property of type {property_type}")]
 #[repr(transparent)]
 pub struct UnsupportedPropertyError {
     pub property_type: PropertyType,
 }
 
-#[derive(Debug, PartialEq, Clone, Copy, Error)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Error)]
 #[error("The number of user properties exceeds the maximum allowed")]
 #[repr(transparent)]
 pub struct TooManyUserPropertiesError;
 
-#[derive(Debug, PartialEq, Clone, Copy, Error)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Error)]
 #[error(
     "Properties included {}, but {} is required",
     PropertyType::AuthenticationData,
@@ -94,7 +94,7 @@ pub struct TooManyUserPropertiesError;
 #[repr(transparent)]
 pub struct MissingAuthenticationMethodError;
 
-#[derive(Debug, PartialEq, Clone, Copy, Error)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Error)]
 pub enum PropertiesError {
     #[error(transparent)]
     DuplicatedProperty(#[from] DuplicatedPropertyError),

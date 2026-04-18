@@ -492,7 +492,7 @@ impl From<RetainHandling> for u8 {
     }
 }
 
-#[derive(Debug, PartialEq, Clone, Copy, Error)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy, Error)]
 #[error("Invalid retain handling value: {value}")]
 #[repr(transparent)]
 pub struct InvalidRetainHandlingError {
@@ -516,7 +516,7 @@ impl From<FormatIndicator> for u8 {
     }
 }
 
-#[derive(Debug, PartialEq, Clone, Copy, Error)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy, Error)]
 #[error("Unknown format indicator: {format_indicator}")]
 #[repr(transparent)]
 pub struct UnknownFormatIndicatorError {
@@ -543,7 +543,7 @@ impl From<Qos> for u8 {
     }
 }
 
-#[derive(Debug, PartialEq, Clone, Copy, Error)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy, Error)]
 #[error("Invalid QoS value: {qos}")]
 #[repr(transparent)]
 pub struct InvalidQosError {

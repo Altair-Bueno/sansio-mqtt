@@ -15,6 +15,21 @@ use sansio_mqtt_v5_types::*;
 use winnow::error::ContextError;
 use winnow::Parser;
 
+#[test]
+fn value_types_support_hash_and_order_where_semantic() {
+    use core::hash::Hash;
+
+    fn assert_hash_and_ord<T: Hash + Ord>(_value: &T) {}
+
+    let a = Utf8String::new("a");
+    let b = Utf8String::new("b");
+    assert!(a < b);
+    assert_hash_and_ord(&a);
+
+    let reason = ConnackReasonCode::Success;
+    assert_hash_and_ord(&reason);
+}
+
 #[rstest]
 #[case::content_type(vec![16, 27, 0, 4, 77, 81, 84, 84, 5, 2, 0, 60, 11, 3, 0, 4, 116, 101, 115, 116, 0, 0])]
 #[case::reason_string(vec![16, 27, 0, 4, 77, 81, 84, 84, 5, 2, 0, 60, 11, 31, 0, 4, 116, 101, 115, 116, 0, 0])]
