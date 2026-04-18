@@ -42,7 +42,7 @@ impl Payload {
         }
 
         // SAFETY: Invariants have been checked above.
-        Ok(unsafe { Self::new_unchecked(value.into()) })
+        Ok(unsafe { Self::new_unchecked(value) })
     }
 
     /// Constructs a [`Payload`] from any value convertible into [`bytes::Bytes`].

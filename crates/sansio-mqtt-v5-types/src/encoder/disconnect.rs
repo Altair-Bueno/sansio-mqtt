@@ -11,7 +11,7 @@ where
         let reason_string = self.reason_string.clone().map(Property::ReasonString);
         let session_expiry_interval = self
             .session_expiry_interval
-            .map(|v| Property::SessionExpiryInterval(v));
+            .map(Property::SessionExpiryInterval);
         let server_reference = self.server_reference.clone().map(Property::ServerReference);
         let user_properties = encode::combinators::Iter::new(
             self.user_properties

@@ -3,9 +3,7 @@ pub use binary::be_u16 as two_byte_integer;
 pub use binary::be_u32 as four_byte_integer;
 
 #[inline]
-pub fn two_byte_integer_len_with_limits<'input, Input, Error>(
-    limit: u16,
-) -> impl Parser<Input, u16, Error>
+pub fn two_byte_integer_len_with_limits<Input, Error>(limit: u16) -> impl Parser<Input, u16, Error>
 where
     Input: StreamIsPartial + Stream<Token = u8>,
     Error: ParserError<Input> + AddContext<Input, StrContext>,
@@ -16,7 +14,7 @@ where
 }
 
 #[inline]
-pub fn variable_byte_integer_len_with_limits<'input, Input, Error>(
+pub fn variable_byte_integer_len_with_limits<Input, Error>(
     limit: u64,
 ) -> impl Parser<Input, u64, Error>
 where
@@ -29,7 +27,7 @@ where
 }
 
 #[inline]
-pub fn variable_byte_integer<'input, Input, Error>(input: &mut Input) -> Result<u64, Error>
+pub fn variable_byte_integer<Input, Error>(input: &mut Input) -> Result<u64, Error>
 where
     Input: StreamIsPartial + Stream<Token = u8>,
     Error: ParserError<Input> + AddContext<Input, StrContext>,

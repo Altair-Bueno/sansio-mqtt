@@ -1028,7 +1028,6 @@ where
 
                 let subscriptions = core::iter::once(options.subscription)
                     .chain(options.extra_subscriptions)
-                    .into_iter()
                     .map(|topic_filter| {
                         let topic_filter_str: &str = topic_filter.as_ref();
                         let is_shared = topic_filter_str.starts_with("$share/");

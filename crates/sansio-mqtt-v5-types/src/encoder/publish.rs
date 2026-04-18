@@ -19,7 +19,6 @@ where
         let correlation_data = self.correlation_data.clone().map(Property::CorrelationData);
         let subscription_identifier = self
             .subscription_identifier
-            .clone()
             .map(Property::SubscriptionIdentifier);
         let user_properties = encode::combinators::Iter::new(
             self.user_properties

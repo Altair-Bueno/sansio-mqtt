@@ -10,14 +10,12 @@ where
     fn encode(&self, encoder: &mut E) -> Result<(), Self::Error> {
         let session_expiry_interval = self
             .session_expiry_interval
-            .clone()
             .map(Property::SessionExpiryInterval);
-        let receive_maximum = self.receive_maximum.clone().map(Property::ReceiveMaximum);
-        let maximum_qos = self.maximum_qos.clone().map(Property::MaximumQoS);
-        let retain_available = self.retain_available.clone().map(Property::RetainAvailable);
+        let receive_maximum = self.receive_maximum.map(Property::ReceiveMaximum);
+        let maximum_qos = self.maximum_qos.map(Property::MaximumQoS);
+        let retain_available = self.retain_available.map(Property::RetainAvailable);
         let maximum_packet_size = self
             .maximum_packet_size
-            .clone()
             .map(Property::MaximumPacketSize);
         let assigned_client_identifier = self
             .assigned_client_identifier
@@ -25,24 +23,19 @@ where
             .map(Property::AssignedClientIdentifier);
         let topic_alias_maximum = self
             .topic_alias_maximum
-            .clone()
             .map(Property::TopicAliasMaximum);
         let reason_string = self.reason_string.clone().map(Property::ReasonString);
         let wildcard_subscription_available = self
             .wildcard_subscription_available
-            .clone()
             .map(Property::WildcardSubscriptionAvailable);
         let subscription_identifiers_available = self
             .subscription_identifiers_available
-            .clone()
             .map(Property::SubscriptionIdentifiersAvailable);
         let shared_subscription_available = self
             .shared_subscription_available
-            .clone()
             .map(Property::SharedSubscriptionAvailable);
         let server_keep_alive = self
             .server_keep_alive
-            .clone()
             .map(Property::ServerKeepAlive);
         let response_information = self
             .response_information

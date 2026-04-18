@@ -10,7 +10,6 @@ where
     fn encode(&self, encoder: &mut E) -> Result<(), Self::Error> {
         let subscription_identifier = self
             .subscription_identifier
-            .clone()
             .map(Property::SubscriptionIdentifier);
         let user_properties = encode::combinators::Iter::new(
             self.user_properties
