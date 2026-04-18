@@ -350,20 +350,21 @@ impl core::ops::Deref for Utf8String {
 
 impl core::fmt::Debug for Utf8String {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        f.debug_tuple("Utf8String").field(&*self).finish()
+        let value: &str = self;
+        f.debug_tuple("Utf8String").field(&value).finish()
     }
 }
 
 impl core::fmt::Display for Utf8String {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        f.write_str(&*self)
+        f.write_str(self)
     }
 }
 
 impl Utf8String {
     pub fn as_bytes(&self) -> &[u8] {
         let b: &bytes::Bytes = self.as_ref();
-        &*b
+        b
     }
 
     #[inline]
@@ -421,7 +422,7 @@ impl TryFrom<&'static [u8]> for BinaryData {
     }
 }
 
-impl<'input, const SIZE: usize> TryFrom<&'static [u8; SIZE]> for BinaryData {
+impl<const SIZE: usize> TryFrom<&'static [u8; SIZE]> for BinaryData {
     type Error = BinaryDataError;
 
     #[inline]
