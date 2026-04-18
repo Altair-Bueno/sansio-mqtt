@@ -10,7 +10,7 @@ use std::net::ToSocketAddrs;
 
 use sansio_mqtt_v5_protocol::{ClientMessage, SubscribeOptions};
 use sansio_mqtt_v5_tokio::{connect, ConnectOptions, Event};
-use sansio_mqtt_v5_types::{Payload, Qos, Topic, Utf8String};
+use sansio_mqtt_v5_types::{Payload, Qos, RetainHandling, Subscription, Topic, Utf8String};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
 #[tokio::main(flavor = "current_thread")]
@@ -52,10 +52,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                             tracing::info!(%subscription_filter, "Subscribing to topic filter");
                             client
                                 .subscribe(SubscribeOptions {
-                                    subscription: subscription_filter.clone(),
-                                    qos: Qos::AtLeastOnce,
-                                    no_local: true,
-                                    ..Default::default()
+                                    subscription: Subscription {
+                                        topic_filter: subscription_filter.clone(),
+                                        qos: Qos::AtLeastOnce,
+                                        no_local: true,
+                                        retain_as_published: false,
+                                        retain_handling: RetainHandling::SendRetained,
+                                    },
+                                    extra_subscriptions: Vec::new(),
+                                    subscription_identifier: None,
+                                    user_properties: Vec::new(),
                                 })
                                 .await?;
                         }

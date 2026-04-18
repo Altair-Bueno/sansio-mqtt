@@ -1,6 +1,7 @@
 use sansio::Protocol;
 use sansio_mqtt_v5_protocol::{
-    Client as ProtocolClient, Config, ConnectionOptions, DriverEventIn, DriverEventOut, UserWriteIn,
+    Client as ProtocolClient, ClientSettings, ConnectionOptions, DriverEventIn, DriverEventOut,
+    UserWriteIn,
 };
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpStream;
@@ -12,7 +13,7 @@ use crate::{Client, ConnectError, EventLoop};
 pub struct ConnectOptions {
     pub addr: std::net::SocketAddr,
     pub connection: ConnectionOptions,
-    pub protocol_config: Config,
+    pub protocol_config: ClientSettings,
     pub command_channel_capacity: usize,
 }
 
@@ -21,7 +22,7 @@ impl Default for ConnectOptions {
         Self {
             addr: std::net::SocketAddr::from(([127, 0, 0, 1], 1883)),
             connection: ConnectionOptions::default(),
-            protocol_config: Config::default(),
+            protocol_config: ClientSettings::default(),
             command_channel_capacity: 16,
         }
     }

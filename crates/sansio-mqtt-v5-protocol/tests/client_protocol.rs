@@ -3,8 +3,8 @@ use core::num::NonZero;
 use encode::Encodable;
 use sansio::Protocol;
 use sansio_mqtt_v5_protocol::{
-    Client, ClientMessage, Config, ConnectionOptions, DriverEventIn, Error, PublishDroppedReason,
-    SubscribeOptions, UserWriteIn, UserWriteOut,
+    Client, ClientMessage, ClientSettings, ConnectionOptions, DriverEventIn, Error,
+    PublishDroppedReason, SubscribeOptions, UserWriteIn, UserWriteOut,
 };
 use sansio_mqtt_v5_types::{
     Auth, AuthProperties, AuthReasonCode, ConnAck, ConnAckKind, ConnAckProperties,
@@ -12,7 +12,7 @@ use sansio_mqtt_v5_types::{
     GuaranteedQoS, MaximumQoS, ParserSettings, Payload, PubAck, PubAckProperties, PubAckReasonCode,
     PubComp, PubCompProperties, PubCompReasonCode, PubRec, PubRecProperties, PubRecReasonCode,
     PubRel, PubRelProperties, PubRelReasonCode, Publish, PublishKind, PublishProperties, Qos,
-    Topic, Utf8String,
+    RetainHandling, Subscription, Topic, Utf8String,
 };
 use winnow::error::ContextError;
 use winnow::Parser;
@@ -21,6 +21,16 @@ fn encode_packet(packet: &ControlPacket) -> Bytes {
     let mut out = Vec::new();
     packet.encode(&mut out).expect("packet should encode");
     Bytes::from(out)
+}
+
+fn make_subscription(topic_filter: &str) -> Subscription {
+    Subscription {
+        topic_filter: Utf8String::try_from(topic_filter).expect("valid utf8"),
+        qos: Qos::AtMostOnce,
+        no_local: false,
+        retain_as_published: false,
+        retain_handling: RetainHandling::SendRetained,
+    }
 }
 
 #[test]
@@ -100,7 +110,7 @@ fn user_write_out_exposes_qos_delivery_events_with_packet_id() {
 
 #[test]
 fn config_and_error_are_instantiable() {
-    let config = Config::default();
+    let config = ClientSettings::default();
     let settings = ParserSettings::default();
     assert_eq!(config.parser_max_bytes_string, settings.max_bytes_string);
     assert_eq!(
@@ -1514,12 +1524,14 @@ fn subscribe_rejects_packet_exceeding_connack_maximum_packet_size() {
     assert_eq!(client.poll_read(), Some(UserWriteOut::Connected));
 
     let subscribe = SubscribeOptions {
-        subscription: Utf8String::try_from("a/very/long/topic/filter").expect("valid utf8"),
+        subscription: Subscription {
+            topic_filter: Utf8String::try_from("a/very/long/topic/filter").expect("valid utf8"),
+            qos: Qos::AtMostOnce,
+            no_local: false,
+            retain_as_published: false,
+            retain_handling: RetainHandling::SendRetained,
+        },
         extra_subscriptions: Vec::new(),
-        qos: Qos::AtMostOnce,
-        no_local: false,
-        retain_as_published: false,
-        retain_handling: 0,
         subscription_identifier: None,
         user_properties: Vec::new(),
     };
@@ -2192,8 +2204,10 @@ fn non_resumed_connack_discards_all_local_session_state() {
     );
 
     let subscribe = SubscribeOptions {
-        subscription: Utf8String::try_from("state/sub").expect("valid utf8"),
-        ..SubscribeOptions::default()
+        subscription: make_subscription("state/sub"),
+        extra_subscriptions: Vec::new(),
+        subscription_identifier: None,
+        user_properties: Vec::new(),
     };
     assert_eq!(
         client.handle_write(UserWriteIn::Subscribe(subscribe)),
@@ -2832,9 +2846,13 @@ fn subscribe_shared_with_no_local_is_rejected() {
     assert_eq!(client.poll_read(), Some(UserWriteOut::Connected));
 
     let subscribe = SubscribeOptions {
-        subscription: Utf8String::try_from("$share/group/topic").expect("valid utf8"),
-        no_local: true,
-        ..SubscribeOptions::default()
+        subscription: Subscription {
+            no_local: true,
+            ..make_subscription("$share/group/topic")
+        },
+        extra_subscriptions: Vec::new(),
+        subscription_identifier: None,
+        user_properties: Vec::new(),
     };
 
     assert_eq!(
@@ -2864,8 +2882,10 @@ fn subscribe_wildcard_when_server_disallows_is_rejected() {
     assert_eq!(client.poll_read(), Some(UserWriteOut::Connected));
 
     let subscribe = SubscribeOptions {
-        subscription: Utf8String::try_from("topic/#").expect("valid utf8"),
-        ..SubscribeOptions::default()
+        subscription: make_subscription("topic/#"),
+        extra_subscriptions: Vec::new(),
+        subscription_identifier: None,
+        user_properties: Vec::new(),
     };
 
     assert_eq!(
@@ -2895,8 +2915,10 @@ fn subscribe_shared_when_server_disallows_is_rejected() {
     assert_eq!(client.poll_read(), Some(UserWriteOut::Connected));
 
     let subscribe = SubscribeOptions {
-        subscription: Utf8String::try_from("$share/g/topic").expect("valid utf8"),
-        ..SubscribeOptions::default()
+        subscription: make_subscription("$share/g/topic"),
+        extra_subscriptions: Vec::new(),
+        subscription_identifier: None,
+        user_properties: Vec::new(),
     };
 
     assert_eq!(
@@ -2926,9 +2948,10 @@ fn subscribe_identifier_when_server_disallows_is_rejected() {
     assert_eq!(client.poll_read(), Some(UserWriteOut::Connected));
 
     let subscribe = SubscribeOptions {
-        subscription: Utf8String::try_from("topic/a").expect("valid utf8"),
+        subscription: make_subscription("topic/a"),
+        extra_subscriptions: Vec::new(),
         subscription_identifier: NonZero::new(1),
-        ..SubscribeOptions::default()
+        user_properties: Vec::new(),
     };
 
     assert_eq!(
@@ -3446,8 +3469,10 @@ fn subscribe_tracks_packet_id_until_suback() {
     assert_eq!(client.poll_read(), Some(UserWriteOut::Connected));
 
     let subscribe = SubscribeOptions {
-        subscription: Utf8String::try_from("topic/a").expect("valid utf8"),
-        ..SubscribeOptions::default()
+        subscription: make_subscription("topic/a"),
+        extra_subscriptions: Vec::new(),
+        subscription_identifier: None,
+        user_properties: Vec::new(),
     };
     assert_eq!(
         client.handle_write(UserWriteIn::Subscribe(subscribe)),

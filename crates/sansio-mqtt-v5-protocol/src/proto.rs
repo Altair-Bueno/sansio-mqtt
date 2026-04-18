@@ -38,10 +38,8 @@ use sansio_mqtt_v5_types::Publish;
 use sansio_mqtt_v5_types::PublishKind;
 use sansio_mqtt_v5_types::PublishProperties;
 use sansio_mqtt_v5_types::Qos;
-use sansio_mqtt_v5_types::RetainHandling;
 use sansio_mqtt_v5_types::Subscribe;
 use sansio_mqtt_v5_types::SubscribeProperties;
-use sansio_mqtt_v5_types::Subscription;
 use sansio_mqtt_v5_types::Topic;
 use sansio_mqtt_v5_types::Unsubscribe;
 use sansio_mqtt_v5_types::UnsubscribeProperties;
@@ -116,7 +114,7 @@ pub struct Client<Time>
 where
     Time: 'static,
 {
-    config: Config,
+    config: ClientSettings,
     pending_connect_options: ConnectionOptions,
     state: ClientState,
     negotiated_limits: NegotiatedLimits,
@@ -146,7 +144,7 @@ where
 impl<Time> Default for Client<Time> {
     fn default() -> Self {
         Self {
-            config: Config::default(),
+            config: ClientSettings::default(),
             pending_connect_options: ConnectionOptions::default(),
             state: ClientState::default(),
             negotiated_limits: NegotiatedLimits::default(),
@@ -169,7 +167,7 @@ impl<Time> Default for Client<Time> {
 }
 
 impl<Time> Client<Time> {
-    pub fn with_config(config: Config) -> Self {
+    pub fn with_config(config: ClientSettings) -> Self {
         Self {
             config,
             ..Self::default()
@@ -834,9 +832,16 @@ impl<Time> Client<Time> {
     }
 
     fn map_inbound_publish_to_broker_message(publish: Publish) -> BrokerMessage {
+        let qos = match &publish.kind {
+            PublishKind::FireAndForget => Qos::AtMostOnce,
+            PublishKind::Repetible { qos, .. } => Qos::from(*qos),
+        };
+        let retain = publish.retain;
         let properties = publish.properties;
 
         BrokerMessage {
+            qos,
+            retain,
             topic: publish.topic,
             payload: publish.payload,
             payload_format_indicator: properties.payload_format_indicator,
@@ -1017,9 +1022,6 @@ where
                     return Err(Error::InvalidStateTransition);
                 }
 
-                let retain_handling = RetainHandling::try_from(options.retain_handling)
-                    .map_err(|_| Error::ProtocolError)?;
-
                 if options.subscription_identifier.is_some()
                     && !self.negotiated_limits.subscription_identifiers_available
                 {
@@ -1028,8 +1030,8 @@ where
 
                 let subscriptions = core::iter::once(options.subscription)
                     .chain(options.extra_subscriptions)
-                    .map(|topic_filter| {
-                        let topic_filter_str: &str = topic_filter.as_ref();
+                    .map(|subscription| {
+                        let topic_filter_str: &str = subscription.topic_filter.as_ref();
                         let is_shared = topic_filter_str.starts_with("$share/");
                         let has_wildcard =
                             topic_filter_str.contains('+') || topic_filter_str.contains('#');
@@ -1044,18 +1046,12 @@ where
                             }
 
                             // [MQTT-3.8.3-4] A Shared Subscription cannot be used with No Local.
-                            if options.no_local {
+                            if subscription.no_local {
                                 return Err(Error::ProtocolError);
                             }
                         }
 
-                        Ok(Subscription {
-                            topic_filter,
-                            qos: options.qos,
-                            no_local: options.no_local,
-                            retain_as_published: options.retain_as_published,
-                            retain_handling,
-                        })
+                        Ok(subscription)
                     })
                     .collect::<Result<Vec<_>, Error>>()?;
                 let mut subscriptions = subscriptions.into_iter();
@@ -1266,7 +1262,6 @@ mod tests {
             retain: false,
             payload_format_indicator: Some(FormatIndicator::Utf8),
             message_expiry_interval: Some(Duration::from_secs(42)),
-            topic_alias: None,
             response_topic: Some(
                 Topic::try_from(Utf8String::try_from("topic/response").expect("valid utf8"))
                     .expect("valid topic"),

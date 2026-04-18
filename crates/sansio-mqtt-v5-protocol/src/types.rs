@@ -1,18 +1,20 @@
-use core::num::NonZero;
-use core::time::Duration;
+// Reexport types from the sansio-mqtt-v5-types crate for usability
+pub use sansio_mqtt_v5_types::AuthenticationKind;
+pub use sansio_mqtt_v5_types::BinaryData;
+pub use sansio_mqtt_v5_types::FormatIndicator;
+pub use sansio_mqtt_v5_types::Payload;
+pub use sansio_mqtt_v5_types::Qos;
+pub use sansio_mqtt_v5_types::Subscription;
+pub use sansio_mqtt_v5_types::Topic;
+pub use sansio_mqtt_v5_types::Utf8String;
 
 use alloc::vec::Vec;
-use sansio_mqtt_v5_types::AuthenticationKind;
-use sansio_mqtt_v5_types::BinaryData;
-use sansio_mqtt_v5_types::FormatIndicator;
+use core::num::NonZero;
+use core::time::Duration;
 use sansio_mqtt_v5_types::ParserSettings;
-use sansio_mqtt_v5_types::Payload;
-use sansio_mqtt_v5_types::Qos;
-use sansio_mqtt_v5_types::Topic;
-use sansio_mqtt_v5_types::Utf8String;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Config {
+pub struct ClientSettings {
     pub parser_max_bytes_string: u16,
     pub parser_max_bytes_binary_data: u16,
     pub parser_max_remaining_bytes: u64,
@@ -20,7 +22,7 @@ pub struct Config {
     pub parser_max_user_properties_len: usize,
 }
 
-impl Default for Config {
+impl Default for ClientSettings {
     fn default() -> Self {
         let settings = ParserSettings::default();
 
@@ -54,15 +56,14 @@ pub enum Error {
 pub struct ConnectionOptions {
     pub clean_start: bool,
     pub client_identifier: Utf8String,
+    pub will: Option<Will>,
     pub user_name: Option<Utf8String>,
     pub password: Option<BinaryData>,
     pub keep_alive: Option<NonZero<u16>>,
-    pub will: Option<Will>,
-
     pub session_expiry_interval: Option<u32>,
-    pub topic_alias_maximum: Option<u16>,
     pub receive_maximum: Option<NonZero<u16>>,
     pub maximum_packet_size: Option<NonZero<u32>>,
+    pub topic_alias_maximum: Option<u16>,
     pub request_response_information: Option<bool>,
     pub request_problem_information: Option<bool>,
     pub authentication: Option<AuthenticationKind>,
@@ -75,53 +76,50 @@ pub struct Will {
     pub payload: Payload,
     pub qos: Qos,
     pub retain: bool,
+    pub will_delay_interval: Option<u32>,
     pub payload_format_indicator: Option<FormatIndicator>,
     pub message_expiry_interval: Option<Duration>,
-    pub topic_alias: Option<NonZero<u16>>,
+    pub content_type: Option<Utf8String>,
     pub response_topic: Option<Topic>,
     pub correlation_data: Option<BinaryData>,
-    pub content_type: Option<Utf8String>,
     pub user_properties: Vec<(Utf8String, Utf8String)>,
-    pub will_delay_interval: Option<u32>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct ClientMessage {
-    pub topic: Topic,
     pub qos: Qos,
     pub retain: bool,
     pub payload: Payload,
+    pub topic: Topic,
     pub payload_format_indicator: Option<FormatIndicator>,
     pub message_expiry_interval: Option<Duration>,
     pub topic_alias: Option<NonZero<u16>>,
     pub response_topic: Option<Topic>,
     pub correlation_data: Option<BinaryData>,
-    pub content_type: Option<Utf8String>,
     pub user_properties: Vec<(Utf8String, Utf8String)>,
+    pub content_type: Option<Utf8String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct BrokerMessage {
-    pub topic: Topic,
+    pub qos: Qos,
+    pub retain: bool,
     pub payload: Payload,
+    pub topic: Topic,
     pub payload_format_indicator: Option<FormatIndicator>,
     pub message_expiry_interval: Option<Duration>,
     pub topic_alias: Option<NonZero<u16>>,
     pub response_topic: Option<Topic>,
     pub correlation_data: Option<BinaryData>,
+    pub user_properties: Vec<(Utf8String, Utf8String)>,
     pub subscription_identifier: Option<NonZero<u64>>,
     pub content_type: Option<Utf8String>,
-    pub user_properties: Vec<(Utf8String, Utf8String)>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SubscribeOptions {
-    pub subscription: Utf8String,
-    pub extra_subscriptions: Vec<Utf8String>,
-    pub qos: Qos,
-    pub no_local: bool,
-    pub retain_as_published: bool,
-    pub retain_handling: u8,
+    pub subscription: Subscription,
+    pub extra_subscriptions: Vec<Subscription>,
     pub subscription_identifier: Option<NonZero<u64>>,
     pub user_properties: Vec<(Utf8String, Utf8String)>,
 }

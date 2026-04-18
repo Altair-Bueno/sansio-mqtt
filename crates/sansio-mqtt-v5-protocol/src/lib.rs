@@ -8,7 +8,7 @@ mod types;
 pub use proto::Client;
 pub use types::BrokerMessage;
 pub use types::ClientMessage;
-pub use types::Config;
+pub use types::ClientSettings;
 pub use types::ConnectionOptions;
 pub use types::DriverEventIn;
 pub use types::DriverEventOut;
