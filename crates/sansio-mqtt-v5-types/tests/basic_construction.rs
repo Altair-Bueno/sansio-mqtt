@@ -1,27 +1,46 @@
 use bytes::Bytes;
+use rstest::rstest;
 use sansio_mqtt_v5_types::{BinaryData, Payload, Topic, Utf8String, Utf8StringError};
 
-#[test]
-fn payload_try_new_accepts_into_bytes() {
-    let payload =
-        Payload::try_new(vec![1_u8, 2, 3]).expect("payload construction must be infallible");
-    assert_eq!(&payload[..], &[1, 2, 3]);
+#[rstest]
+#[case(vec![1_u8, 2, 3], vec![1_u8, 2, 3])]
+#[case(Vec::<u8>::new(), Vec::<u8>::new())]
+fn payload_try_new_accepts_into_bytes(#[case] input: Vec<u8>, #[case] expected: Vec<u8>) {
+    let payload = Payload::try_new(input).expect("payload construction must be infallible");
+    assert_eq!(&payload[..], expected.as_slice());
 }
 
-#[test]
-fn payload_new_accepts_into_bytes() {
-    let payload = Payload::new(vec![4_u8, 5, 6]);
-    assert_eq!(&payload[..], &[4, 5, 6]);
+#[rstest]
+#[case(vec![4_u8, 5, 6], vec![4_u8, 5, 6])]
+#[case(Vec::<u8>::new(), Vec::<u8>::new())]
+fn payload_new_accepts_into_bytes(#[case] input: Vec<u8>, #[case] expected: Vec<u8>) {
+    let payload = Payload::new(input);
+    assert_eq!(&payload[..], expected.as_slice());
 }
 
-#[test]
-fn binary_data_try_new_validates_input() {
-    let binary_data =
-        BinaryData::try_new(vec![7_u8, 8, 9]).expect("valid binary data must construct");
-    assert_eq!(&binary_data[..], &[7, 8, 9]);
+#[rstest]
+#[case(vec![7_u8, 8, 9], true)]
+#[case(vec![0_u8; (u16::MAX as usize) + 1], false)]
+fn binary_data_try_new_validates_input(#[case] input: Vec<u8>, #[case] is_valid: bool) {
+    let result = BinaryData::try_new(input);
+    assert_eq!(result.is_ok(), is_valid);
+}
 
-    let invalid = vec![0_u8; (u16::MAX as usize) + 1];
-    assert!(BinaryData::try_new(invalid).is_err());
+#[rstest]
+#[case(vec![b'h', b'e', b'l', b'l', b'o'], Ok("hello"))]
+#[case(vec![b'a'; (u16::MAX as usize) + 1], Err(Utf8StringError))]
+#[case(vec![0xFF_u8], Err(Utf8StringError))]
+#[case("hello\u{0001}world".as_bytes().to_vec(), Err(Utf8StringError))]
+fn utf8_string_try_new_validates_input(
+    #[case] input: Vec<u8>,
+    #[case] expected: Result<&str, Utf8StringError>,
+) {
+    let result = Utf8String::try_new(input);
+    match (result, expected) {
+        (Ok(value), Ok(expected_str)) => assert_eq!(&*value, expected_str),
+        (Err(err), Err(expected_err)) => assert_eq!(err, expected_err),
+        (actual, expected) => panic!("unexpected result: actual={actual:?}, expected={expected:?}"),
+    }
 }
 
 #[test]
@@ -32,25 +51,15 @@ fn binary_data_new_panics_on_invalid_input() {
 }
 
 #[test]
-fn utf8_string_try_new_validates_input() {
-    let value = Utf8String::try_new("hello").expect("valid utf8 string must construct");
-    assert_eq!(&*value, "hello");
-
-    let too_long = vec![b'a'; (u16::MAX as usize) + 1];
-    assert_eq!(Utf8String::try_new(too_long), Err(Utf8StringError));
-
-    assert_eq!(Utf8String::try_new(vec![0xFF_u8]), Err(Utf8StringError));
-
-    assert_eq!(
-        Utf8String::try_new("hello\u{0001}world"),
-        Err(Utf8StringError)
-    );
+#[should_panic]
+fn utf8_string_new_panics_on_invalid_input() {
+    let _ = Utf8String::new(vec![0xFF_u8]);
 }
 
 #[test]
 #[should_panic]
-fn utf8_string_new_panics_on_invalid_input() {
-    let _ = Utf8String::new(vec![0xFF_u8]);
+fn topic_new_panics_on_invalid_input() {
+    let _ = Topic::new("home/+");
 }
 
 #[test]
@@ -80,18 +89,21 @@ fn payload_from_non_static_slice() {
     assert_eq!(&payload[..], &[13, 14, 15]);
 }
 
-#[test]
-fn topic_try_new_validates_input() {
-    let topic = Topic::try_new("home/living-room").expect("valid topic must construct");
-    let topic_inner: &Utf8String = &topic;
-    assert_eq!(&**topic_inner, "home/living-room");
-
-    assert!(Topic::try_new("home/#").is_err());
-    assert!(Topic::try_new(vec![0xFF_u8]).is_err());
+#[rstest]
+#[case("home/living-room".as_bytes().to_vec(), true)]
+#[case("home/#".as_bytes().to_vec(), false)]
+#[case(vec![0xFF_u8], false)]
+fn topic_try_new_validates_input(#[case] input: Vec<u8>, #[case] is_valid: bool) {
+    let result = Topic::try_new(input);
+    assert_eq!(result.is_ok(), is_valid);
+    if let Ok(topic) = result {
+        let topic_inner: &Utf8String = &topic;
+        assert!(!topic_inner.is_empty());
+    }
 }
 
 #[test]
-fn utf8_string_and_topic_boundary_lengths() {
+fn utf8_string_boundary_lengths() {
     let max = Bytes::from(vec![b'a'; u16::MAX as usize]);
     let max_plus_one = Bytes::from(vec![b'a'; (u16::MAX as usize) + 1]);
 
@@ -101,15 +113,15 @@ fn utf8_string_and_topic_boundary_lengths() {
         Utf8String::try_new(max_plus_one.clone()),
         Err(Utf8StringError)
     );
+}
+
+#[test]
+fn topic_boundary_lengths() {
+    let max = Bytes::from(vec![b'a'; u16::MAX as usize]);
+    let max_plus_one = Bytes::from(vec![b'a'; (u16::MAX as usize) + 1]);
 
     let topic = Topic::try_new(max).expect("u16::MAX-byte topic should be accepted");
     let topic_inner: &Utf8String = &topic;
     assert_eq!(topic_inner.as_bytes().len(), u16::MAX as usize);
     assert!(Topic::try_new(max_plus_one).is_err());
-}
-
-#[test]
-#[should_panic]
-fn topic_new_panics_on_invalid_input() {
-    let _ = Topic::new("home/+");
 }
