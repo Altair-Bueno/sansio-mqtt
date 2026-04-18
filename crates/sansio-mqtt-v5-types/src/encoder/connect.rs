@@ -12,12 +12,8 @@ where
             .session_expiry_interval
             .map(Property::SessionExpiryInterval);
         let receive_maximum = self.receive_maximum.map(Property::ReceiveMaximum);
-        let maximum_packet_size = self
-            .maximum_packet_size
-            .map(Property::MaximumPacketSize);
-        let topic_alias_maximum = self
-            .topic_alias_maximum
-            .map(Property::TopicAliasMaximum);
+        let maximum_packet_size = self.maximum_packet_size.map(Property::MaximumPacketSize);
+        let topic_alias_maximum = self.topic_alias_maximum.map(Property::TopicAliasMaximum);
         let authentication = match &self.authentication {
             Some(AuthenticationKind::WithoutData { method }) => {
                 (Some(Property::AuthenticationMethod(method.clone())), None)
@@ -62,9 +58,7 @@ where
     type Error = EncodeError;
 
     fn encode(&self, encoder: &mut E) -> Result<(), Self::Error> {
-        let will_delay_interval = self
-            .will_delay_interval
-            .map(Property::WillDelayInterval);
+        let will_delay_interval = self.will_delay_interval.map(Property::WillDelayInterval);
         let payload_format_indicator = self
             .payload_format_indicator
             .map(Property::PayloadFormatIndicator);

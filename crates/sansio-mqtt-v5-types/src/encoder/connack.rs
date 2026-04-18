@@ -14,16 +14,12 @@ where
         let receive_maximum = self.receive_maximum.map(Property::ReceiveMaximum);
         let maximum_qos = self.maximum_qos.map(Property::MaximumQoS);
         let retain_available = self.retain_available.map(Property::RetainAvailable);
-        let maximum_packet_size = self
-            .maximum_packet_size
-            .map(Property::MaximumPacketSize);
+        let maximum_packet_size = self.maximum_packet_size.map(Property::MaximumPacketSize);
         let assigned_client_identifier = self
             .assigned_client_identifier
             .clone()
             .map(Property::AssignedClientIdentifier);
-        let topic_alias_maximum = self
-            .topic_alias_maximum
-            .map(Property::TopicAliasMaximum);
+        let topic_alias_maximum = self.topic_alias_maximum.map(Property::TopicAliasMaximum);
         let reason_string = self.reason_string.clone().map(Property::ReasonString);
         let wildcard_subscription_available = self
             .wildcard_subscription_available
@@ -34,9 +30,7 @@ where
         let shared_subscription_available = self
             .shared_subscription_available
             .map(Property::SharedSubscriptionAvailable);
-        let server_keep_alive = self
-            .server_keep_alive
-            .map(Property::ServerKeepAlive);
+        let server_keep_alive = self.server_keep_alive.map(Property::ServerKeepAlive);
         let response_information = self
             .response_information
             .clone()
