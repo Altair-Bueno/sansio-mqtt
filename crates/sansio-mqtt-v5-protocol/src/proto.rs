@@ -109,6 +109,13 @@ enum OutboundInflightState {
     Qos2AwaitPubComp,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum InboundInflightState {
+    Qos1AwaitAppDecision,
+    Qos2AwaitAppDecision,
+    Qos2AwaitPubRel,
+}
+
 #[derive(Debug, PartialEq)]
 pub struct Client<Time>
 where
@@ -124,7 +131,7 @@ where
 
     // Pending packages to be acknowledged indexed by packet identifier
     on_flight_sent: BTreeMap<NonZero<u16>, OutboundInflightState>,
-    on_flight_received: BTreeMap<NonZero<u16>, ()>,
+    on_flight_received: BTreeMap<NonZero<u16>, InboundInflightState>,
     pending_subscribe: BTreeMap<NonZero<u16>, ()>,
     pending_unsubscribe: BTreeMap<NonZero<u16>, ()>,
     inbound_topic_aliases: BTreeMap<NonZero<u16>, Topic>,
@@ -494,10 +501,14 @@ impl<Time> Client<Time> {
         }
     }
 
-    fn enqueue_puback_or_fail_protocol(&mut self, packet_id: NonZero<u16>) -> Result<(), Error> {
+    fn enqueue_puback_or_fail_protocol(
+        &mut self,
+        packet_id: NonZero<u16>,
+        reason_code: PubAckReasonCode,
+    ) -> Result<(), Error> {
         match self.enqueue_packet(ControlPacket::PubAck(PubAck {
             packet_id,
-            reason_code: PubAckReasonCode::Success,
+            reason_code,
             properties: PubAckProperties::default(),
         })) {
             Ok(()) => Ok(()),
@@ -508,10 +519,14 @@ impl<Time> Client<Time> {
         }
     }
 
-    fn enqueue_pubrec_or_fail_protocol(&mut self, packet_id: NonZero<u16>) -> Result<(), Error> {
+    fn enqueue_pubrec_or_fail_protocol(
+        &mut self,
+        packet_id: NonZero<u16>,
+        reason_code: PubRecReasonCode,
+    ) -> Result<(), Error> {
         match self.enqueue_packet(ControlPacket::PubRec(PubRec {
             packet_id,
-            reason_code: PubRecReasonCode::Success,
+            reason_code,
             properties: PubRecProperties::default(),
         })) {
             Ok(()) => Ok(()),
@@ -672,44 +687,62 @@ impl<Time> Client<Time> {
                             qos: GuaranteedQoS::AtLeastOnce,
                             ..
                         } => {
-                            // [MQTT-4.3.2-2] QoS1 receiver acknowledges inbound PUBLISH with PUBACK using the same Packet Identifier.
                             self.read_queue.push_back(UserWriteOut::ReceivedMessage(
                                 Some(packet_id),
                                 Self::map_inbound_publish_to_broker_message(publish),
                             ));
-                            self.enqueue_puback_or_fail_protocol(packet_id)
+                            self.on_flight_received
+                                .insert(packet_id, InboundInflightState::Qos1AwaitAppDecision);
+                            Ok(())
                         }
                         PublishKind::Repetible {
                             packet_id,
                             qos: GuaranteedQoS::ExactlyOnce,
                             ..
-                        } => {
-                            // [MQTT-4.3.3-9] [MQTT-4.3.3-10] QoS2 receiver must treat duplicate Packet Identifier as duplicate delivery and re-send PUBREC.
-                            if self.on_flight_received.contains_key(&packet_id) {
-                                self.enqueue_pubrec_or_fail_protocol(packet_id)
-                            } else {
+                        } => match self.on_flight_received.get(&packet_id).copied() {
+                            Some(InboundInflightState::Qos2AwaitPubRel) => self
+                                .enqueue_pubrec_or_fail_protocol(
+                                    packet_id,
+                                    PubRecReasonCode::Success,
+                                ),
+                            Some(
+                                InboundInflightState::Qos1AwaitAppDecision
+                                | InboundInflightState::Qos2AwaitAppDecision,
+                            ) => Ok(()),
+                            None => {
                                 self.read_queue.push_back(UserWriteOut::ReceivedMessage(
                                     Some(packet_id),
                                     Self::map_inbound_publish_to_broker_message(publish),
                                 ));
-                                self.on_flight_received.insert(packet_id, ());
-                                self.enqueue_pubrec_or_fail_protocol(packet_id)
+                                self.on_flight_received
+                                    .insert(packet_id, InboundInflightState::Qos2AwaitAppDecision);
+                                Ok(())
                             }
-                        }
+                        },
                     }
                 }
                 ControlPacket::PubRel(pubrel) => {
                     let packet_id = pubrel.packet_id;
 
-                    if self.on_flight_received.remove(&packet_id).is_some() {
-                        // [MQTT-4.3.3-11] QoS2 receiver responds to PUBREL with PUBCOMP carrying the same Packet Identifier.
-                        self.enqueue_pubcomp_or_fail_protocol(packet_id, PubCompReasonCode::Success)
-                    } else {
-                        // [MQTT-4.3.3-11] PUBREL is still answered with PUBCOMP for the same Packet Identifier; use PacketIdentifierNotFound when no state exists (section 3.7.2.1 PUBCOMP Reason Code).
-                        self.enqueue_pubcomp_or_fail_protocol(
+                    match self.on_flight_received.get(&packet_id).copied() {
+                        Some(InboundInflightState::Qos2AwaitPubRel) => {
+                            let _ = self.on_flight_received.remove(&packet_id);
+                            self.enqueue_pubcomp_or_fail_protocol(
+                                packet_id,
+                                PubCompReasonCode::Success,
+                            )
+                        }
+                        Some(
+                            InboundInflightState::Qos1AwaitAppDecision
+                            | InboundInflightState::Qos2AwaitAppDecision,
+                        ) => {
+                            self.fail_protocol_and_disconnect(DisconnectReasonCode::ProtocolError)?;
+                            Err(Error::ProtocolError)
+                        }
+                        None => self.enqueue_pubcomp_or_fail_protocol(
                             packet_id,
                             PubCompReasonCode::PacketIdentifierNotFound,
-                        )
+                        ),
                     }
                 }
                 ControlPacket::PubAck(puback) => {
@@ -854,6 +887,32 @@ impl<Time> Client<Time> {
             subscription_identifier: properties.subscription_identifier,
             content_type: properties.content_type,
             user_properties: properties.user_properties,
+        }
+    }
+
+    fn map_incoming_reject_reason_to_puback(reason: IncomingRejectReason) -> PubAckReasonCode {
+        match reason {
+            IncomingRejectReason::UnspecifiedError => PubAckReasonCode::UnspecifiedError,
+            IncomingRejectReason::ImplementationSpecificError => {
+                PubAckReasonCode::ImplementationSpecificError
+            }
+            IncomingRejectReason::NotAuthorized => PubAckReasonCode::NotAuthorized,
+            IncomingRejectReason::TopicNameInvalid => PubAckReasonCode::TopicNameInvalid,
+            IncomingRejectReason::QuotaExceeded => PubAckReasonCode::QuotaExceeded,
+            IncomingRejectReason::PayloadFormatInvalid => PubAckReasonCode::PayloadFormatInvalid,
+        }
+    }
+
+    fn map_incoming_reject_reason_to_pubrec(reason: IncomingRejectReason) -> PubRecReasonCode {
+        match reason {
+            IncomingRejectReason::UnspecifiedError => PubRecReasonCode::UnspecifiedError,
+            IncomingRejectReason::ImplementationSpecificError => {
+                PubRecReasonCode::ImplementationSpecificError
+            }
+            IncomingRejectReason::NotAuthorized => PubRecReasonCode::NotAuthorized,
+            IncomingRejectReason::TopicNameInvalid => PubRecReasonCode::TopicNameInvalid,
+            IncomingRejectReason::QuotaExceeded => PubRecReasonCode::QuotaExceeded,
+            IncomingRejectReason::PayloadFormatInvalid => PubRecReasonCode::PayloadFormatInvalid,
         }
     }
 }
@@ -1017,8 +1076,50 @@ where
 
                 Ok(())
             }
-            UserWriteIn::AcknowledgeMessage(_) | UserWriteIn::RejectMessage(_, _) => {
-                Err(Error::InvalidStateTransition)
+            UserWriteIn::AcknowledgeMessage(packet_id) => {
+                if self.state != ClientState::Connected {
+                    return Err(Error::InvalidStateTransition);
+                }
+
+                match self.on_flight_received.get(&packet_id).copied() {
+                    Some(InboundInflightState::Qos1AwaitAppDecision) => {
+                        self.enqueue_puback_or_fail_protocol(packet_id, PubAckReasonCode::Success)?;
+                        let _ = self.on_flight_received.remove(&packet_id);
+                        Ok(())
+                    }
+                    Some(InboundInflightState::Qos2AwaitAppDecision) => {
+                        self.enqueue_pubrec_or_fail_protocol(packet_id, PubRecReasonCode::Success)?;
+                        self.on_flight_received
+                            .insert(packet_id, InboundInflightState::Qos2AwaitPubRel);
+                        Ok(())
+                    }
+                    Some(InboundInflightState::Qos2AwaitPubRel) | None => Err(Error::ProtocolError),
+                }
+            }
+            UserWriteIn::RejectMessage(packet_id, reason) => {
+                if self.state != ClientState::Connected {
+                    return Err(Error::InvalidStateTransition);
+                }
+
+                match self.on_flight_received.get(&packet_id).copied() {
+                    Some(InboundInflightState::Qos1AwaitAppDecision) => {
+                        self.enqueue_puback_or_fail_protocol(
+                            packet_id,
+                            Self::map_incoming_reject_reason_to_puback(reason),
+                        )?;
+                        let _ = self.on_flight_received.remove(&packet_id);
+                        Ok(())
+                    }
+                    Some(InboundInflightState::Qos2AwaitAppDecision) => {
+                        self.enqueue_pubrec_or_fail_protocol(
+                            packet_id,
+                            Self::map_incoming_reject_reason_to_pubrec(reason),
+                        )?;
+                        let _ = self.on_flight_received.remove(&packet_id);
+                        Ok(())
+                    }
+                    Some(InboundInflightState::Qos2AwaitPubRel) | None => Err(Error::ProtocolError),
+                }
             }
             UserWriteIn::Subscribe(options) => {
                 if self.state != ClientState::Connected {

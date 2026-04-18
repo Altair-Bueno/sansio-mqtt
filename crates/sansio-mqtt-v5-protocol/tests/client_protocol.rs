@@ -615,7 +615,7 @@ fn inbound_publish_alias_exceeds_client_alias_max_is_protocol_error() {
 }
 
 #[test]
-fn inbound_qos1_publish_sends_puback_and_emits_message_once() {
+fn inbound_qos1_publish_waits_for_app_ack_then_sends_puback() {
     let mut client = Client::<u64>::default();
 
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
@@ -656,6 +656,13 @@ fn inbound_qos1_publish_sends_puback_and_emits_message_once() {
         other => panic!("expected received message, got {other:?}"),
     }
 
+    assert_eq!(client.poll_write(), None);
+
+    assert_eq!(
+        client.handle_write(UserWriteIn::AcknowledgeMessage(packet_id)),
+        Ok(())
+    );
+
     let expected_puback = ControlPacket::PubAck(PubAck {
         packet_id,
         reason_code: PubAckReasonCode::Success,
@@ -666,7 +673,7 @@ fn inbound_qos1_publish_sends_puback_and_emits_message_once() {
 }
 
 #[test]
-fn inbound_qos2_duplicate_publish_resends_pubrec_without_duplicate_delivery() {
+fn inbound_qos1_publish_reject_sends_puback_failure_reason() {
     let mut client = Client::<u64>::default();
 
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
@@ -687,7 +694,7 @@ fn inbound_qos2_duplicate_publish_resends_pubrec_without_duplicate_delivery() {
     let publish = ControlPacket::Publish(Publish {
         kind: PublishKind::Repetible {
             packet_id,
-            qos: GuaranteedQoS::ExactlyOnce,
+            qos: GuaranteedQoS::AtLeastOnce,
             dup: false,
         },
         retain: false,
@@ -707,36 +714,27 @@ fn inbound_qos2_duplicate_publish_resends_pubrec_without_duplicate_delivery() {
         other => panic!("expected received message, got {other:?}"),
     }
 
-    let expected_pubrec = ControlPacket::PubRec(PubRec {
-        packet_id,
-        reason_code: PubRecReasonCode::Success,
-        properties: PubRecProperties::default(),
-    });
-    assert_eq!(client.poll_write(), Some(encode_packet(&expected_pubrec)));
-
-    let duplicate_publish = ControlPacket::Publish(Publish {
-        kind: PublishKind::Repetible {
-            packet_id,
-            qos: GuaranteedQoS::ExactlyOnce,
-            dup: true,
-        },
-        retain: false,
-        payload: publish_payload,
-        topic: publish_topic,
-        properties: PublishProperties::default(),
-    });
+    assert_eq!(client.poll_write(), None);
 
     assert_eq!(
-        client.handle_read(encode_packet(&duplicate_publish)),
+        client.handle_write(UserWriteIn::RejectMessage(
+            packet_id,
+            IncomingRejectReason::NotAuthorized,
+        )),
         Ok(())
     );
+
+    let expected_puback = ControlPacket::PubAck(PubAck {
+        packet_id,
+        reason_code: PubAckReasonCode::NotAuthorized,
+        properties: PubAckProperties::default(),
+    });
+    assert_eq!(client.poll_write(), Some(encode_packet(&expected_puback)));
     assert_eq!(client.poll_read(), None);
-    assert_eq!(client.poll_write(), Some(encode_packet(&expected_pubrec)));
-    assert_eq!(client.poll_event(), None);
 }
 
 #[test]
-fn inbound_qos2_pubrel_completes_with_pubcomp() {
+fn inbound_qos2_publish_waits_for_app_ack_then_sends_pubrec_and_completes_on_pubrel() {
     let mut client = Client::<u64>::default();
 
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
@@ -769,6 +767,12 @@ fn inbound_qos2_pubrel_completes_with_pubcomp() {
         client.poll_read(),
         Some(UserWriteOut::ReceivedMessage(Some(_), _))
     ));
+    assert_eq!(client.poll_write(), None);
+
+    assert_eq!(
+        client.handle_write(UserWriteIn::AcknowledgeMessage(packet_id)),
+        Ok(())
+    );
 
     let expected_pubrec = ControlPacket::PubRec(PubRec {
         packet_id,
@@ -791,6 +795,105 @@ fn inbound_qos2_pubrel_completes_with_pubcomp() {
     });
     assert_eq!(client.poll_write(), Some(encode_packet(&expected_pubcomp)));
     assert_eq!(client.poll_event(), None);
+}
+
+#[test]
+fn inbound_qos2_publish_reject_sends_pubrec_failure_and_clears_state() {
+    let mut client = Client::<u64>::default();
+
+    assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
+    assert!(client.poll_write().is_some());
+
+    let connack = ControlPacket::ConnAck(ConnAck {
+        kind: ConnAckKind::Other {
+            reason_code: ConnackReasonCode::Success,
+        },
+        properties: ConnAckProperties::default(),
+    });
+    assert_eq!(client.handle_read(encode_packet(&connack)), Ok(()));
+    assert_eq!(client.poll_read(), Some(UserWriteOut::Connected));
+
+    let packet_id = NonZero::new(13).expect("non-zero packet id");
+    let publish = ControlPacket::Publish(Publish {
+        kind: PublishKind::Repetible {
+            packet_id,
+            qos: GuaranteedQoS::ExactlyOnce,
+            dup: false,
+        },
+        retain: false,
+        payload: Payload::new(b"qos2".as_slice()),
+        topic: Topic::try_new("sensors/pressure").expect("valid topic"),
+        properties: PublishProperties::default(),
+    });
+
+    assert_eq!(client.handle_read(encode_packet(&publish)), Ok(()));
+    assert!(matches!(
+        client.poll_read(),
+        Some(UserWriteOut::ReceivedMessage(Some(_), _))
+    ));
+    assert_eq!(client.poll_write(), None);
+
+    assert_eq!(
+        client.handle_write(UserWriteIn::RejectMessage(
+            packet_id,
+            IncomingRejectReason::QuotaExceeded,
+        )),
+        Ok(())
+    );
+
+    let expected_pubrec = ControlPacket::PubRec(PubRec {
+        packet_id,
+        reason_code: PubRecReasonCode::QuotaExceeded,
+        properties: PubRecProperties::default(),
+    });
+    assert_eq!(client.poll_write(), Some(encode_packet(&expected_pubrec)));
+
+    let pubrel = ControlPacket::PubRel(PubRel {
+        packet_id,
+        reason_code: PubRelReasonCode::Success,
+        properties: PubRelProperties::default(),
+    });
+    assert_eq!(client.handle_read(encode_packet(&pubrel)), Ok(()));
+
+    let expected_pubcomp = ControlPacket::PubComp(PubComp {
+        packet_id,
+        reason_code: PubCompReasonCode::PacketIdentifierNotFound,
+        properties: PubCompProperties::default(),
+    });
+    assert_eq!(client.poll_write(), Some(encode_packet(&expected_pubcomp)));
+    assert_eq!(client.poll_event(), None);
+}
+
+#[test]
+fn manual_ack_or_reject_unknown_packet_id_is_protocol_error() {
+    let mut client = Client::<u64>::default();
+
+    assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
+    assert!(client.poll_write().is_some());
+
+    let connack = ControlPacket::ConnAck(ConnAck {
+        kind: ConnAckKind::Other {
+            reason_code: ConnackReasonCode::Success,
+        },
+        properties: ConnAckProperties::default(),
+    });
+    assert_eq!(client.handle_read(encode_packet(&connack)), Ok(()));
+    assert_eq!(client.poll_read(), Some(UserWriteOut::Connected));
+
+    let unknown_packet_id = NonZero::new(77).expect("non-zero packet id");
+
+    assert_eq!(
+        client.handle_write(UserWriteIn::AcknowledgeMessage(unknown_packet_id)),
+        Err(Error::ProtocolError)
+    );
+    assert_eq!(
+        client.handle_write(UserWriteIn::RejectMessage(
+            unknown_packet_id,
+            IncomingRejectReason::UnspecifiedError,
+        )),
+        Err(Error::ProtocolError)
+    );
+    assert_eq!(client.poll_write(), None);
 }
 
 #[test]
@@ -2076,14 +2179,7 @@ fn non_resumed_session_drops_inflight_and_emits_publish_dropped_events() {
     });
     assert_eq!(client.handle_read(encode_packet(&inbound_publish)), Ok(()));
     let _ = client.poll_read();
-    assert_eq!(
-        client.poll_write(),
-        Some(encode_packet(&ControlPacket::PubRec(PubRec {
-            packet_id: inbound_packet_id,
-            reason_code: PubRecReasonCode::Success,
-            properties: PubRecProperties::default(),
-        })))
-    );
+    assert_eq!(client.poll_write(), None);
 
     assert_eq!(client.handle_event(DriverEventIn::SocketClosed), Ok(()));
     assert_eq!(client.poll_read(), Some(UserWriteOut::Disconnected));
@@ -2178,14 +2274,7 @@ fn non_resumed_connack_discards_all_local_session_state() {
     });
     assert_eq!(client.handle_read(encode_packet(&inbound_publish)), Ok(()));
     let _ = client.poll_read();
-    assert_eq!(
-        client.poll_write(),
-        Some(encode_packet(&ControlPacket::PubRec(PubRec {
-            packet_id: inbound_packet_id,
-            reason_code: PubRecReasonCode::Success,
-            properties: PubRecProperties::default(),
-        })))
-    );
+    assert_eq!(client.poll_write(), None);
 
     let subscribe = SubscribeOptions {
         subscription: make_subscription("state/sub"),
