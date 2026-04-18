@@ -1,10 +1,11 @@
 use core::num::NonZero;
 
 use encode::Encodable;
-use sansio_mqtt_v5_protocol::{ClientMessage, UserWriteIn, UserWriteOut};
+use sansio_mqtt_v5_protocol::{BrokerMessage, ClientMessage, UserWriteIn, UserWriteOut};
 use sansio_mqtt_v5_tokio::{Client, ConnectOptions, Event, EventLoop};
 use sansio_mqtt_v5_types::{
-    ConnAck, ConnAckKind, ConnAckProperties, ConnackReasonCode, ControlPacket,
+    ConnAck, ConnAckKind, ConnAckProperties, ConnackReasonCode, ControlPacket, PubAckReasonCode,
+    PubCompReasonCode, PubRecReasonCode,
 };
 use sansio_mqtt_v5_types::{Payload, Qos, Topic, Utf8String};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -41,20 +42,68 @@ async fn client_publish_enqueues_command() {
 }
 
 #[test]
-fn maps_protocol_outputs_to_public_events() {
+fn maps_received_message_with_optional_packet_id() {
+    let packet_id = NonZero::new(7).expect("non-zero packet id");
+    let message = BrokerMessage::default();
+
+    let without_packet_id =
+        Event::from_protocol_output(UserWriteOut::ReceivedMessage(None, message.clone()));
+    let with_packet_id =
+        Event::from_protocol_output(UserWriteOut::ReceivedMessage(Some(packet_id), message));
+
+    assert!(matches!(
+        without_packet_id,
+        Event::Message(None, BrokerMessage { .. })
+    ));
+    assert!(matches!(
+        with_packet_id,
+        Event::Message(Some(id), BrokerMessage { .. }) if id == packet_id
+    ));
+}
+
+#[test]
+fn maps_publish_dropped_and_delivery_events_tuple_variants() {
     let packet_id = NonZero::new(7).expect("non-zero packet id");
 
     let connected = Event::from_protocol_output(UserWriteOut::Connected);
     let disconnected = Event::from_protocol_output(UserWriteOut::Disconnected);
-    let dropped = Event::from_protocol_output(
-        UserWriteOut::PublishDroppedDueToSessionNotResumed(packet_id),
-    );
+    let acknowledged = Event::from_protocol_output(UserWriteOut::PublishAcknowledged(
+        packet_id,
+        PubAckReasonCode::Success,
+    ));
+    let completed = Event::from_protocol_output(UserWriteOut::PublishCompleted(
+        packet_id,
+        PubCompReasonCode::Success,
+    ));
+    let dropped = Event::from_protocol_output(UserWriteOut::PublishDroppedDueToSessionNotResumed(
+        packet_id,
+    ));
+    let dropped_by_broker =
+        Event::from_protocol_output(UserWriteOut::PublishDroppedDueToBrokerRejectedPubRec(
+            packet_id,
+            PubRecReasonCode::PacketIdentifierInUse,
+        ));
 
     assert!(matches!(connected, Event::Connected));
     assert!(matches!(disconnected, Event::Disconnected));
     assert!(matches!(
+        acknowledged,
+        Event::PublishAcknowledged(id, reason)
+            if id == packet_id && reason == PubAckReasonCode::Success
+    ));
+    assert!(matches!(
+        completed,
+        Event::PublishCompleted(id, reason)
+            if id == packet_id && reason == PubCompReasonCode::Success
+    ));
+    assert!(matches!(
         dropped,
         Event::PublishDroppedDueToSessionNotResumed(got) if got == packet_id
+    ));
+    assert!(matches!(
+        dropped_by_broker,
+        Event::PublishDroppedDueToBrokerRejectedPubRec(id, reason)
+            if id == packet_id && reason == PubRecReasonCode::PacketIdentifierInUse
     ));
 }
 

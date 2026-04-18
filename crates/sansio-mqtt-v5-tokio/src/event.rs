@@ -7,7 +7,7 @@ use sansio_mqtt_v5_types::{PubAckReasonCode, PubCompReasonCode, PubRecReasonCode
 pub enum Event {
     Connected,
     Disconnected,
-    Message(BrokerMessage),
+    Message(Option<NonZero<u16>>, BrokerMessage),
     PublishAcknowledged(NonZero<u16>, PubAckReasonCode),
     PublishCompleted(NonZero<u16>, PubCompReasonCode),
     PublishDroppedDueToSessionNotResumed(NonZero<u16>),
@@ -17,7 +17,7 @@ pub enum Event {
 impl Event {
     pub fn from_protocol_output(output: UserWriteOut) -> Self {
         match output {
-            UserWriteOut::ReceivedMessage(message) => Self::Message(message),
+            UserWriteOut::ReceivedMessage(packet_id, message) => Self::Message(packet_id, message),
             UserWriteOut::PublishAcknowledged(packet_id, reason_code) => {
                 Self::PublishAcknowledged(packet_id, reason_code)
             }
