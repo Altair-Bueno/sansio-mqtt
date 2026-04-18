@@ -1,6 +1,6 @@
 use super::*;
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 
 pub struct Publish {
     pub kind: PublishKind,
@@ -10,7 +10,7 @@ pub struct Publish {
     pub properties: PublishProperties,
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 
 pub enum PublishKind {
     FireAndForget,
@@ -21,7 +21,7 @@ pub enum PublishKind {
     },
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 
 pub struct PublishHeaderFlags {
     pub kind: PublishHeaderFlagsKind,
@@ -45,14 +45,14 @@ impl From<PublishHeaderFlags> for u8 {
     }
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 
 pub enum PublishHeaderFlagsKind {
     Simple,
     Advanced { qos: GuaranteedQoS, dup: bool },
 }
 
-#[derive(Debug, PartialEq, Clone, Default)]
+#[derive(Debug, PartialEq, Eq, Clone, Default)]
 
 pub struct PublishProperties {
     pub payload_format_indicator: Option<FormatIndicator>,

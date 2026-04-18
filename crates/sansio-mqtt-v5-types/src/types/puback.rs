@@ -1,6 +1,6 @@
 use super::*;
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 
 pub struct PubAck {
     pub packet_id: NonZero<u16>,
@@ -8,7 +8,7 @@ pub struct PubAck {
     pub properties: PubAckProperties,
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 
 pub struct PubAckHeaderFlags;
 
@@ -18,7 +18,7 @@ impl From<PubAckHeaderFlags> for u8 {
     }
 }
 
-#[derive(Debug, PartialEq, Clone, Default)]
+#[derive(Debug, PartialEq, Eq, Clone, Default)]
 
 pub struct PubAckProperties {
     pub reason_string: Option<Utf8String>,

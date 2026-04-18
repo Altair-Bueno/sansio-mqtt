@@ -1,5 +1,5 @@
 use super::*;
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 
 pub struct PubRel {
     pub packet_id: NonZero<u16>,
@@ -7,7 +7,7 @@ pub struct PubRel {
     pub properties: PubRelProperties,
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 
 pub struct PubRelHeaderFlags;
 
@@ -17,7 +17,7 @@ impl From<PubRelHeaderFlags> for u8 {
     }
 }
 
-#[derive(Debug, PartialEq, Clone, Default)]
+#[derive(Debug, PartialEq, Eq, Clone, Default)]
 
 pub struct PubRelProperties {
     pub reason_string: Option<Utf8String>,

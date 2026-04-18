@@ -1,6 +1,6 @@
 use super::*;
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 
 pub struct SubAck {
     pub packet_id: NonZero<u16>,
@@ -8,7 +8,7 @@ pub struct SubAck {
     pub reason_codes: Vec<SubAckReasonCode>,
 }
 
-#[derive(Debug, PartialEq, Clone, Default)]
+#[derive(Debug, PartialEq, Eq, Clone, Default)]
 
 pub struct SubAckProperties {
     pub reason_string: Option<Utf8String>,
@@ -16,7 +16,7 @@ pub struct SubAckProperties {
     pub user_properties: Vec<(Utf8String, Utf8String)>,
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 
 pub struct SubAckHeaderFlags;
 

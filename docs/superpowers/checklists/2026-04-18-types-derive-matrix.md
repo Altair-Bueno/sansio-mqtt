@@ -32,13 +32,13 @@
 | `connect.rs::ConnectProperties` | `Debug, PartialEq, Eq, Clone, Default` | `Debug, PartialEq, Eq, Clone, Default` | Properties struct has a useful empty default and benefits from `Eq` for exact comparisons. |
 | `control_packet.rs::ControlPacket` | `Debug, PartialEq, Clone, EnumDiscriminants` | `Debug, PartialEq, Clone, EnumDiscriminants` | Control packet shape; enforce policy that `Default` is not derived. |
 | `control_packet.rs::InvalidControlPacketTypeError` | `Debug, PartialEq, Clone, Copy, Error` | `Debug, PartialEq, Clone, Copy, Error` | Keep existing derive set in Task 1; reviewed for constraints. |
-| `disconnect.rs::Disconnect` | `Debug, PartialEq, Clone` | `Debug, PartialEq, Clone` | Control packet shape; enforce policy that `Default` is not derived. |
-| `disconnect.rs::DisconnectHeaderFlags` | `Debug, PartialEq, Clone` | `Debug, PartialEq, Clone` | Keep existing derive set in Task 1; reviewed for constraints. |
-| `disconnect.rs::DisconnectProperties` | `Debug, PartialEq, Clone, Default` | `Debug, PartialEq, Clone, Default` | Keep existing derive set in Task 1; reviewed for constraints. |
-| `pingreq.rs::PingReq` | `Debug, PartialEq, Clone` | `Debug, PartialEq, Clone` | Control packet shape; enforce policy that `Default` is not derived. |
-| `pingreq.rs::PingReqHeaderFlags` | `Debug, PartialEq, Clone` | `Debug, PartialEq, Clone` | Keep existing derive set in Task 1; reviewed for constraints. |
-| `pingresp.rs::PingResp` | `Debug, PartialEq, Clone` | `Debug, PartialEq, Clone` | Control packet shape; enforce policy that `Default` is not derived. |
-| `pingresp.rs::PingRespHeaderFlags` | `Debug, PartialEq, Clone` | `Debug, PartialEq, Clone` | Keep existing derive set in Task 1; reviewed for constraints. |
+| `disconnect.rs::Disconnect` | `Debug, PartialEq, Eq, Clone` | `Debug, PartialEq, Eq, Clone` | Control packet shape; `Eq` improves equality ergonomics while preserving no-`Default` packet policy. |
+| `disconnect.rs::DisconnectHeaderFlags` | `Debug, PartialEq, Eq, Clone` | `Debug, PartialEq, Eq, Clone` | Zero-sized header marker; `Eq` is semantically valid and useful for equality checks. |
+| `disconnect.rs::DisconnectProperties` | `Debug, PartialEq, Eq, Clone, Default` | `Debug, PartialEq, Eq, Clone, Default` | Properties struct has meaningful empty default and benefits from exact equality checks. |
+| `pingreq.rs::PingReq` | `Debug, PartialEq, Eq, Clone` | `Debug, PartialEq, Eq, Clone` | Control packet shape; `Eq` improves equality ergonomics while preserving no-`Default` packet policy. |
+| `pingreq.rs::PingReqHeaderFlags` | `Debug, PartialEq, Eq, Clone` | `Debug, PartialEq, Eq, Clone` | Zero-sized header marker; `Eq` is semantically valid and useful for equality checks. |
+| `pingresp.rs::PingResp` | `Debug, PartialEq, Eq, Clone` | `Debug, PartialEq, Eq, Clone` | Control packet shape; `Eq` improves equality ergonomics while preserving no-`Default` packet policy. |
+| `pingresp.rs::PingRespHeaderFlags` | `Debug, PartialEq, Eq, Clone` | `Debug, PartialEq, Eq, Clone` | Zero-sized header marker; `Eq` is semantically valid and useful for equality checks. |
 | `properties.rs::Property` | `Debug, PartialEq, Eq, Clone, EnumDiscriminants` | `Debug, PartialEq, Eq, Clone, EnumDiscriminants` | Sum type of comparable value fields; adding `Eq` improves ergonomic exact comparisons. |
 | `properties.rs::AuthenticationKind` | `Debug, PartialEq, Eq, Clone` | `Debug, PartialEq, Eq, Clone` | Authentication value enum supports total equality and benefits from `Eq` in property assertions. |
 | `properties.rs::InvalidPropertyTypeError` | `Debug, PartialEq, Eq, Clone, Copy, Error` | `Debug, PartialEq, Eq, Clone, Copy, Error` | Scalar value error (`u64`) supports strict equality semantics; `Eq` improves ergonomic checks. |
@@ -47,23 +47,23 @@
 | `properties.rs::TooManyUserPropertiesError` | `Debug, PartialEq, Eq, Clone, Copy, Error` | `Debug, PartialEq, Eq, Clone, Copy, Error` | Empty marker/unit error keeps constraint: no `Hash`/`Ord`/`PartialOrd`; `Eq` remains acceptable. |
 | `properties.rs::MissingAuthenticationMethodError` | `Debug, PartialEq, Eq, Clone, Copy, Error` | `Debug, PartialEq, Eq, Clone, Copy, Error` | Empty marker/unit error keeps constraint: no `Hash`/`Ord`/`PartialOrd`; `Eq` remains acceptable. |
 | `properties.rs::PropertiesError` | `Debug, PartialEq, Eq, Clone, Copy, Error` | `Debug, PartialEq, Eq, Clone, Copy, Error` | Closed error enum of `Eq` variants; `Eq` improves exact-match ergonomics in tests and callers. |
-| `puback.rs::PubAck` | `Debug, PartialEq, Clone` | `Debug, PartialEq, Clone` | Control packet shape; enforce policy that `Default` is not derived. |
-| `puback.rs::PubAckHeaderFlags` | `Debug, PartialEq, Clone` | `Debug, PartialEq, Clone` | Keep existing derive set in Task 1; reviewed for constraints. |
-| `puback.rs::PubAckProperties` | `Debug, PartialEq, Clone, Default` | `Debug, PartialEq, Clone, Default` | Keep existing derive set in Task 1; reviewed for constraints. |
-| `pubcomp.rs::PubComp` | `Debug, PartialEq, Clone` | `Debug, PartialEq, Clone` | Control packet shape; enforce policy that `Default` is not derived. |
-| `pubcomp.rs::PubCompHeaderFlags` | `Debug, PartialEq, Clone` | `Debug, PartialEq, Clone` | Keep existing derive set in Task 1; reviewed for constraints. |
-| `pubcomp.rs::PubCompProperties` | `Debug, PartialEq, Clone, Default` | `Debug, PartialEq, Clone, Default` | Keep existing derive set in Task 1; reviewed for constraints. |
-| `publish.rs::Publish` | `Debug, PartialEq, Clone` | `Debug, PartialEq, Clone` | Control packet shape; enforce policy that `Default` is not derived. |
-| `publish.rs::PublishKind` | `Debug, PartialEq, Clone` | `Debug, PartialEq, Clone` | Keep existing derive set in Task 1; reviewed for constraints. |
-| `publish.rs::PublishHeaderFlags` | `Debug, PartialEq, Clone` | `Debug, PartialEq, Clone` | Keep existing derive set in Task 1; reviewed for constraints. |
-| `publish.rs::PublishHeaderFlagsKind` | `Debug, PartialEq, Clone` | `Debug, PartialEq, Clone` | Keep existing derive set in Task 1; reviewed for constraints. |
-| `publish.rs::PublishProperties` | `Debug, PartialEq, Clone, Default` | `Debug, PartialEq, Clone, Default` | Keep existing derive set in Task 1; reviewed for constraints. |
-| `pubrec.rs::PubRec` | `Debug, PartialEq, Clone` | `Debug, PartialEq, Clone` | Control packet shape; enforce policy that `Default` is not derived. |
-| `pubrec.rs::PubRecHeaderFlags` | `Debug, PartialEq, Clone` | `Debug, PartialEq, Clone` | Keep existing derive set in Task 1; reviewed for constraints. |
-| `pubrec.rs::PubRecProperties` | `Debug, PartialEq, Clone, Default` | `Debug, PartialEq, Clone, Default` | Keep existing derive set in Task 1; reviewed for constraints. |
-| `pubrel.rs::PubRel` | `Debug, PartialEq, Clone` | `Debug, PartialEq, Clone` | Control packet shape; enforce policy that `Default` is not derived. |
-| `pubrel.rs::PubRelHeaderFlags` | `Debug, PartialEq, Clone` | `Debug, PartialEq, Clone` | Keep existing derive set in Task 1; reviewed for constraints. |
-| `pubrel.rs::PubRelProperties` | `Debug, PartialEq, Clone, Default` | `Debug, PartialEq, Clone, Default` | Keep existing derive set in Task 1; reviewed for constraints. |
+| `puback.rs::PubAck` | `Debug, PartialEq, Eq, Clone` | `Debug, PartialEq, Eq, Clone` | Control packet shape; `Eq` improves equality ergonomics while preserving no-`Default` packet policy. |
+| `puback.rs::PubAckHeaderFlags` | `Debug, PartialEq, Eq, Clone` | `Debug, PartialEq, Eq, Clone` | Zero-sized header marker; `Eq` is semantically valid and useful for equality checks. |
+| `puback.rs::PubAckProperties` | `Debug, PartialEq, Eq, Clone, Default` | `Debug, PartialEq, Eq, Clone, Default` | Properties struct has meaningful empty default and benefits from exact equality checks. |
+| `pubcomp.rs::PubComp` | `Debug, PartialEq, Eq, Clone` | `Debug, PartialEq, Eq, Clone` | Control packet shape; `Eq` improves equality ergonomics while preserving no-`Default` packet policy. |
+| `pubcomp.rs::PubCompHeaderFlags` | `Debug, PartialEq, Eq, Clone` | `Debug, PartialEq, Eq, Clone` | Zero-sized header marker; `Eq` is semantically valid and useful for equality checks. |
+| `pubcomp.rs::PubCompProperties` | `Debug, PartialEq, Eq, Clone, Default` | `Debug, PartialEq, Eq, Clone, Default` | Properties struct has meaningful empty default and benefits from exact equality checks. |
+| `publish.rs::Publish` | `Debug, PartialEq, Eq, Clone` | `Debug, PartialEq, Eq, Clone` | Control packet shape; `Eq` improves equality ergonomics while preserving no-`Default` packet policy. |
+| `publish.rs::PublishKind` | `Debug, PartialEq, Eq, Clone` | `Debug, PartialEq, Eq, Clone` | Closed value enum with `Eq` members; exact equality is semantically valid and ergonomic. |
+| `publish.rs::PublishHeaderFlags` | `Debug, PartialEq, Eq, Clone` | `Debug, PartialEq, Eq, Clone` | Header flag value object with fully comparable fields benefits from exact equality. |
+| `publish.rs::PublishHeaderFlagsKind` | `Debug, PartialEq, Eq, Clone` | `Debug, PartialEq, Eq, Clone` | Closed value enum with `Eq` members; exact equality is semantically valid and ergonomic. |
+| `publish.rs::PublishProperties` | `Debug, PartialEq, Eq, Clone, Default` | `Debug, PartialEq, Eq, Clone, Default` | Properties struct has meaningful empty default and benefits from exact equality checks. |
+| `pubrec.rs::PubRec` | `Debug, PartialEq, Eq, Clone` | `Debug, PartialEq, Eq, Clone` | Control packet shape; `Eq` improves equality ergonomics while preserving no-`Default` packet policy. |
+| `pubrec.rs::PubRecHeaderFlags` | `Debug, PartialEq, Eq, Clone` | `Debug, PartialEq, Eq, Clone` | Zero-sized header marker; `Eq` is semantically valid and useful for equality checks. |
+| `pubrec.rs::PubRecProperties` | `Debug, PartialEq, Eq, Clone, Default` | `Debug, PartialEq, Eq, Clone, Default` | Properties struct has meaningful empty default and benefits from exact equality checks. |
+| `pubrel.rs::PubRel` | `Debug, PartialEq, Eq, Clone` | `Debug, PartialEq, Eq, Clone` | Control packet shape; `Eq` improves equality ergonomics while preserving no-`Default` packet policy. |
+| `pubrel.rs::PubRelHeaderFlags` | `Debug, PartialEq, Eq, Clone` | `Debug, PartialEq, Eq, Clone` | Zero-sized header marker; `Eq` is semantically valid and useful for equality checks. |
+| `pubrel.rs::PubRelProperties` | `Debug, PartialEq, Eq, Clone, Default` | `Debug, PartialEq, Eq, Clone, Default` | Properties struct has meaningful empty default and benefits from exact equality checks. |
 | `reason_code.rs::ConnectReasonCode` | `Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy, Default, EnumIter, Display` | `Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy, Default, EnumIter, Display` | Closed protocol code enum: hashable/orderable semantics are stable and ergonomically useful in sets/maps/sorting. |
 | `reason_code.rs::ConnackReasonCode` | `Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy, Default, EnumIter, Display` | `Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy, Default, EnumIter, Display` | Closed protocol code enum: hashable/orderable semantics are stable and ergonomically useful in sets/maps/sorting. |
 | `reason_code.rs::PublishReasonCode` | `Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy, Default, EnumIter, Display` | `Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy, Default, EnumIter, Display` | Closed protocol code enum: hashable/orderable semantics are stable and ergonomically useful in sets/maps/sorting. |
@@ -76,18 +76,35 @@
 | `reason_code.rs::DisconnectReasonCode` | `Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy, Default, EnumIter, Display` | `Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy, Default, EnumIter, Display` | Closed protocol code enum: hashable/orderable semantics are stable and ergonomically useful in sets/maps/sorting. |
 | `reason_code.rs::AuthReasonCode` | `Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy, Default, EnumIter, Display` | `Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy, Default, EnumIter, Display` | Closed protocol code enum: hashable/orderable semantics are stable and ergonomically useful in sets/maps/sorting. |
 | `reason_code.rs::InvalidReasonCode` | `Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, thiserror::Error` | `Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, thiserror::Error` | Scalar value error (`u8`) can be hashed/ordered for ergonomic diagnostics and comparisons. |
-| `reserved.rs::Reserved` | `Debug, PartialEq, Clone` | `Debug, PartialEq, Clone` | Control packet shape; enforce policy that `Default` is not derived. |
-| `reserved.rs::ReservedHeaderFlags` | `Debug, PartialEq, Clone` | `Debug, PartialEq, Clone` | Keep existing derive set in Task 1; reviewed for constraints. |
-| `suback.rs::SubAck` | `Debug, PartialEq, Clone` | `Debug, PartialEq, Clone` | Control packet shape; enforce policy that `Default` is not derived. |
-| `suback.rs::SubAckProperties` | `Debug, PartialEq, Clone, Default` | `Debug, PartialEq, Clone, Default` | Keep existing derive set in Task 1; reviewed for constraints. |
-| `suback.rs::SubAckHeaderFlags` | `Debug, PartialEq, Clone` | `Debug, PartialEq, Clone` | Keep existing derive set in Task 1; reviewed for constraints. |
+| `reserved.rs::Reserved` | `Debug, PartialEq, Eq, Clone` | `Debug, PartialEq, Eq, Clone` | Control packet shape; `Eq` improves equality ergonomics while preserving no-`Default` packet policy. |
+| `reserved.rs::ReservedHeaderFlags` | `Debug, PartialEq, Eq, Clone` | `Debug, PartialEq, Eq, Clone` | Zero-sized header marker; `Eq` is semantically valid and useful for equality checks. |
+| `suback.rs::SubAck` | `Debug, PartialEq, Eq, Clone` | `Debug, PartialEq, Eq, Clone` | Control packet shape; `Eq` improves equality ergonomics while preserving no-`Default` packet policy. |
+| `suback.rs::SubAckProperties` | `Debug, PartialEq, Eq, Clone, Default` | `Debug, PartialEq, Eq, Clone, Default` | Properties struct has meaningful empty default and benefits from exact equality checks. |
+| `suback.rs::SubAckHeaderFlags` | `Debug, PartialEq, Eq, Clone` | `Debug, PartialEq, Eq, Clone` | Zero-sized header marker; `Eq` is semantically valid and useful for equality checks. |
 | `subscribe.rs::Subscribe` | `Debug, PartialEq, Eq, Clone` | `Debug, PartialEq, Eq, Clone` | Control packet shape; `Eq` improves equality ergonomics while preserving no-`Default` packet policy. |
 | `subscribe.rs::SubscribeHeaderFlags` | `Debug, PartialEq, Eq, Clone` | `Debug, PartialEq, Eq, Clone` | Zero-sized header marker; `Eq` is semantically valid and useful. |
 | `subscribe.rs::Subscription` | `Debug, PartialEq, Eq, Clone` | `Debug, PartialEq, Eq, Clone` | Subscription value object is fully comparable; `Eq` strengthens ergonomic comparisons. |
 | `subscribe.rs::SubscribeProperties` | `Debug, PartialEq, Eq, Clone, Default` | `Debug, PartialEq, Eq, Clone, Default` | Properties struct keeps meaningful empty default and gains `Eq` for exact comparisons. |
-| `unsuback.rs::UnsubAck` | `Debug, PartialEq, Clone` | `Debug, PartialEq, Clone` | Control packet shape; enforce policy that `Default` is not derived. |
-| `unsuback.rs::UnsubAckHeaderFlags` | `Debug, PartialEq, Clone` | `Debug, PartialEq, Clone` | Keep existing derive set in Task 1; reviewed for constraints. |
-| `unsuback.rs::UnsubAckProperties` | `Debug, PartialEq, Clone, Default` | `Debug, PartialEq, Clone, Default` | Keep existing derive set in Task 1; reviewed for constraints. |
-| `unsubscribe.rs::Unsubscribe` | `Debug, PartialEq, Clone` | `Debug, PartialEq, Clone` | Control packet shape; enforce policy that `Default` is not derived. |
-| `unsubscribe.rs::UnsubscribeHeaderFlags` | `Debug, PartialEq, Clone` | `Debug, PartialEq, Clone` | Keep existing derive set in Task 1; reviewed for constraints. |
-| `unsubscribe.rs::UnsubscribeProperties` | `Debug, PartialEq, Clone, Default` | `Debug, PartialEq, Clone, Default` | Keep existing derive set in Task 1; reviewed for constraints. |
+| `unsuback.rs::UnsubAck` | `Debug, PartialEq, Eq, Clone` | `Debug, PartialEq, Eq, Clone` | Control packet shape; `Eq` improves equality ergonomics while preserving no-`Default` packet policy. |
+| `unsuback.rs::UnsubAckHeaderFlags` | `Debug, PartialEq, Eq, Clone` | `Debug, PartialEq, Eq, Clone` | Zero-sized header marker; `Eq` is semantically valid and useful for equality checks. |
+| `unsuback.rs::UnsubAckProperties` | `Debug, PartialEq, Eq, Clone, Default` | `Debug, PartialEq, Eq, Clone, Default` | Properties struct has meaningful empty default and benefits from exact equality checks. |
+| `unsubscribe.rs::Unsubscribe` | `Debug, PartialEq, Eq, Clone` | `Debug, PartialEq, Eq, Clone` | Control packet shape; `Eq` improves equality ergonomics while preserving no-`Default` packet policy. |
+| `unsubscribe.rs::UnsubscribeHeaderFlags` | `Debug, PartialEq, Eq, Clone` | `Debug, PartialEq, Eq, Clone` | Zero-sized header marker; `Eq` is semantically valid and useful for equality checks. |
+| `unsubscribe.rs::UnsubscribeProperties` | `Debug, PartialEq, Eq, Clone, Default` | `Debug, PartialEq, Eq, Clone, Default` | Properties struct has meaningful empty default and benefits from exact equality checks. |
+
+## Task 3 Status
+
+The following remaining-module entries were updated and are now **Applied**:
+
+- `disconnect.rs::{Disconnect, DisconnectHeaderFlags, DisconnectProperties}`
+- `pingreq.rs::{PingReq, PingReqHeaderFlags}`
+- `pingresp.rs::{PingResp, PingRespHeaderFlags}`
+- `puback.rs::{PubAck, PubAckHeaderFlags, PubAckProperties}`
+- `pubcomp.rs::{PubComp, PubCompHeaderFlags, PubCompProperties}`
+- `publish.rs::{Publish, PublishKind, PublishHeaderFlags, PublishHeaderFlagsKind, PublishProperties}`
+- `pubrec.rs::{PubRec, PubRecHeaderFlags, PubRecProperties}`
+- `pubrel.rs::{PubRel, PubRelHeaderFlags, PubRelProperties}`
+- `reserved.rs::{Reserved, ReservedHeaderFlags}`
+- `suback.rs::{SubAck, SubAckProperties, SubAckHeaderFlags}`
+- `unsuback.rs::{UnsubAck, UnsubAckHeaderFlags, UnsubAckProperties}`
+- `unsubscribe.rs::{Unsubscribe, UnsubscribeHeaderFlags, UnsubscribeProperties}`

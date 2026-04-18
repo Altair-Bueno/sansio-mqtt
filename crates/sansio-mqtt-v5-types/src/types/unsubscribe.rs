@@ -1,6 +1,6 @@
 use super::*;
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 
 pub struct Unsubscribe {
     pub packet_id: NonZero<u16>,
@@ -9,7 +9,7 @@ pub struct Unsubscribe {
     pub extra_filters: Vec<Utf8String>,
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 
 pub struct UnsubscribeHeaderFlags;
 
@@ -19,7 +19,7 @@ impl From<UnsubscribeHeaderFlags> for u8 {
     }
 }
 
-#[derive(Debug, PartialEq, Clone, Default)]
+#[derive(Debug, PartialEq, Eq, Clone, Default)]
 
 pub struct UnsubscribeProperties {
     pub user_properties: Vec<(Utf8String, Utf8String)>,

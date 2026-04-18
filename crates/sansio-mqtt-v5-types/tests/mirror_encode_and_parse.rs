@@ -14,6 +14,17 @@ fn settings() -> ParserSettings {
     ParserSettings::default()
 }
 
+#[test]
+fn remaining_types_have_expected_clone_and_eq_shape() {
+    fn assert_clone_eq<T: Clone + Eq>() {}
+
+    assert_clone_eq::<PingReq>();
+
+    let packet = PingReq {};
+    let cloned = packet.clone();
+    assert_eq!(packet, cloned);
+}
+
 #[rstest::rstest]
 #[case(vec! [16, 255, 255, 255, 255])]
 #[case(vec! [16, 255, 255, 255, 128])]

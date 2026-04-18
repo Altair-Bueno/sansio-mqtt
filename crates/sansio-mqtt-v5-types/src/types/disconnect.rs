@@ -1,13 +1,13 @@
 use super::*;
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 
 pub struct Disconnect {
     pub reason_code: DisconnectReasonCode,
     pub properties: DisconnectProperties,
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 
 pub struct DisconnectHeaderFlags;
 
@@ -17,7 +17,7 @@ impl From<DisconnectHeaderFlags> for u8 {
     }
 }
 
-#[derive(Debug, PartialEq, Clone, Default)]
+#[derive(Debug, PartialEq, Eq, Clone, Default)]
 
 pub struct DisconnectProperties {
     pub session_expiry_interval: Option<u32>,

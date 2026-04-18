@@ -1,10 +1,10 @@
 use super::*;
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 
 pub struct PingReq {}
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct PingReqHeaderFlags;
 
 impl From<PingReqHeaderFlags> for u8 {

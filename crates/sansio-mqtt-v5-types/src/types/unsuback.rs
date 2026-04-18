@@ -1,5 +1,5 @@
 use super::*;
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 
 pub struct UnsubAck {
     pub packet_id: NonZero<u16>,
@@ -7,7 +7,7 @@ pub struct UnsubAck {
     pub reason_codes: Vec<UnsubAckReasonCode>,
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 
 pub struct UnsubAckHeaderFlags;
 
@@ -17,7 +17,7 @@ impl From<UnsubAckHeaderFlags> for u8 {
     }
 }
 
-#[derive(Debug, PartialEq, Clone, Default)]
+#[derive(Debug, PartialEq, Eq, Clone, Default)]
 
 pub struct UnsubAckProperties {
     pub reason_string: Option<Utf8String>,
