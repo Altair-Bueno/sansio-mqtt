@@ -12,7 +12,6 @@ strum = { workspace = true, features = ["derive"] }
 bytes = { workspace = true }
 thiserror = { workspace = true }
 encode = { workspace = true, features = ["alloc"] }
-nutype = { workspace = true, features = ["new_unchecked"] }
 
 [dev-dependencies]
 rstest = { workspace = true }
