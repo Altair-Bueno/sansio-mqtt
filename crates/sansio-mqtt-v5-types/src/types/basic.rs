@@ -628,3 +628,56 @@ impl TryFrom<Qos> for GuaranteedQoS {
         Self::try_from(u8::from(value))
     }
 }
+
+#[cfg(test)]
+mod marker_trait_guards {
+    use super::*;
+
+    trait MustNotImplementHash {}
+    impl<T: core::hash::Hash> MustNotImplementHash for T {}
+
+    trait MustNotImplementOrd {}
+    impl<T: Ord> MustNotImplementOrd for T {}
+
+    trait MustNotImplementPartialOrd {}
+    impl<T: PartialOrd> MustNotImplementPartialOrd for T {}
+
+    impl MustNotImplementHash for PayloadError {}
+    impl MustNotImplementOrd for PayloadError {}
+    impl MustNotImplementPartialOrd for PayloadError {}
+
+    impl MustNotImplementHash for BinaryDataError {}
+    impl MustNotImplementOrd for BinaryDataError {}
+    impl MustNotImplementPartialOrd for BinaryDataError {}
+
+    impl MustNotImplementHash for Utf8StringError {}
+    impl MustNotImplementOrd for Utf8StringError {}
+    impl MustNotImplementPartialOrd for Utf8StringError {}
+
+    impl MustNotImplementHash for TopicError {}
+    impl MustNotImplementOrd for TopicError {}
+    impl MustNotImplementPartialOrd for TopicError {}
+
+    fn assert_not_hash<T: MustNotImplementHash>() {}
+    fn assert_not_ord<T: MustNotImplementOrd>() {}
+    fn assert_not_partial_ord<T: MustNotImplementPartialOrd>() {}
+
+    #[test]
+    fn marker_errors_are_not_ordered_or_hashed() {
+        assert_not_hash::<PayloadError>();
+        assert_not_ord::<PayloadError>();
+        assert_not_partial_ord::<PayloadError>();
+
+        assert_not_hash::<BinaryDataError>();
+        assert_not_ord::<BinaryDataError>();
+        assert_not_partial_ord::<BinaryDataError>();
+
+        assert_not_hash::<Utf8StringError>();
+        assert_not_ord::<Utf8StringError>();
+        assert_not_partial_ord::<Utf8StringError>();
+
+        assert_not_hash::<TopicError>();
+        assert_not_ord::<TopicError>();
+        assert_not_partial_ord::<TopicError>();
+    }
+}

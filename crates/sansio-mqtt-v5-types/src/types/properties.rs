@@ -177,3 +177,40 @@ impl From<PropertyType> for u64 {
         }
     }
 }
+
+#[cfg(test)]
+mod marker_trait_guards {
+    use super::*;
+
+    trait MustNotImplementHash {}
+    impl<T: core::hash::Hash> MustNotImplementHash for T {}
+
+    trait MustNotImplementOrd {}
+    impl<T: Ord> MustNotImplementOrd for T {}
+
+    trait MustNotImplementPartialOrd {}
+    impl<T: PartialOrd> MustNotImplementPartialOrd for T {}
+
+    impl MustNotImplementHash for TooManyUserPropertiesError {}
+    impl MustNotImplementOrd for TooManyUserPropertiesError {}
+    impl MustNotImplementPartialOrd for TooManyUserPropertiesError {}
+
+    impl MustNotImplementHash for MissingAuthenticationMethodError {}
+    impl MustNotImplementOrd for MissingAuthenticationMethodError {}
+    impl MustNotImplementPartialOrd for MissingAuthenticationMethodError {}
+
+    fn assert_not_hash<T: MustNotImplementHash>() {}
+    fn assert_not_ord<T: MustNotImplementOrd>() {}
+    fn assert_not_partial_ord<T: MustNotImplementPartialOrd>() {}
+
+    #[test]
+    fn marker_errors_are_not_ordered_or_hashed() {
+        assert_not_hash::<TooManyUserPropertiesError>();
+        assert_not_ord::<TooManyUserPropertiesError>();
+        assert_not_partial_ord::<TooManyUserPropertiesError>();
+
+        assert_not_hash::<MissingAuthenticationMethodError>();
+        assert_not_ord::<MissingAuthenticationMethodError>();
+        assert_not_partial_ord::<MissingAuthenticationMethodError>();
+    }
+}
