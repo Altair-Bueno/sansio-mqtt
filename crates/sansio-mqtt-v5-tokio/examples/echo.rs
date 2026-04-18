@@ -26,7 +26,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
     client
         .subscribe(SubscribeOptions {
-            subscription: Utf8String::try_from("echo/+/in")?,
+            subscription: Utf8String::new("echo/+/in"),
             qos: Qos::AtLeastOnce,
             no_local: true,
             ..Default::default()
@@ -60,8 +60,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                     return Ok(());
                 };
                 client.publish(ClientMessage {
-                    topic: Topic::try_from(Utf8String::try_from(format!("echo/{}/in", line))?)?,
-                    payload: Payload::from(b"hello world"),
+                    topic: Topic::try_new(format!("echo/{}/in", line))?,
+                    payload: Payload::new(b"hello world".as_slice()),
                     qos: Qos::AtLeastOnce,
                     ..Default::default()
                 }).await?;

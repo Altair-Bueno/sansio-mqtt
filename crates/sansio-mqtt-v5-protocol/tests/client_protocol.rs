@@ -368,9 +368,8 @@ fn inbound_publish_qos0_is_forwarded_to_user_queue() {
     assert_eq!(client.handle_read(encode_packet(&connack)), Ok(()));
     assert_eq!(client.poll_read(), Some(UserWriteOut::Connected));
 
-    let publish_topic = Topic::try_from(Utf8String::try_from("sensors/temp").expect("valid utf8"))
-        .expect("valid topic");
-    let publish_payload = Payload::from(&b"27.5"[..]);
+    let publish_topic = Topic::try_new("sensors/temp").expect("valid topic");
+    let publish_payload = Payload::new(b"27.5".as_slice());
 
     let publish = ControlPacket::Publish(Publish {
         kind: PublishKind::FireAndForget,
@@ -427,13 +426,12 @@ fn inbound_publish_registers_topic_alias_then_resolves_alias_only_publish() {
     assert_eq!(client.poll_read(), Some(UserWriteOut::Connected));
 
     let alias = NonZero::new(1).expect("non-zero alias");
-    let topic = Topic::try_from(Utf8String::try_from("alias/topic").expect("valid utf8"))
-        .expect("valid topic");
+    let topic = Topic::try_new("alias/topic").expect("valid topic");
 
     let register_publish = ControlPacket::Publish(Publish {
         kind: PublishKind::FireAndForget,
         retain: false,
-        payload: Payload::from(&b"first"[..]),
+        payload: Payload::new(b"first".as_slice()),
         topic: topic.clone(),
         properties: PublishProperties {
             topic_alias: Some(alias),
@@ -445,7 +443,7 @@ fn inbound_publish_registers_topic_alias_then_resolves_alias_only_publish() {
     match client.poll_read() {
         Some(UserWriteOut::ReceivedMessage(message)) => {
             assert_eq!(message.topic, topic);
-            assert_eq!(message.payload, Payload::from(&b"first"[..]));
+            assert_eq!(message.payload, Payload::new(b"first".as_slice()));
             assert_eq!(message.topic_alias, Some(alias));
         }
         other => panic!("expected received message, got {other:?}"),
@@ -454,8 +452,8 @@ fn inbound_publish_registers_topic_alias_then_resolves_alias_only_publish() {
     let alias_only_publish = ControlPacket::Publish(Publish {
         kind: PublishKind::FireAndForget,
         retain: false,
-        payload: Payload::from(&b"second"[..]),
-        topic: Topic::try_from(Utf8String::try_from("").expect("valid utf8")).expect("valid topic"),
+        payload: Payload::new(b"second".as_slice()),
+        topic: Topic::try_new("").expect("valid topic"),
         properties: PublishProperties {
             topic_alias: Some(alias),
             ..PublishProperties::default()
@@ -470,10 +468,9 @@ fn inbound_publish_registers_topic_alias_then_resolves_alias_only_publish() {
         Some(UserWriteOut::ReceivedMessage(message)) => {
             assert_eq!(
                 message.topic,
-                Topic::try_from(Utf8String::try_from("alias/topic").expect("valid utf8"))
-                    .expect("valid topic")
+                Topic::try_new("alias/topic").expect("valid topic")
             );
-            assert_eq!(message.payload, Payload::from(&b"second"[..]));
+            assert_eq!(message.payload, Payload::new(b"second".as_slice()));
             assert_eq!(message.topic_alias, Some(alias));
         }
         other => panic!("expected received message, got {other:?}"),
@@ -510,8 +507,8 @@ fn inbound_publish_alias_only_unknown_alias_is_protocol_error() {
     let unknown_alias_publish = ControlPacket::Publish(Publish {
         kind: PublishKind::FireAndForget,
         retain: false,
-        payload: Payload::from(&b"unknown"[..]),
-        topic: Topic::try_from(Utf8String::try_from("").expect("valid utf8")).expect("valid topic"),
+        payload: Payload::new(b"unknown".as_slice()),
+        topic: Topic::try_new("").expect("valid topic"),
         properties: PublishProperties {
             topic_alias: Some(NonZero::new(1).expect("non-zero alias")),
             ..PublishProperties::default()
@@ -552,8 +549,8 @@ fn inbound_publish_empty_topic_without_alias_is_protocol_error() {
     let invalid_publish = ControlPacket::Publish(Publish {
         kind: PublishKind::FireAndForget,
         retain: false,
-        payload: Payload::from(&b"invalid"[..]),
-        topic: Topic::try_from(Utf8String::try_from("").expect("valid utf8")).expect("valid topic"),
+        payload: Payload::new(b"invalid".as_slice()),
+        topic: Topic::try_new("").expect("valid topic"),
         properties: PublishProperties::default(),
     });
 
@@ -598,9 +595,8 @@ fn inbound_publish_alias_exceeds_client_alias_max_is_protocol_error() {
     let alias_too_large_publish = ControlPacket::Publish(Publish {
         kind: PublishKind::FireAndForget,
         retain: false,
-        payload: Payload::from(&b"value"[..]),
-        topic: Topic::try_from(Utf8String::try_from("alias/topic").expect("valid utf8"))
-            .expect("valid topic"),
+        payload: Payload::new(b"value".as_slice()),
+        topic: Topic::try_new("alias/topic").expect("valid topic"),
         properties: PublishProperties {
             topic_alias: Some(NonZero::new(2).expect("non-zero alias")),
             ..PublishProperties::default()
@@ -639,9 +635,8 @@ fn inbound_qos1_publish_sends_puback_and_emits_message_once() {
     assert_eq!(client.poll_read(), Some(UserWriteOut::Connected));
 
     let packet_id = NonZero::new(7).expect("non-zero packet id");
-    let publish_topic = Topic::try_from(Utf8String::try_from("sensors/temp").expect("valid utf8"))
-        .expect("valid topic");
-    let publish_payload = Payload::from(&b"27.5"[..]);
+    let publish_topic = Topic::try_new("sensors/temp").expect("valid topic");
+    let publish_payload = Payload::new(b"27.5".as_slice());
     let publish = ControlPacket::Publish(Publish {
         kind: PublishKind::Repetible {
             packet_id,
@@ -690,10 +685,8 @@ fn inbound_qos2_duplicate_publish_resends_pubrec_without_duplicate_delivery() {
     assert_eq!(client.poll_read(), Some(UserWriteOut::Connected));
 
     let packet_id = NonZero::new(11).expect("non-zero packet id");
-    let publish_topic =
-        Topic::try_from(Utf8String::try_from("sensors/humidity").expect("valid utf8"))
-            .expect("valid topic");
-    let publish_payload = Payload::from(&b"42"[..]);
+    let publish_topic = Topic::try_new("sensors/humidity").expect("valid topic");
+    let publish_payload = Payload::new(b"42".as_slice());
     let publish = ControlPacket::Publish(Publish {
         kind: PublishKind::Repetible {
             packet_id,
@@ -768,9 +761,8 @@ fn inbound_qos2_pubrel_completes_with_pubcomp() {
             dup: false,
         },
         retain: false,
-        payload: Payload::from(&b"qos2"[..]),
-        topic: Topic::try_from(Utf8String::try_from("sensors/pressure").expect("valid utf8"))
-            .expect("valid topic"),
+        payload: Payload::new(b"qos2".as_slice()),
+        topic: Topic::try_new("sensors/pressure").expect("valid topic"),
         properties: PublishProperties::default(),
     });
 

@@ -346,7 +346,7 @@ fn assert_that_parsing_an_invalid_field_on_unsuback_fails(
         user_name: None,
         password: None,
         will: Some(Will {
-            topic: Utf8String::try_from("topic").unwrap().try_into().unwrap(),
+            topic: Topic::try_new("topic").unwrap(),
             payload: BinaryData::try_from(&[4, 3, 2, 1]).unwrap(),
             qos: Qos::ExactlyOnce,
             retain: true,
@@ -354,8 +354,8 @@ fn assert_that_parsing_an_invalid_field_on_unsuback_fails(
                 will_delay_interval: Some(1234),
                 payload_format_indicator: Some(FormatIndicator::Unspecified),
                 message_expiry_interval: Some(4321),
-                content_type: Utf8String::try_from("test").ok(),
-                response_topic: Utf8String::try_from("topic").unwrap().try_into().ok(),
+                content_type: Some(Utf8String::new("test")),
+                response_topic: Some(Topic::new("topic")),
                 correlation_data: BinaryData::try_from(&[1, 2, 3, 4]).ok(),
                 user_properties: vec! [(
                     Utf8String::try_from("test").unwrap(),
@@ -422,7 +422,7 @@ fn assert_that_parsing_an_invalid_field_on_unsuback_fails(
         user_name: None,
         password: None,
         will: Some(Will {
-            topic: Utf8String::try_from("topic").unwrap().try_into().unwrap(),
+            topic: Topic::try_new("topic").unwrap(),
             payload: BinaryData::try_from(&[]).unwrap(),
             qos: Qos::ExactlyOnce,
             retain: true,
@@ -430,8 +430,8 @@ fn assert_that_parsing_an_invalid_field_on_unsuback_fails(
                 will_delay_interval: Some(1234),
                 payload_format_indicator: Some(FormatIndicator::Unspecified),
                 message_expiry_interval: Some(4321),
-                content_type: Utf8String::try_from("test").ok(),
-                response_topic: Utf8String::try_from("topic").unwrap().try_into().ok(),
+                content_type: Some(Utf8String::new("test")),
+                response_topic: Some(Topic::new("topic")),
                 correlation_data: BinaryData::try_from(&[1, 2, 3, 4]).ok(),
                 user_properties: vec! [(
                     Utf8String::try_from("test").unwrap(),
@@ -492,7 +492,7 @@ fn assert_that_parsing_an_invalid_field_on_unsuback_fails(
         user_name: None,
         password: None,
         will: Some(Will {
-            topic: Utf8String::try_from("topic").unwrap().try_into().unwrap(),
+            topic: Topic::try_new("topic").unwrap(),
             payload: BinaryData::try_from(&[4, 3, 2, 1]).unwrap(),
             qos: Qos::ExactlyOnce,
             retain: true,
@@ -813,13 +813,13 @@ fn assert_that_parsing_an_invalid_field_on_unsuback_fails(
             dup: true,
         },
         retain: true,
-        topic: Utf8String::try_from("test").unwrap().try_into().unwrap(),
-        payload: Payload::from(&[116, 101, 115, 116]),
+        topic: Topic::try_new("test").unwrap(),
+        payload: Payload::new([116, 101, 115, 116].as_slice()),
         properties: PublishProperties {
             payload_format_indicator: Some(FormatIndicator::Utf8),
             message_expiry_interval: Some(4321),
             topic_alias: NonZero::new(100),
-            response_topic: Utf8String::try_from("topic").unwrap().try_into().ok(),
+            response_topic: Some(Topic::new("topic")),
             correlation_data: BinaryData::try_from(&[1, 2, 3, 4]).ok(),
             user_properties: vec! [
                 (

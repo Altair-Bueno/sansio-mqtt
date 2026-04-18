@@ -7,11 +7,11 @@
 //! 3. AuthenticationData without AuthenticationMethod is rejected
 //! 4. All valid properties can be encoded and decoded successfully
 
+use core::num::NonZero;
 use encode::Encodable;
 use encode::EncodableSize;
 use rstest::rstest;
 use sansio_mqtt_v5_types::*;
-use core::num::NonZero;
 use winnow::error::ContextError;
 use winnow::Parser;
 
@@ -204,10 +204,10 @@ fn roundtrip(packet: &ControlPacket) -> Result<(), String> {
 #[test]
 fn connect_with_all_valid_properties_roundtrip() {
     let connect = Connect {
-        protocol_name: Utf8String::try_from("MQTT").unwrap(),
+        protocol_name: Utf8String::new("MQTT"),
         protocol_version: 5,
         clean_start: true,
-        client_identifier: Utf8String::try_from("test").unwrap(),
+        client_identifier: Utf8String::new("test"),
         keep_alive: NonZero::new(60),
         user_name: None,
         password: None,
@@ -220,7 +220,7 @@ fn connect_with_all_valid_properties_roundtrip() {
             request_response_information: Some(true),
             request_problem_information: Some(true),
             authentication: Some(AuthenticationKind::WithoutData {
-                method: Utf8String::try_from("test").unwrap(),
+                method: Utf8String::new("test"),
             }),
             user_properties: vec![],
         },
@@ -233,15 +233,15 @@ fn connect_with_all_valid_properties_roundtrip() {
 #[test]
 fn will_with_all_valid_properties_roundtrip() {
     let connect = Connect {
-        protocol_name: Utf8String::try_from("MQTT").unwrap(),
+        protocol_name: Utf8String::new("MQTT"),
         protocol_version: 5,
         clean_start: true,
-        client_identifier: Utf8String::try_from("test").unwrap(),
+        client_identifier: Utf8String::new("test"),
         keep_alive: NonZero::new(60),
         user_name: None,
         password: None,
         will: Some(Will {
-            topic: Utf8String::try_from("topic").unwrap().try_into().unwrap(),
+            topic: Topic::try_new("topic").unwrap(),
             payload: BinaryData::try_from(&[1, 2, 3, 4]).unwrap(),
             qos: Qos::AtLeastOnce,
             retain: false,
@@ -249,11 +249,8 @@ fn will_with_all_valid_properties_roundtrip() {
                 will_delay_interval: Some(100),
                 payload_format_indicator: Some(FormatIndicator::Utf8),
                 message_expiry_interval: Some(1000),
-                content_type: Utf8String::try_from("text/plain").ok(),
-                response_topic: Utf8String::try_from("response/topic")
-                    .unwrap()
-                    .try_into()
-                    .ok(),
+                content_type: Some(Utf8String::new("text/plain")),
+                response_topic: Some(Topic::new("response/topic")),
                 correlation_data: BinaryData::try_from(&[1, 2]).ok(),
                 user_properties: vec![],
             },
@@ -306,22 +303,16 @@ fn publish_with_all_valid_properties_roundtrip() {
             dup: false,
         },
         retain: true,
-        topic: Utf8String::try_from("test/topic")
-            .unwrap()
-            .try_into()
-            .unwrap(),
-        payload: Payload::from(&[1, 2, 3, 4]),
+        topic: Topic::try_new("test/topic").unwrap(),
+        payload: Payload::new([1, 2, 3, 4].as_slice()),
         properties: PublishProperties {
             payload_format_indicator: Some(FormatIndicator::Utf8),
             message_expiry_interval: Some(1000),
             topic_alias: NonZero::new(100),
-            response_topic: Utf8String::try_from("response/topic")
-                .unwrap()
-                .try_into()
-                .ok(),
+            response_topic: Some(Topic::new("response/topic")),
             correlation_data: BinaryData::try_from(&[1, 2]).ok(),
             subscription_identifier: NonZero::new(42),
-            content_type: Utf8String::try_from("text/plain").ok(),
+            content_type: Some(Utf8String::new("text/plain")),
             user_properties: vec![],
         },
     };
@@ -527,15 +518,15 @@ fn pingresp_parsing_valid() {
 #[test]
 fn connect_with_will_roundtrip() {
     let connect = Connect {
-        protocol_name: Utf8String::try_from("MQTT").unwrap(),
+        protocol_name: Utf8String::new("MQTT"),
         protocol_version: 5,
         clean_start: true,
-        client_identifier: Utf8String::try_from("test").unwrap(),
+        client_identifier: Utf8String::new("test"),
         keep_alive: NonZero::new(60),
         user_name: None,
         password: None,
         will: Some(Will {
-            topic: Utf8String::try_from("topic").unwrap().try_into().unwrap(),
+            topic: Topic::try_new("topic").unwrap(),
             payload: BinaryData::try_from(&[1, 2, 3, 4]).unwrap(),
             qos: Qos::AtLeastOnce,
             retain: false,
@@ -551,10 +542,10 @@ fn connect_with_will_roundtrip() {
 #[test]
 fn connect_without_will_roundtrip() {
     let connect = Connect {
-        protocol_name: Utf8String::try_from("MQTT").unwrap(),
+        protocol_name: Utf8String::new("MQTT"),
         protocol_version: 5,
         clean_start: true,
-        client_identifier: Utf8String::try_from("test").unwrap(),
+        client_identifier: Utf8String::new("test"),
         keep_alive: NonZero::new(60),
         user_name: None,
         password: None,
@@ -571,11 +562,8 @@ fn publish_qos0_fire_and_forget_roundtrip() {
     let publish = Publish {
         kind: PublishKind::FireAndForget,
         retain: false,
-        topic: Utf8String::try_from("test/topic")
-            .unwrap()
-            .try_into()
-            .unwrap(),
-        payload: Payload::from(&[1, 2, 3, 4]),
+        topic: Topic::try_new("test/topic").unwrap(),
+        payload: Payload::new([1, 2, 3, 4].as_slice()),
         properties: PublishProperties::default(),
     };
 
@@ -762,37 +750,34 @@ fn utf8string_with_noncharacter_rejected() {
 
 #[test]
 fn topic_valid() {
-    let utf8 = Utf8String::try_from("home/living-room").unwrap();
-    let topic = Topic::try_from(utf8).unwrap();
-    let expected = Utf8String::try_from("home/living-room").unwrap();
+    let topic = Topic::try_new("home/living-room").unwrap();
+    let expected = Utf8String::new("home/living-room");
     let topic_inner: &Utf8String = &topic;
     assert_eq!(topic_inner, &expected);
 }
 
 #[test]
 fn topic_with_hash_rejected() {
-    let utf8 = Utf8String::try_from("home/#").unwrap();
-    let result = Topic::try_from(utf8);
+    let result = Topic::try_new("home/#");
     assert!(result.is_err());
 }
 
 #[test]
 fn topic_with_plus_rejected() {
-    let utf8 = Utf8String::try_from("home/+/temperature").unwrap();
-    let result = Topic::try_from(utf8);
+    let result = Topic::try_new("home/+/temperature");
     assert!(result.is_err());
 }
 
 #[test]
 fn payload_from_vec() {
-    let payload = Payload::from(vec![1, 2, 3]);
+    let payload = Payload::new(vec![1, 2, 3]);
     let expected: &[u8] = &[1, 2, 3];
     assert_eq!(payload.as_ref(), expected);
 }
 
 #[test]
 fn payload_from_slice() {
-    let payload = Payload::from(&[1, 2, 3, 4, 5][..]);
+    let payload = Payload::new([1, 2, 3, 4, 5].as_slice());
     let expected: &[u8] = &[1, 2, 3, 4, 5];
     assert_eq!(payload.as_ref(), expected);
 }
