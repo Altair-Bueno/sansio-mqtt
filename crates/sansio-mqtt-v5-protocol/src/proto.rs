@@ -456,10 +456,10 @@ impl<Time> Client<Time> {
 
     fn emit_publish_dropped_for_all_inflight(&mut self) {
         for packet_id in self.on_flight_sent.keys().copied() {
-            self.read_queue.push_back(UserWriteOut::PublishDropped {
-                packet_id,
-                reason: PublishDroppedReason::SessionNotResumed,
-            });
+            self.read_queue
+                .push_back(UserWriteOut::PublishDroppedDueToSessionNotResumed(
+                    packet_id,
+                ));
         }
     }
 
@@ -717,11 +717,10 @@ impl<Time> Client<Time> {
                         Some(OutboundInflightState::Qos1AwaitPubAck { .. }) => {
                             // [MQTT-4.3.2-3] QoS1 sender keeps PUBLISH unacknowledged until matching PUBACK is received.
                             let _ = self.on_flight_sent.remove(&packet_id);
-                            self.read_queue
-                                .push_back(UserWriteOut::PublishAcknowledged {
-                                    packet_id,
-                                    reason_code,
-                                });
+                            self.read_queue.push_back(UserWriteOut::PublishAcknowledged(
+                                packet_id,
+                                reason_code,
+                            ));
                             Ok(())
                         }
                         _ => {
@@ -747,12 +746,12 @@ impl<Time> Client<Time> {
                                     .insert(packet_id, OutboundInflightState::Qos2AwaitPubComp);
                             } else {
                                 let _ = self.on_flight_sent.remove(&packet_id);
-                                self.read_queue.push_back(UserWriteOut::PublishDropped {
-                                    packet_id,
-                                    reason: PublishDroppedReason::BrokerRejectedPubRec {
+                                self.read_queue.push_back(
+                                    UserWriteOut::PublishDroppedDueToBrokerRejectedPubRec(
+                                        packet_id,
                                         reason_code,
-                                    },
-                                });
+                                    ),
+                                );
                             }
 
                             Ok(())
@@ -776,10 +775,8 @@ impl<Time> Client<Time> {
                         Some(OutboundInflightState::Qos2AwaitPubComp) => {
                             // [MQTT-4.3.3-5] QoS2 sender treats PUBREL as unacknowledged until matching PUBCOMP is received.
                             let _ = self.on_flight_sent.remove(&packet_id);
-                            self.read_queue.push_back(UserWriteOut::PublishCompleted {
-                                packet_id,
-                                reason_code,
-                            });
+                            self.read_queue
+                                .push_back(UserWriteOut::PublishCompleted(packet_id, reason_code));
 
                             Ok(())
                         }

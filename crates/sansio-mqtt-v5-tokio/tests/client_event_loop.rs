@@ -1,7 +1,7 @@
 use core::num::NonZero;
 
 use encode::Encodable;
-use sansio_mqtt_v5_protocol::{ClientMessage, PublishDroppedReason, UserWriteIn, UserWriteOut};
+use sansio_mqtt_v5_protocol::{ClientMessage, UserWriteIn, UserWriteOut};
 use sansio_mqtt_v5_tokio::{Client, ConnectOptions, Event, EventLoop};
 use sansio_mqtt_v5_types::{
     ConnAck, ConnAckKind, ConnAckProperties, ConnackReasonCode, ControlPacket,
@@ -46,19 +46,15 @@ fn maps_protocol_outputs_to_public_events() {
 
     let connected = Event::from_protocol_output(UserWriteOut::Connected);
     let disconnected = Event::from_protocol_output(UserWriteOut::Disconnected);
-    let dropped = Event::from_protocol_output(UserWriteOut::PublishDropped {
-        packet_id,
-        reason: PublishDroppedReason::SessionNotResumed,
-    });
+    let dropped = Event::from_protocol_output(
+        UserWriteOut::PublishDroppedDueToSessionNotResumed(packet_id),
+    );
 
     assert!(matches!(connected, Event::Connected));
     assert!(matches!(disconnected, Event::Disconnected));
     assert!(matches!(
         dropped,
-        Event::PublishDropped {
-            packet_id: got,
-            reason: PublishDroppedReason::SessionNotResumed,
-        } if got == packet_id
+        Event::PublishDroppedDueToSessionNotResumed(got) if got == packet_id
     ));
 }
 

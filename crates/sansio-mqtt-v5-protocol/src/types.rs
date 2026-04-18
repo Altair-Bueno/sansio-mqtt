@@ -3,6 +3,9 @@ pub use sansio_mqtt_v5_types::AuthenticationKind;
 pub use sansio_mqtt_v5_types::BinaryData;
 pub use sansio_mqtt_v5_types::FormatIndicator;
 pub use sansio_mqtt_v5_types::Payload;
+pub use sansio_mqtt_v5_types::PubAckReasonCode;
+pub use sansio_mqtt_v5_types::PubCompReasonCode;
+pub use sansio_mqtt_v5_types::PubRecReasonCode;
 pub use sansio_mqtt_v5_types::Qos;
 pub use sansio_mqtt_v5_types::Subscription;
 pub use sansio_mqtt_v5_types::Topic;
@@ -135,28 +138,12 @@ pub struct UnsubscribeOptions {
 #[derive(Debug, Clone, PartialEq)]
 pub enum UserWriteOut {
     ReceivedMessage(BrokerMessage),
-    PublishAcknowledged {
-        packet_id: NonZero<u16>,
-        reason_code: sansio_mqtt_v5_types::PubAckReasonCode,
-    },
-    PublishCompleted {
-        packet_id: NonZero<u16>,
-        reason_code: sansio_mqtt_v5_types::PubCompReasonCode,
-    },
-    PublishDropped {
-        packet_id: NonZero<u16>,
-        reason: PublishDroppedReason,
-    },
+    PublishAcknowledged(NonZero<u16>, PubAckReasonCode),
+    PublishCompleted(NonZero<u16>, PubCompReasonCode),
+    PublishDroppedDueToSessionNotResumed(NonZero<u16>),
+    PublishDroppedDueToBrokerRejectedPubRec(NonZero<u16>, PubRecReasonCode),
     Connected,
     Disconnected,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum PublishDroppedReason {
-    SessionNotResumed,
-    BrokerRejectedPubRec {
-        reason_code: sansio_mqtt_v5_types::PubRecReasonCode,
-    },
 }
 
 // Things that the client can write to the socket (via the driver)

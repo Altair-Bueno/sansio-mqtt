@@ -4,7 +4,7 @@ use encode::Encodable;
 use sansio::Protocol;
 use sansio_mqtt_v5_protocol::{
     Client, ClientMessage, ClientSettings, ConnectionOptions, DriverEventIn, Error,
-    PublishDroppedReason, SubscribeOptions, UserWriteIn, UserWriteOut,
+    SubscribeOptions, UserWriteIn, UserWriteOut,
 };
 use sansio_mqtt_v5_types::{
     Auth, AuthProperties, AuthReasonCode, ConnAck, ConnAckKind, ConnAckProperties,
@@ -45,30 +45,16 @@ fn client_message_exposes_qos_field() {
 fn user_write_out_exposes_qos_delivery_events_with_packet_id() {
     let packet_id = NonZero::new(7).expect("non-zero packet id");
 
-    let acknowledged = UserWriteOut::PublishAcknowledged {
+    let acknowledged = UserWriteOut::PublishAcknowledged(packet_id, PubAckReasonCode::Success);
+    let completed = UserWriteOut::PublishCompleted(packet_id, PubCompReasonCode::Success);
+    let dropped = UserWriteOut::PublishDroppedDueToSessionNotResumed(packet_id);
+    let dropped_by_broker = UserWriteOut::PublishDroppedDueToBrokerRejectedPubRec(
         packet_id,
-        reason_code: PubAckReasonCode::Success,
-    };
-    let completed = UserWriteOut::PublishCompleted {
-        packet_id,
-        reason_code: PubCompReasonCode::Success,
-    };
-    let dropped = UserWriteOut::PublishDropped {
-        packet_id,
-        reason: PublishDroppedReason::SessionNotResumed,
-    };
-    let dropped_by_broker = UserWriteOut::PublishDropped {
-        packet_id,
-        reason: PublishDroppedReason::BrokerRejectedPubRec {
-            reason_code: PubRecReasonCode::NotAuthorized,
-        },
-    };
+        PubRecReasonCode::NotAuthorized,
+    );
 
     match acknowledged {
-        UserWriteOut::PublishAcknowledged {
-            packet_id,
-            reason_code,
-        } => {
+        UserWriteOut::PublishAcknowledged(packet_id, reason_code) => {
             assert_eq!(packet_id.get(), 7);
             assert_eq!(reason_code, PubAckReasonCode::Success);
         }
@@ -76,10 +62,7 @@ fn user_write_out_exposes_qos_delivery_events_with_packet_id() {
     }
 
     match completed {
-        UserWriteOut::PublishCompleted {
-            packet_id,
-            reason_code,
-        } => {
+        UserWriteOut::PublishCompleted(packet_id, reason_code) => {
             assert_eq!(packet_id.get(), 7);
             assert_eq!(reason_code, PubCompReasonCode::Success);
         }
@@ -87,24 +70,18 @@ fn user_write_out_exposes_qos_delivery_events_with_packet_id() {
     }
 
     match dropped {
-        UserWriteOut::PublishDropped { packet_id, reason } => {
+        UserWriteOut::PublishDroppedDueToSessionNotResumed(packet_id) => {
             assert_eq!(packet_id.get(), 7);
-            assert_eq!(reason, PublishDroppedReason::SessionNotResumed);
         }
-        other => panic!("expected PublishDropped, got {other:?}"),
+        other => panic!("expected PublishDroppedDueToSessionNotResumed, got {other:?}"),
     }
 
     match dropped_by_broker {
-        UserWriteOut::PublishDropped { packet_id, reason } => {
+        UserWriteOut::PublishDroppedDueToBrokerRejectedPubRec(packet_id, reason_code) => {
             assert_eq!(packet_id.get(), 7);
-            assert_eq!(
-                reason,
-                PublishDroppedReason::BrokerRejectedPubRec {
-                    reason_code: PubRecReasonCode::NotAuthorized,
-                }
-            );
+            assert_eq!(reason_code, PubRecReasonCode::NotAuthorized);
         }
-        other => panic!("expected PublishDropped, got {other:?}"),
+        other => panic!("expected PublishDroppedDueToBrokerRejectedPubRec, got {other:?}"),
     }
 }
 
@@ -923,10 +900,10 @@ fn outbound_qos1_publish_emits_acknowledged_event_on_puback() {
     assert_eq!(client.handle_read(encode_packet(&puback)), Ok(()));
     assert_eq!(
         client.poll_read(),
-        Some(UserWriteOut::PublishAcknowledged {
+        Some(UserWriteOut::PublishAcknowledged(
             packet_id,
-            reason_code: PubAckReasonCode::Success,
-        })
+            PubAckReasonCode::Success,
+        ))
     );
     assert_eq!(client.poll_read(), None);
 }
@@ -1204,10 +1181,10 @@ fn outbound_qos2_publish_emits_completed_event_on_pubcomp() {
     assert_eq!(client.handle_read(encode_packet(&pubcomp)), Ok(()));
     assert_eq!(
         client.poll_read(),
-        Some(UserWriteOut::PublishCompleted {
+        Some(UserWriteOut::PublishCompleted(
             packet_id,
-            reason_code: PubCompReasonCode::Success,
-        })
+            PubCompReasonCode::Success,
+        ))
     );
     assert_eq!(client.poll_read(), None);
 }
@@ -1397,10 +1374,10 @@ fn duplicate_pubrec_in_qos2_await_pubcomp_resends_pubrel_without_disconnect() {
     assert_eq!(client.handle_read(encode_packet(&pubcomp)), Ok(()));
     assert_eq!(
         client.poll_read(),
-        Some(UserWriteOut::PublishCompleted {
+        Some(UserWriteOut::PublishCompleted(
             packet_id,
-            reason_code: PubCompReasonCode::Success,
-        })
+            PubCompReasonCode::Success,
+        ))
     );
 }
 
@@ -1446,12 +1423,10 @@ fn qos2_pubrec_failure_reason_drops_inflight_without_pubrel() {
     assert_eq!(client.poll_write(), None);
     assert_eq!(
         client.poll_read(),
-        Some(UserWriteOut::PublishDropped {
+        Some(UserWriteOut::PublishDroppedDueToBrokerRejectedPubRec(
             packet_id,
-            reason: PublishDroppedReason::BrokerRejectedPubRec {
-                reason_code: PubRecReasonCode::NotAuthorized,
-            },
-        })
+            PubRecReasonCode::NotAuthorized,
+        ))
     );
 
     let pubcomp = ControlPacket::PubComp(PubComp {
@@ -1795,10 +1770,10 @@ fn resumed_session_replays_outbound_qos_publish_with_dup_set() {
     assert_eq!(client.handle_read(encode_packet(&puback)), Ok(()));
     assert_eq!(
         client.poll_read(),
-        Some(UserWriteOut::PublishAcknowledged {
+        Some(UserWriteOut::PublishAcknowledged(
             packet_id,
-            reason_code: PubAckReasonCode::Success,
-        })
+            PubAckReasonCode::Success,
+        ))
     );
 }
 
@@ -1984,10 +1959,10 @@ fn resumed_session_replays_unacknowledged_pubrel() {
     assert_eq!(client.handle_read(encode_packet(&pubcomp)), Ok(()));
     assert_eq!(
         client.poll_read(),
-        Some(UserWriteOut::PublishCompleted {
+        Some(UserWriteOut::PublishCompleted(
             packet_id,
-            reason_code: PubCompReasonCode::Success,
-        })
+            PubCompReasonCode::Success,
+        ))
     );
 }
 
@@ -2118,17 +2093,15 @@ fn non_resumed_session_drops_inflight_and_emits_publish_dropped_events() {
     assert_eq!(client.poll_read(), Some(UserWriteOut::Connected));
     assert_eq!(
         client.poll_read(),
-        Some(UserWriteOut::PublishDropped {
-            packet_id: qos1_packet_id,
-            reason: PublishDroppedReason::SessionNotResumed,
-        })
+        Some(UserWriteOut::PublishDroppedDueToSessionNotResumed(
+            qos1_packet_id,
+        ))
     );
     assert_eq!(
         client.poll_read(),
-        Some(UserWriteOut::PublishDropped {
-            packet_id: qos2_packet_id,
-            reason: PublishDroppedReason::SessionNotResumed,
-        })
+        Some(UserWriteOut::PublishDroppedDueToSessionNotResumed(
+            qos2_packet_id,
+        ))
     );
     assert_eq!(client.poll_read(), None);
     assert_eq!(client.poll_write(), None);
