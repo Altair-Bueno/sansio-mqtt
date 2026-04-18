@@ -200,8 +200,8 @@ impl<Time> Client<Time> {
             .will
             .as_ref()
             .map(|will| {
-                let payload = BinaryData::try_new(will.payload.clone().into())
-                    .map_err(|_| Error::ProtocolError)?;
+                let payload =
+                    BinaryData::try_new(will.payload.clone()).map_err(|_| Error::ProtocolError)?;
                 let message_expiry_interval = will
                     .message_expiry_interval
                     .map(|interval| {
