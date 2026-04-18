@@ -4,7 +4,8 @@ use super::*;
 
 pub struct Subscribe {
     pub packet_id: NonZero<u16>,
-    pub subscriptions: Vec1<Subscription>,
+    pub subscription: Subscription,
+    pub extra_subscriptions: Vec<Subscription>,
     pub properties: SubscribeProperties,
 }
 

@@ -1026,8 +1026,8 @@ where
                     return Err(Error::ProtocolError);
                 }
 
-                let subscriptions = options
-                    .subscriptions
+                let subscriptions = core::iter::once(options.subscription)
+                    .chain(options.extra_subscriptions)
                     .into_iter()
                     .map(|topic_filter| {
                         let topic_filter_str: &str = topic_filter.as_ref();
@@ -1058,14 +1058,15 @@ where
                             retain_handling,
                         })
                     })
-                    .collect::<Result<Vec<_>, Error>>()?
-                    .try_into()
-                    .map_err(|_| Error::ProtocolError)?;
+                    .collect::<Result<Vec<_>, Error>>()?;
+                let mut subscriptions = subscriptions.into_iter();
+                let subscription = subscriptions.next().ok_or(Error::ProtocolError)?;
                 let packet_id = self.next_packet_id_checked()?;
 
                 self.enqueue_packet(ControlPacket::Subscribe(Subscribe {
                     packet_id,
-                    subscriptions,
+                    subscription,
+                    extra_subscriptions: subscriptions.collect(),
                     properties: SubscribeProperties {
                         subscription_identifier: options.subscription_identifier,
                         user_properties: options.user_properties,
@@ -1086,7 +1087,8 @@ where
                     properties: UnsubscribeProperties {
                         user_properties: options.user_properties,
                     },
-                    topics: options.subscriptions,
+                    filter: options.filter,
+                    extra_filters: options.extra_filters,
                 }))?;
                 self.pending_unsubscribe.insert(packet_id, ());
 

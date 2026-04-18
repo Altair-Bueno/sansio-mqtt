@@ -332,17 +332,16 @@ fn publish_with_all_valid_properties_roundtrip() {
 
 #[test]
 fn subscribe_with_all_valid_properties_roundtrip() {
-    use vec1::vec1;
-
     let subscribe = Subscribe {
         packet_id: NonZero::new(1).unwrap(),
-        subscriptions: vec1![Subscription {
+        subscription: Subscription {
             topic_filter: Utf8String::try_from("test/+").unwrap(),
             qos: Qos::AtLeastOnce,
             no_local: false,
             retain_as_published: false,
             retain_handling: RetainHandling::SendRetained,
-        }],
+        },
+        extra_subscriptions: Vec::new(),
         properties: SubscribeProperties {
             subscription_identifier: NonZero::new(42),
             user_properties: vec![],
@@ -434,8 +433,6 @@ fn unsuback_with_all_valid_properties_roundtrip() {
 
 #[test]
 fn unsubscribe_with_all_valid_properties_roundtrip() {
-    use vec1::vec1;
-
     let unsubscribe = Unsubscribe {
         packet_id: NonZero::new(1).unwrap(),
         properties: UnsubscribeProperties {
@@ -444,7 +441,8 @@ fn unsubscribe_with_all_valid_properties_roundtrip() {
                 Utf8String::try_from("value").unwrap(),
             )],
         },
-        topics: vec1![Utf8String::try_from("test/+").unwrap()],
+        filter: Utf8String::try_from("test/+").unwrap(),
+        extra_filters: Vec::new(),
     };
 
     let packet = ControlPacket::Unsubscribe(unsubscribe);

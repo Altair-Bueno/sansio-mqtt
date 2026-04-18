@@ -1521,11 +1521,9 @@ fn subscribe_rejects_packet_exceeding_connack_maximum_packet_size() {
     assert_eq!(client.handle_read(encode_packet(&connack)), Ok(()));
     assert_eq!(client.poll_read(), Some(UserWriteOut::Connected));
 
-    let subscriptions = vec![Utf8String::try_from("a/very/long/topic/filter").expect("valid utf8")]
-        .try_into()
-        .expect("non-empty subscriptions");
     let subscribe = SubscribeOptions {
-        subscriptions,
+        subscription: Utf8String::try_from("a/very/long/topic/filter").expect("valid utf8"),
+        extra_subscriptions: Vec::new(),
         qos: Qos::AtMostOnce,
         no_local: false,
         retain_as_published: false,
@@ -2202,9 +2200,7 @@ fn non_resumed_connack_discards_all_local_session_state() {
     );
 
     let subscribe = SubscribeOptions {
-        subscriptions: vec![Utf8String::try_from("state/sub").expect("valid utf8")]
-            .try_into()
-            .expect("one topic"),
+        subscription: Utf8String::try_from("state/sub").expect("valid utf8"),
         ..SubscribeOptions::default()
     };
     assert_eq!(
@@ -2214,9 +2210,7 @@ fn non_resumed_connack_discards_all_local_session_state() {
     let _ = client.poll_write().expect("subscribe frame expected");
 
     let unsubscribe = sansio_mqtt_v5_protocol::UnsubscribeOptions {
-        subscriptions: vec![Utf8String::try_from("state/sub").expect("valid utf8")]
-            .try_into()
-            .expect("one topic"),
+        filter: Utf8String::try_from("state/sub").expect("valid utf8"),
         ..Default::default()
     };
     assert_eq!(
@@ -2279,9 +2273,7 @@ fn non_resumed_connack_discards_all_local_session_state() {
     assert_eq!(client.poll_read(), Some(UserWriteOut::Connected));
 
     let unsubscribe = sansio_mqtt_v5_protocol::UnsubscribeOptions {
-        subscriptions: vec![Utf8String::try_from("state/unsub").expect("valid utf8")]
-            .try_into()
-            .expect("one topic"),
+        filter: Utf8String::try_from("state/unsub").expect("valid utf8"),
         ..Default::default()
     };
     assert_eq!(
@@ -2848,9 +2840,7 @@ fn subscribe_shared_with_no_local_is_rejected() {
     assert_eq!(client.poll_read(), Some(UserWriteOut::Connected));
 
     let subscribe = SubscribeOptions {
-        subscriptions: vec![Utf8String::try_from("$share/group/topic").expect("valid utf8")]
-            .try_into()
-            .expect("one topic"),
+        subscription: Utf8String::try_from("$share/group/topic").expect("valid utf8"),
         no_local: true,
         ..SubscribeOptions::default()
     };
@@ -2882,9 +2872,7 @@ fn subscribe_wildcard_when_server_disallows_is_rejected() {
     assert_eq!(client.poll_read(), Some(UserWriteOut::Connected));
 
     let subscribe = SubscribeOptions {
-        subscriptions: vec![Utf8String::try_from("topic/#").expect("valid utf8")]
-            .try_into()
-            .expect("one topic"),
+        subscription: Utf8String::try_from("topic/#").expect("valid utf8"),
         ..SubscribeOptions::default()
     };
 
@@ -2915,9 +2903,7 @@ fn subscribe_shared_when_server_disallows_is_rejected() {
     assert_eq!(client.poll_read(), Some(UserWriteOut::Connected));
 
     let subscribe = SubscribeOptions {
-        subscriptions: vec![Utf8String::try_from("$share/g/topic").expect("valid utf8")]
-            .try_into()
-            .expect("one topic"),
+        subscription: Utf8String::try_from("$share/g/topic").expect("valid utf8"),
         ..SubscribeOptions::default()
     };
 
@@ -2948,9 +2934,7 @@ fn subscribe_identifier_when_server_disallows_is_rejected() {
     assert_eq!(client.poll_read(), Some(UserWriteOut::Connected));
 
     let subscribe = SubscribeOptions {
-        subscriptions: vec![Utf8String::try_from("topic/a").expect("valid utf8")]
-            .try_into()
-            .expect("one topic"),
+        subscription: Utf8String::try_from("topic/a").expect("valid utf8"),
         subscription_identifier: NonZero::new(1),
         ..SubscribeOptions::default()
     };
@@ -3470,9 +3454,7 @@ fn subscribe_tracks_packet_id_until_suback() {
     assert_eq!(client.poll_read(), Some(UserWriteOut::Connected));
 
     let subscribe = SubscribeOptions {
-        subscriptions: vec![Utf8String::try_from("topic/a").expect("valid utf8")]
-            .try_into()
-            .expect("one topic"),
+        subscription: Utf8String::try_from("topic/a").expect("valid utf8"),
         ..SubscribeOptions::default()
     };
     assert_eq!(
@@ -3519,9 +3501,7 @@ fn unsubscribe_tracks_packet_id_until_unsuback() {
     assert_eq!(client.poll_read(), Some(UserWriteOut::Connected));
 
     let unsubscribe = sansio_mqtt_v5_protocol::UnsubscribeOptions {
-        subscriptions: vec![Utf8String::try_from("topic/a").expect("valid utf8")]
-            .try_into()
-            .expect("one topic"),
+        filter: Utf8String::try_from("topic/a").expect("valid utf8"),
         ..Default::default()
     };
     assert_eq!(

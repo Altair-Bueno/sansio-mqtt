@@ -50,5 +50,3 @@ use strum::EnumDiscriminants;
 use strum::EnumIter;
 use strum::IntoEnumIterator;
 use thiserror::Error;
-pub use vec1::vec1;
-pub use vec1::Vec1;

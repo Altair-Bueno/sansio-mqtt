@@ -44,7 +44,7 @@ where
             encode::combinators::FromError::new(TwoByteInteger::new(self.packet_id.get())),
             &self.properties,
             encode::combinators::FromError::new(encode::combinators::Iter::new(
-                self.subscriptions.iter(),
+                core::iter::once(&self.subscription).chain(self.extra_subscriptions.iter()),
             )),
         ))
         .encode(encoder)

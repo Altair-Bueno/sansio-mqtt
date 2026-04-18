@@ -2,7 +2,7 @@ use std::net::ToSocketAddrs;
 
 use sansio_mqtt_v5_protocol::{ClientMessage, SubscribeOptions};
 use sansio_mqtt_v5_tokio::{connect, ConnectOptions, Event};
-use sansio_mqtt_v5_types::{vec1, Payload, Qos, Topic, Utf8String};
+use sansio_mqtt_v5_types::{Payload, Qos, Topic, Utf8String};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
 #[tokio::main(flavor = "current_thread")]
@@ -26,7 +26,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
     client
         .subscribe(SubscribeOptions {
-            subscriptions: vec1![Utf8String::try_from("echo/+/in")?],
+            subscription: Utf8String::try_from("echo/+/in")?,
             qos: Qos::AtLeastOnce,
             no_local: true,
             ..Default::default()

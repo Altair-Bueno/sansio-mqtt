@@ -54,11 +54,19 @@ impl Unsubscribe {
                     ),
                 ),
             )
-                .map(move |(packet_id, properties, (topics, _))| Unsubscribe {
-                    packet_id,
-                    topics: Vec::try_into(topics)
-                        .expect("topics length is guaranteed to be at least 1"),
-                    properties,
+                .map(move |(packet_id, properties, (topics, _))| {
+                    let mut topics: Vec<Utf8String> = topics;
+                    let filter = topics
+                        .drain(..1)
+                        .next()
+                        .expect("topics length is guaranteed to be at least 1");
+
+                    Unsubscribe {
+                        packet_id,
+                        properties,
+                        filter,
+                        extra_filters: topics,
+                    }
                 }),
         )
     }

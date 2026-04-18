@@ -11,7 +11,6 @@ winnow = { workspace = true, features = ["alloc"] }
 strum = { workspace = true, features = ["derive"] }
 bytes = { workspace = true }
 thiserror = { workspace = true }
-vec1 = { workspace = true }
 encode = { workspace = true, features = ["alloc"] }
 nutype = { workspace = true, features = ["new_unchecked"] }
 

@@ -10,7 +10,6 @@ use sansio_mqtt_v5_types::Qos;
 use sansio_mqtt_v5_types::Settings;
 use sansio_mqtt_v5_types::Topic;
 use sansio_mqtt_v5_types::Utf8String;
-use sansio_mqtt_v5_types::Vec1;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Config {
@@ -117,7 +116,8 @@ pub struct BrokerMessage {
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct SubscribeOptions {
-    pub subscriptions: Vec1<Utf8String>,
+    pub subscription: Utf8String,
+    pub extra_subscriptions: Vec<Utf8String>,
     pub qos: Qos,
     pub no_local: bool,
     pub retain_as_published: bool,
@@ -128,7 +128,8 @@ pub struct SubscribeOptions {
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct UnsubscribeOptions {
-    pub subscriptions: Vec1<Utf8String>,
+    pub filter: Utf8String,
+    pub extra_filters: Vec<Utf8String>,
     pub user_properties: Vec<(Utf8String, Utf8String)>,
 }
 

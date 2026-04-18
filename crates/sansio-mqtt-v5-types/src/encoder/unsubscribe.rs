@@ -36,7 +36,9 @@ where
         encode::combinators::LengthPrefix::<_, VariableByteInteger, Self::Error>::new((
             encode::combinators::FromError::new(TwoByteInteger::new(self.packet_id.get())),
             &self.properties,
-            encode::combinators::Iter::new(self.topics.iter()),
+            encode::combinators::Iter::new(
+                core::iter::once(&self.filter).chain(self.extra_filters.iter()),
+            ),
         ))
         .encode(encoder)
     }

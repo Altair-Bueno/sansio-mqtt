@@ -59,14 +59,20 @@ impl Subscribe {
                     ),
                 ),
             )
-                .map(
-                    move |(packet_id, properties, (subscriptions, _))| Subscribe {
+                .map(move |(packet_id, properties, (subscriptions, _))| {
+                    let mut subscriptions: Vec<Subscription> = subscriptions;
+                    let subscription = subscriptions
+                        .drain(..1)
+                        .next()
+                        .expect("subscriptions length is guaranteed to be at least 1");
+
+                    Subscribe {
                         packet_id,
-                        subscriptions: Vec::try_into(subscriptions)
-                            .expect("subscriptions length is guaranteed to be at least 1"),
+                        subscription,
+                        extra_subscriptions: subscriptions,
                         properties,
-                    },
-                ),
+                    }
+                }),
         )
     }
 }

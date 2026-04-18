@@ -5,7 +5,8 @@ use super::*;
 pub struct Unsubscribe {
     pub packet_id: NonZero<u16>,
     pub properties: UnsubscribeProperties,
-    pub topics: Vec1<Utf8String>,
+    pub filter: Utf8String,
+    pub extra_filters: Vec<Utf8String>,
 }
 
 #[derive(Debug, PartialEq, Clone)]
