@@ -865,6 +865,136 @@ fn inbound_qos2_publish_reject_sends_pubrec_failure_and_clears_state() {
 }
 
 #[test]
+fn inbound_packet_id_reuse_conflict_causes_protocol_error() {
+    let mut client = Client::<u64>::default();
+
+    assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
+    assert!(client.poll_write().is_some());
+
+    let connack = ControlPacket::ConnAck(ConnAck {
+        kind: ConnAckKind::Other {
+            reason_code: ConnackReasonCode::Success,
+        },
+        properties: ConnAckProperties::default(),
+    });
+    assert_eq!(client.handle_read(encode_packet(&connack)), Ok(()));
+    assert_eq!(client.poll_read(), Some(UserWriteOut::Connected));
+
+    let packet_id = NonZero::new(19).expect("non-zero packet id");
+    let qos1_publish = ControlPacket::Publish(Publish {
+        kind: PublishKind::Repetible {
+            packet_id,
+            qos: GuaranteedQoS::AtLeastOnce,
+            dup: false,
+        },
+        retain: false,
+        payload: Payload::new(b"qos1".as_slice()),
+        topic: Topic::try_new("state/conflict").expect("valid topic"),
+        properties: PublishProperties::default(),
+    });
+
+    assert_eq!(client.handle_read(encode_packet(&qos1_publish)), Ok(()));
+    assert!(matches!(
+        client.poll_read(),
+        Some(UserWriteOut::ReceivedMessage(Some(id), _)) if id == packet_id
+    ));
+
+    let qos2_same_packet_id = ControlPacket::Publish(Publish {
+        kind: PublishKind::Repetible {
+            packet_id,
+            qos: GuaranteedQoS::ExactlyOnce,
+            dup: false,
+        },
+        retain: false,
+        payload: Payload::new(b"qos2".as_slice()),
+        topic: Topic::try_new("state/conflict").expect("valid topic"),
+        properties: PublishProperties::default(),
+    });
+
+    assert_eq!(
+        client.handle_read(encode_packet(&qos2_same_packet_id)),
+        Err(Error::ProtocolError)
+    );
+    assert_eq!(
+        client.poll_write(),
+        Some(Bytes::from_static(&[0xE0, 0x02, 0x82, 0x00]))
+    );
+    assert_eq!(
+        client.poll_event(),
+        Some(sansio_mqtt_v5_protocol::DriverEventOut::CloseSocket)
+    );
+}
+
+#[test]
+fn duplicate_qos2_publish_after_reject_resends_same_failure_pubrec_without_redelivery() {
+    let mut client = Client::<u64>::default();
+
+    assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
+    assert!(client.poll_write().is_some());
+
+    let connack = ControlPacket::ConnAck(ConnAck {
+        kind: ConnAckKind::Other {
+            reason_code: ConnackReasonCode::Success,
+        },
+        properties: ConnAckProperties::default(),
+    });
+    assert_eq!(client.handle_read(encode_packet(&connack)), Ok(()));
+    assert_eq!(client.poll_read(), Some(UserWriteOut::Connected));
+
+    let packet_id = NonZero::new(23).expect("non-zero packet id");
+    let first_publish = ControlPacket::Publish(Publish {
+        kind: PublishKind::Repetible {
+            packet_id,
+            qos: GuaranteedQoS::ExactlyOnce,
+            dup: false,
+        },
+        retain: false,
+        payload: Payload::new(b"first".as_slice()),
+        topic: Topic::try_new("state/reject").expect("valid topic"),
+        properties: PublishProperties::default(),
+    });
+
+    assert_eq!(client.handle_read(encode_packet(&first_publish)), Ok(()));
+    assert!(matches!(
+        client.poll_read(),
+        Some(UserWriteOut::ReceivedMessage(Some(id), _)) if id == packet_id
+    ));
+    assert_eq!(
+        client.handle_write(UserWriteIn::RejectMessage(
+            packet_id,
+            IncomingRejectReason::NotAuthorized,
+        )),
+        Ok(())
+    );
+
+    let expected_pubrec = ControlPacket::PubRec(PubRec {
+        packet_id,
+        reason_code: PubRecReasonCode::NotAuthorized,
+        properties: PubRecProperties::default(),
+    });
+    assert_eq!(client.poll_write(), Some(encode_packet(&expected_pubrec)));
+
+    let duplicate_publish = ControlPacket::Publish(Publish {
+        kind: PublishKind::Repetible {
+            packet_id,
+            qos: GuaranteedQoS::ExactlyOnce,
+            dup: true,
+        },
+        retain: false,
+        payload: Payload::new(b"duplicate".as_slice()),
+        topic: Topic::try_new("state/reject").expect("valid topic"),
+        properties: PublishProperties::default(),
+    });
+
+    assert_eq!(
+        client.handle_read(encode_packet(&duplicate_publish)),
+        Ok(())
+    );
+    assert_eq!(client.poll_read(), None);
+    assert_eq!(client.poll_write(), Some(encode_packet(&expected_pubrec)));
+}
+
+#[test]
 fn manual_ack_or_reject_unknown_packet_id_is_protocol_error() {
     let mut client = Client::<u64>::default();
 

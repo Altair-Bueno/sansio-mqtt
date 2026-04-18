@@ -114,6 +114,7 @@ enum InboundInflightState {
     Qos1AwaitAppDecision,
     Qos2AwaitAppDecision,
     Qos2AwaitPubRel,
+    Qos2Rejected(PubRecReasonCode),
 }
 
 #[derive(Debug, PartialEq)]
@@ -686,15 +687,28 @@ impl<Time> Client<Time> {
                             packet_id,
                             qos: GuaranteedQoS::AtLeastOnce,
                             ..
-                        } => {
-                            self.read_queue.push_back(UserWriteOut::ReceivedMessage(
-                                Some(packet_id),
-                                Self::map_inbound_publish_to_broker_message(publish),
-                            ));
-                            self.on_flight_received
-                                .insert(packet_id, InboundInflightState::Qos1AwaitAppDecision);
-                            Ok(())
-                        }
+                        } => match self.on_flight_received.get(&packet_id).copied() {
+                            None => {
+                                self.read_queue.push_back(UserWriteOut::ReceivedMessage(
+                                    Some(packet_id),
+                                    Self::map_inbound_publish_to_broker_message(publish),
+                                ));
+                                self.on_flight_received
+                                    .insert(packet_id, InboundInflightState::Qos1AwaitAppDecision);
+                                Ok(())
+                            }
+                            Some(InboundInflightState::Qos1AwaitAppDecision) => Ok(()),
+                            Some(
+                                InboundInflightState::Qos2AwaitAppDecision
+                                | InboundInflightState::Qos2AwaitPubRel
+                                | InboundInflightState::Qos2Rejected(_),
+                            ) => {
+                                self.fail_protocol_and_disconnect(
+                                    DisconnectReasonCode::ProtocolError,
+                                )?;
+                                Err(Error::ProtocolError)
+                            }
+                        },
                         PublishKind::Repetible {
                             packet_id,
                             qos: GuaranteedQoS::ExactlyOnce,
@@ -705,10 +719,16 @@ impl<Time> Client<Time> {
                                     packet_id,
                                     PubRecReasonCode::Success,
                                 ),
-                            Some(
-                                InboundInflightState::Qos1AwaitAppDecision
-                                | InboundInflightState::Qos2AwaitAppDecision,
-                            ) => Ok(()),
+                            Some(InboundInflightState::Qos2AwaitAppDecision) => Ok(()),
+                            Some(InboundInflightState::Qos2Rejected(reason_code)) => {
+                                self.enqueue_pubrec_or_fail_protocol(packet_id, reason_code)
+                            }
+                            Some(InboundInflightState::Qos1AwaitAppDecision) => {
+                                self.fail_protocol_and_disconnect(
+                                    DisconnectReasonCode::ProtocolError,
+                                )?;
+                                Err(Error::ProtocolError)
+                            }
                             None => {
                                 self.read_queue.push_back(UserWriteOut::ReceivedMessage(
                                     Some(packet_id),
@@ -738,6 +758,13 @@ impl<Time> Client<Time> {
                         ) => {
                             self.fail_protocol_and_disconnect(DisconnectReasonCode::ProtocolError)?;
                             Err(Error::ProtocolError)
+                        }
+                        Some(InboundInflightState::Qos2Rejected(_)) => {
+                            let _ = self.on_flight_received.remove(&packet_id);
+                            self.enqueue_pubcomp_or_fail_protocol(
+                                packet_id,
+                                PubCompReasonCode::PacketIdentifierNotFound,
+                            )
                         }
                         None => self.enqueue_pubcomp_or_fail_protocol(
                             packet_id,
@@ -1093,7 +1120,9 @@ where
                             .insert(packet_id, InboundInflightState::Qos2AwaitPubRel);
                         Ok(())
                     }
-                    Some(InboundInflightState::Qos2AwaitPubRel) | None => Err(Error::ProtocolError),
+                    Some(InboundInflightState::Qos2AwaitPubRel)
+                    | Some(InboundInflightState::Qos2Rejected(_))
+                    | None => Err(Error::ProtocolError),
                 }
             }
             UserWriteIn::RejectMessage(packet_id, reason) => {
@@ -1111,14 +1140,15 @@ where
                         Ok(())
                     }
                     Some(InboundInflightState::Qos2AwaitAppDecision) => {
-                        self.enqueue_pubrec_or_fail_protocol(
-                            packet_id,
-                            Self::map_incoming_reject_reason_to_pubrec(reason),
-                        )?;
-                        let _ = self.on_flight_received.remove(&packet_id);
+                        let reason_code = Self::map_incoming_reject_reason_to_pubrec(reason);
+                        self.enqueue_pubrec_or_fail_protocol(packet_id, reason_code)?;
+                        self.on_flight_received
+                            .insert(packet_id, InboundInflightState::Qos2Rejected(reason_code));
                         Ok(())
                     }
-                    Some(InboundInflightState::Qos2AwaitPubRel) | None => Err(Error::ProtocolError),
+                    Some(InboundInflightState::Qos2AwaitPubRel)
+                    | Some(InboundInflightState::Qos2Rejected(_))
+                    | None => Err(Error::ProtocolError),
                 }
             }
             UserWriteIn::Subscribe(options) => {
