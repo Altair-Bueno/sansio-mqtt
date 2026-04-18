@@ -2,9 +2,9 @@
 
 | Type | Current Derives | Planned Derives | Rationale |
 |------|------------------|-----------------|-----------|
-| `auth.rs::Auth` | `Debug, PartialEq, Clone` | `Debug, PartialEq, Clone` | Control packet shape; enforce policy that `Default` is not derived. |
-| `auth.rs::AuthHeaderFlags` | `Debug, PartialEq, Clone` | `Debug, PartialEq, Clone` | Keep existing derive set in Task 1; reviewed for constraints. |
-| `auth.rs::AuthProperties` | `Debug, PartialEq, Clone, Default` | `Debug, PartialEq, Clone, Default` | Keep existing derive set in Task 1; reviewed for constraints. |
+| `auth.rs::Auth` | `Debug, PartialEq, Eq, Clone` | `Debug, PartialEq, Eq, Clone` | Control packet shape; `Eq` adds ergonomic comparability while preserving no-`Default` packet policy. |
+| `auth.rs::AuthHeaderFlags` | `Debug, PartialEq, Eq, Clone` | `Debug, PartialEq, Eq, Clone` | Zero-sized header marker; `Eq` is semantically valid and useful for equality-only assertions. |
+| `auth.rs::AuthProperties` | `Debug, PartialEq, Eq, Clone, Default` | `Debug, PartialEq, Eq, Clone, Default` | Properties struct has a meaningful empty default; `Eq` improves ergonomic comparisons. |
 | `basic.rs::PayloadError` | `Debug, Clone, Copy, PartialEq, Eq, Error` | `Debug, Clone, Copy, PartialEq, Eq, Error` | Empty marker/unit error; enforce no `Hash`, `Ord`, or `PartialOrd`. |
 | `basic.rs::Payload` | `Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Default` | `Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Default` | Keep existing derive set in Task 1; reviewed for constraints. |
 | `basic.rs::BinaryDataError` | `Debug, Clone, Copy, PartialEq, Eq, Error` | `Debug, Clone, Copy, PartialEq, Eq, Error` | Empty marker/unit error; enforce no `Hash`, `Ord`, or `PartialOrd`. |
@@ -18,18 +18,18 @@
 | `basic.rs::Qos` | `Debug, PartialEq, Clone, Copy, EnumIter, Hash, PartialOrd, Eq, Ord, Default` | `Debug, PartialEq, Clone, Copy, EnumIter, Hash, PartialOrd, Eq, Ord, Default` | Keep existing derive set in Task 1; reviewed for constraints. |
 | `basic.rs::MaximumQoS` | `Debug, PartialEq, Clone, Copy, EnumIter, Hash, PartialOrd, Eq, Ord` | `Debug, PartialEq, Clone, Copy, EnumIter, Hash, PartialOrd, Eq, Ord` | Keep existing derive set in Task 1; reviewed for constraints. |
 | `basic.rs::GuaranteedQoS` | `Debug, PartialEq, Clone, Copy, EnumIter, Hash, PartialOrd, Eq, Ord` | `Debug, PartialEq, Clone, Copy, EnumIter, Hash, PartialOrd, Eq, Ord` | Keep existing derive set in Task 1; reviewed for constraints. |
-| `basic.rs::InvalidRetainHandlingError` | `Debug, PartialEq, Clone, Copy, Error` | `Debug, PartialEq, Clone, Copy, Error` | Keep existing derive set in Task 1; reviewed for constraints. |
-| `basic.rs::UnknownFormatIndicatorError` | `Debug, PartialEq, Clone, Copy, Error` | `Debug, PartialEq, Clone, Copy, Error` | Keep existing derive set in Task 1; reviewed for constraints. |
-| `basic.rs::InvalidQosError` | `Debug, PartialEq, Clone, Copy, Error` | `Debug, PartialEq, Clone, Copy, Error` | Keep existing derive set in Task 1; reviewed for constraints. |
-| `connack.rs::ConnAck` | `Debug, PartialEq, Clone` | `Debug, PartialEq, Clone` | Control packet shape; enforce policy that `Default` is not derived. |
-| `connack.rs::ConnAckKind` | `Debug, PartialEq, Clone` | `Debug, PartialEq, Clone` | Keep existing derive set in Task 1; reviewed for constraints. |
-| `connack.rs::ConnAckHeaderFlags` | `Debug, PartialEq, Clone` | `Debug, PartialEq, Clone` | Keep existing derive set in Task 1; reviewed for constraints. |
-| `connack.rs::ConnAckProperties` | `Debug, PartialEq, Clone, Default` | `Debug, PartialEq, Clone, Default` | Keep existing derive set in Task 1; reviewed for constraints. |
-| `connect.rs::Connect` | `Debug, PartialEq, Clone` | `Debug, PartialEq, Clone` | Control packet shape; enforce policy that `Default` is not derived. |
-| `connect.rs::ConnectHeaderFlags` | `Debug, PartialEq, Clone` | `Debug, PartialEq, Clone` | Keep existing derive set in Task 1; reviewed for constraints. |
-| `connect.rs::Will` | `Debug, PartialEq, Clone` | `Debug, PartialEq, Clone` | Keep existing derive set in Task 1; reviewed for constraints. |
-| `connect.rs::WillProperties` | `Debug, PartialEq, Clone, Default` | `Debug, PartialEq, Clone, Default` | Keep existing derive set in Task 1; reviewed for constraints. |
-| `connect.rs::ConnectProperties` | `Debug, PartialEq, Clone, Default` | `Debug, PartialEq, Clone, Default` | Keep existing derive set in Task 1; reviewed for constraints. |
+| `basic.rs::InvalidRetainHandlingError` | `Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy, Error` | `Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy, Error` | Value-carrying error wrapper (`u8`) supports stable hashing/ordering for ergonomic assertions and map/set usage. |
+| `basic.rs::UnknownFormatIndicatorError` | `Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy, Error` | `Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy, Error` | Value-carrying error wrapper (`u8`) supports stable hashing/ordering for ergonomic assertions and map/set usage. |
+| `basic.rs::InvalidQosError` | `Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy, Error` | `Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy, Error` | Value-carrying error wrapper (`u8`) supports stable hashing/ordering for ergonomic assertions and map/set usage. |
+| `connack.rs::ConnAck` | `Debug, PartialEq, Eq, Clone` | `Debug, PartialEq, Eq, Clone` | Control packet shape; `Eq` adds full equality ergonomics while still forbidding packet `Default`. |
+| `connack.rs::ConnAckKind` | `Debug, PartialEq, Eq, Clone` | `Debug, PartialEq, Eq, Clone` | Closed enum with deterministic fields; `Eq` is semantically valid and useful in tests/matching. |
+| `connack.rs::ConnAckHeaderFlags` | `Debug, PartialEq, Eq, Clone` | `Debug, PartialEq, Eq, Clone` | Zero-sized header marker; `Eq` is semantically valid and useful for equality checks. |
+| `connack.rs::ConnAckProperties` | `Debug, PartialEq, Eq, Clone, Default` | `Debug, PartialEq, Eq, Clone, Default` | Properties struct keeps meaningful empty default and gains `Eq` for stronger comparison ergonomics. |
+| `connect.rs::Connect` | `Debug, PartialEq, Eq, Clone` | `Debug, PartialEq, Eq, Clone` | Control packet shape; `Eq` improves ergonomics and keeps no-`Default` constraint intact. |
+| `connect.rs::ConnectHeaderFlags` | `Debug, PartialEq, Eq, Clone` | `Debug, PartialEq, Eq, Clone` | Zero-sized header marker; `Eq` is semantically valid and ergonomic. |
+| `connect.rs::Will` | `Debug, PartialEq, Eq, Clone` | `Debug, PartialEq, Eq, Clone` | Value object with fully comparable fields; `Eq` is semantically clear and test-friendly. |
+| `connect.rs::WillProperties` | `Debug, PartialEq, Eq, Clone, Default` | `Debug, PartialEq, Eq, Clone, Default` | Properties struct has a useful empty default and benefits from `Eq` for exact comparisons. |
+| `connect.rs::ConnectProperties` | `Debug, PartialEq, Eq, Clone, Default` | `Debug, PartialEq, Eq, Clone, Default` | Properties struct has a useful empty default and benefits from `Eq` for exact comparisons. |
 | `control_packet.rs::ControlPacket` | `Debug, PartialEq, Clone, EnumDiscriminants` | `Debug, PartialEq, Clone, EnumDiscriminants` | Control packet shape; enforce policy that `Default` is not derived. |
 | `control_packet.rs::InvalidControlPacketTypeError` | `Debug, PartialEq, Clone, Copy, Error` | `Debug, PartialEq, Clone, Copy, Error` | Keep existing derive set in Task 1; reviewed for constraints. |
 | `disconnect.rs::Disconnect` | `Debug, PartialEq, Clone` | `Debug, PartialEq, Clone` | Control packet shape; enforce policy that `Default` is not derived. |
@@ -39,14 +39,14 @@
 | `pingreq.rs::PingReqHeaderFlags` | `Debug, PartialEq, Clone` | `Debug, PartialEq, Clone` | Keep existing derive set in Task 1; reviewed for constraints. |
 | `pingresp.rs::PingResp` | `Debug, PartialEq, Clone` | `Debug, PartialEq, Clone` | Control packet shape; enforce policy that `Default` is not derived. |
 | `pingresp.rs::PingRespHeaderFlags` | `Debug, PartialEq, Clone` | `Debug, PartialEq, Clone` | Keep existing derive set in Task 1; reviewed for constraints. |
-| `properties.rs::Property` | `Debug, PartialEq, Clone, EnumDiscriminants` | `Debug, PartialEq, Clone, EnumDiscriminants` | Keep existing derive set in Task 1; reviewed for constraints. |
-| `properties.rs::AuthenticationKind` | `Debug, PartialEq, Clone` | `Debug, PartialEq, Clone` | Keep existing derive set in Task 1; reviewed for constraints. |
-| `properties.rs::InvalidPropertyTypeError` | `Debug, PartialEq, Clone, Copy, Error` | `Debug, PartialEq, Clone, Copy, Error` | Keep existing derive set in Task 1; reviewed for constraints. |
-| `properties.rs::DuplicatedPropertyError` | `Debug, PartialEq, Clone, Copy, Error` | `Debug, PartialEq, Clone, Copy, Error` | Keep existing derive set in Task 1; reviewed for constraints. |
-| `properties.rs::UnsupportedPropertyError` | `Debug, PartialEq, Clone, Copy, Error` | `Debug, PartialEq, Clone, Copy, Error` | Keep existing derive set in Task 1; reviewed for constraints. |
-| `properties.rs::TooManyUserPropertiesError` | `Debug, PartialEq, Clone, Copy, Error` | `Debug, PartialEq, Clone, Copy, Error` | Empty marker/unit error; enforce no `Hash`, `Ord`, or `PartialOrd`. |
-| `properties.rs::MissingAuthenticationMethodError` | `Debug, PartialEq, Clone, Copy, Error` | `Debug, PartialEq, Clone, Copy, Error` | Empty marker/unit error; enforce no `Hash`, `Ord`, or `PartialOrd`. |
-| `properties.rs::PropertiesError` | `Debug, PartialEq, Clone, Copy, Error` | `Debug, PartialEq, Clone, Copy, Error` | Keep existing derive set in Task 1; reviewed for constraints. |
+| `properties.rs::Property` | `Debug, PartialEq, Eq, Clone, EnumDiscriminants` | `Debug, PartialEq, Eq, Clone, EnumDiscriminants` | Sum type of comparable value fields; adding `Eq` improves ergonomic exact comparisons. |
+| `properties.rs::AuthenticationKind` | `Debug, PartialEq, Eq, Clone` | `Debug, PartialEq, Eq, Clone` | Authentication value enum supports total equality and benefits from `Eq` in property assertions. |
+| `properties.rs::InvalidPropertyTypeError` | `Debug, PartialEq, Eq, Clone, Copy, Error` | `Debug, PartialEq, Eq, Clone, Copy, Error` | Scalar value error (`u64`) supports strict equality semantics; `Eq` improves ergonomic checks. |
+| `properties.rs::DuplicatedPropertyError` | `Debug, PartialEq, Eq, Clone, Copy, Error` | `Debug, PartialEq, Eq, Clone, Copy, Error` | Struct over comparable discriminant; `Eq` is semantically valid and useful for precise error matching. |
+| `properties.rs::UnsupportedPropertyError` | `Debug, PartialEq, Eq, Clone, Copy, Error` | `Debug, PartialEq, Eq, Clone, Copy, Error` | Struct over comparable discriminant; `Eq` is semantically valid and useful for precise error matching. |
+| `properties.rs::TooManyUserPropertiesError` | `Debug, PartialEq, Eq, Clone, Copy, Error` | `Debug, PartialEq, Eq, Clone, Copy, Error` | Empty marker/unit error keeps constraint: no `Hash`/`Ord`/`PartialOrd`; `Eq` remains acceptable. |
+| `properties.rs::MissingAuthenticationMethodError` | `Debug, PartialEq, Eq, Clone, Copy, Error` | `Debug, PartialEq, Eq, Clone, Copy, Error` | Empty marker/unit error keeps constraint: no `Hash`/`Ord`/`PartialOrd`; `Eq` remains acceptable. |
+| `properties.rs::PropertiesError` | `Debug, PartialEq, Eq, Clone, Copy, Error` | `Debug, PartialEq, Eq, Clone, Copy, Error` | Closed error enum of `Eq` variants; `Eq` improves exact-match ergonomics in tests and callers. |
 | `puback.rs::PubAck` | `Debug, PartialEq, Clone` | `Debug, PartialEq, Clone` | Control packet shape; enforce policy that `Default` is not derived. |
 | `puback.rs::PubAckHeaderFlags` | `Debug, PartialEq, Clone` | `Debug, PartialEq, Clone` | Keep existing derive set in Task 1; reviewed for constraints. |
 | `puback.rs::PubAckProperties` | `Debug, PartialEq, Clone, Default` | `Debug, PartialEq, Clone, Default` | Keep existing derive set in Task 1; reviewed for constraints. |
@@ -64,27 +64,27 @@
 | `pubrel.rs::PubRel` | `Debug, PartialEq, Clone` | `Debug, PartialEq, Clone` | Control packet shape; enforce policy that `Default` is not derived. |
 | `pubrel.rs::PubRelHeaderFlags` | `Debug, PartialEq, Clone` | `Debug, PartialEq, Clone` | Keep existing derive set in Task 1; reviewed for constraints. |
 | `pubrel.rs::PubRelProperties` | `Debug, PartialEq, Clone, Default` | `Debug, PartialEq, Clone, Default` | Keep existing derive set in Task 1; reviewed for constraints. |
-| `reason_code.rs::ConnectReasonCode` | `Debug, PartialEq, Clone, Copy, Default, EnumIter, Display` | `Debug, PartialEq, Clone, Copy, Default, EnumIter, Display` | Keep existing derive set in Task 1; reviewed for constraints. |
-| `reason_code.rs::ConnackReasonCode` | `Debug, PartialEq, Clone, Copy, Default, EnumIter, Display` | `Debug, PartialEq, Clone, Copy, Default, EnumIter, Display` | Keep existing derive set in Task 1; reviewed for constraints. |
-| `reason_code.rs::PublishReasonCode` | `Debug, PartialEq, Clone, Copy, Default, EnumIter, Display` | `Debug, PartialEq, Clone, Copy, Default, EnumIter, Display` | Keep existing derive set in Task 1; reviewed for constraints. |
-| `reason_code.rs::PubAckReasonCode` | `Debug, PartialEq, Eq, Clone, Copy, Default, EnumIter, Display` | `Debug, PartialEq, Eq, Clone, Copy, Default, EnumIter, Display` | Keep existing derive set in Task 1; reviewed for constraints. |
-| `reason_code.rs::PubRecReasonCode` | `Debug, PartialEq, Clone, Copy, Default, EnumIter, Display` | `Debug, PartialEq, Clone, Copy, Default, EnumIter, Display` | Keep existing derive set in Task 1; reviewed for constraints. |
-| `reason_code.rs::PubRelReasonCode` | `Debug, PartialEq, Clone, Copy, Default, EnumIter, Display` | `Debug, PartialEq, Clone, Copy, Default, EnumIter, Display` | Keep existing derive set in Task 1; reviewed for constraints. |
-| `reason_code.rs::PubCompReasonCode` | `Debug, PartialEq, Eq, Clone, Copy, Default, EnumIter, Display` | `Debug, PartialEq, Eq, Clone, Copy, Default, EnumIter, Display` | Keep existing derive set in Task 1; reviewed for constraints. |
-| `reason_code.rs::SubAckReasonCode` | `Debug, PartialEq, Clone, Copy, EnumIter, Display` | `Debug, PartialEq, Clone, Copy, EnumIter, Display` | Keep existing derive set in Task 1; reviewed for constraints. |
-| `reason_code.rs::UnsubAckReasonCode` | `Debug, PartialEq, Clone, Copy, Default, EnumIter, Display` | `Debug, PartialEq, Clone, Copy, Default, EnumIter, Display` | Keep existing derive set in Task 1; reviewed for constraints. |
-| `reason_code.rs::DisconnectReasonCode` | `Debug, PartialEq, Clone, Copy, Default, EnumIter, Display` | `Debug, PartialEq, Clone, Copy, Default, EnumIter, Display` | Keep existing derive set in Task 1; reviewed for constraints. |
-| `reason_code.rs::AuthReasonCode` | `Debug, PartialEq, Clone, Copy, Default, EnumIter, Display` | `Debug, PartialEq, Clone, Copy, Default, EnumIter, Display` | Keep existing derive set in Task 1; reviewed for constraints. |
-| `reason_code.rs::InvalidReasonCode` | `Debug, PartialEq, Clone, thiserror::Error` | `Debug, PartialEq, Clone, thiserror::Error` | Keep existing derive set in Task 1; reviewed for constraints. |
+| `reason_code.rs::ConnectReasonCode` | `Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy, Default, EnumIter, Display` | `Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy, Default, EnumIter, Display` | Closed protocol code enum: hashable/orderable semantics are stable and ergonomically useful in sets/maps/sorting. |
+| `reason_code.rs::ConnackReasonCode` | `Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy, Default, EnumIter, Display` | `Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy, Default, EnumIter, Display` | Closed protocol code enum: hashable/orderable semantics are stable and ergonomically useful in sets/maps/sorting. |
+| `reason_code.rs::PublishReasonCode` | `Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy, Default, EnumIter, Display` | `Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy, Default, EnumIter, Display` | Closed protocol code enum: hashable/orderable semantics are stable and ergonomically useful in sets/maps/sorting. |
+| `reason_code.rs::PubAckReasonCode` | `Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy, Default, EnumIter, Display` | `Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy, Default, EnumIter, Display` | Closed protocol code enum: hashable/orderable semantics are stable and ergonomically useful in sets/maps/sorting. |
+| `reason_code.rs::PubRecReasonCode` | `Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy, Default, EnumIter, Display` | `Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy, Default, EnumIter, Display` | Closed protocol code enum: hashable/orderable semantics are stable and ergonomically useful in sets/maps/sorting. |
+| `reason_code.rs::PubRelReasonCode` | `Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy, Default, EnumIter, Display` | `Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy, Default, EnumIter, Display` | Closed protocol code enum: hashable/orderable semantics are stable and ergonomically useful in sets/maps/sorting. |
+| `reason_code.rs::PubCompReasonCode` | `Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy, Default, EnumIter, Display` | `Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy, Default, EnumIter, Display` | Closed protocol code enum: hashable/orderable semantics are stable and ergonomically useful in sets/maps/sorting. |
+| `reason_code.rs::SubAckReasonCode` | `Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy, EnumIter, Display` | `Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy, EnumIter, Display` | Closed protocol code enum without `Default`; hash/order derivations improve ergonomic utility while preserving intent. |
+| `reason_code.rs::UnsubAckReasonCode` | `Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy, Default, EnumIter, Display` | `Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy, Default, EnumIter, Display` | Closed protocol code enum: hashable/orderable semantics are stable and ergonomically useful in sets/maps/sorting. |
+| `reason_code.rs::DisconnectReasonCode` | `Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy, Default, EnumIter, Display` | `Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy, Default, EnumIter, Display` | Closed protocol code enum: hashable/orderable semantics are stable and ergonomically useful in sets/maps/sorting. |
+| `reason_code.rs::AuthReasonCode` | `Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy, Default, EnumIter, Display` | `Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy, Default, EnumIter, Display` | Closed protocol code enum: hashable/orderable semantics are stable and ergonomically useful in sets/maps/sorting. |
+| `reason_code.rs::InvalidReasonCode` | `Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, thiserror::Error` | `Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, thiserror::Error` | Scalar value error (`u8`) can be hashed/ordered for ergonomic diagnostics and comparisons. |
 | `reserved.rs::Reserved` | `Debug, PartialEq, Clone` | `Debug, PartialEq, Clone` | Control packet shape; enforce policy that `Default` is not derived. |
 | `reserved.rs::ReservedHeaderFlags` | `Debug, PartialEq, Clone` | `Debug, PartialEq, Clone` | Keep existing derive set in Task 1; reviewed for constraints. |
 | `suback.rs::SubAck` | `Debug, PartialEq, Clone` | `Debug, PartialEq, Clone` | Control packet shape; enforce policy that `Default` is not derived. |
 | `suback.rs::SubAckProperties` | `Debug, PartialEq, Clone, Default` | `Debug, PartialEq, Clone, Default` | Keep existing derive set in Task 1; reviewed for constraints. |
 | `suback.rs::SubAckHeaderFlags` | `Debug, PartialEq, Clone` | `Debug, PartialEq, Clone` | Keep existing derive set in Task 1; reviewed for constraints. |
-| `subscribe.rs::Subscribe` | `Debug, PartialEq, Clone` | `Debug, PartialEq, Clone` | Control packet shape; enforce policy that `Default` is not derived. |
-| `subscribe.rs::SubscribeHeaderFlags` | `Debug, PartialEq, Clone` | `Debug, PartialEq, Clone` | Keep existing derive set in Task 1; reviewed for constraints. |
-| `subscribe.rs::Subscription` | `Debug, PartialEq, Clone` | `Debug, PartialEq, Clone` | Keep existing derive set in Task 1; reviewed for constraints. |
-| `subscribe.rs::SubscribeProperties` | `Debug, PartialEq, Clone, Default` | `Debug, PartialEq, Clone, Default` | Keep existing derive set in Task 1; reviewed for constraints. |
+| `subscribe.rs::Subscribe` | `Debug, PartialEq, Eq, Clone` | `Debug, PartialEq, Eq, Clone` | Control packet shape; `Eq` improves equality ergonomics while preserving no-`Default` packet policy. |
+| `subscribe.rs::SubscribeHeaderFlags` | `Debug, PartialEq, Eq, Clone` | `Debug, PartialEq, Eq, Clone` | Zero-sized header marker; `Eq` is semantically valid and useful. |
+| `subscribe.rs::Subscription` | `Debug, PartialEq, Eq, Clone` | `Debug, PartialEq, Eq, Clone` | Subscription value object is fully comparable; `Eq` strengthens ergonomic comparisons. |
+| `subscribe.rs::SubscribeProperties` | `Debug, PartialEq, Eq, Clone, Default` | `Debug, PartialEq, Eq, Clone, Default` | Properties struct keeps meaningful empty default and gains `Eq` for exact comparisons. |
 | `unsuback.rs::UnsubAck` | `Debug, PartialEq, Clone` | `Debug, PartialEq, Clone` | Control packet shape; enforce policy that `Default` is not derived. |
 | `unsuback.rs::UnsubAckHeaderFlags` | `Debug, PartialEq, Clone` | `Debug, PartialEq, Clone` | Keep existing derive set in Task 1; reviewed for constraints. |
 | `unsuback.rs::UnsubAckProperties` | `Debug, PartialEq, Clone, Default` | `Debug, PartialEq, Clone, Default` | Keep existing derive set in Task 1; reviewed for constraints. |
