@@ -5,10 +5,10 @@ edition.workspace = true
 rust-version.workspace = true
 
 [dependencies]
-sansio = { workspace = true, default-features = false }
-sansio-mqtt-v5-types = { workspace = true, default-features = false }
-thiserror = { workspace = true, default-features = false }
-bytes = { workspace = true, default-features = false }
-winnow = { workspace = true, default-features = false }
-tracing = { workspace = true, default-features = false, features = ["attributes"] }
-encode = { workspace = true, default-features = false }
+sansio = { workspace = true }
+sansio-mqtt-v5-types = { workspace = true }
+thiserror = { workspace = true }
+bytes = { workspace = true }
+winnow = { workspace = true }
+tracing = { workspace = true, features = ["attributes"] }
+encode = { workspace = true }

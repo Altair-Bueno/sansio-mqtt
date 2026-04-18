@@ -5,14 +5,14 @@ edition.workspace = true
 rust-version.workspace = true
 
 [dependencies]
-sansio = { workspace = true, default-features = false }
-sansio-mqtt-v5-protocol = { workspace = true, default-features = false }
-sansio-mqtt-v5-types = { workspace = true, default-features = false }
-bytes = { workspace = true, default-features = false }
+sansio = { workspace = true }
+sansio-mqtt-v5-protocol = { workspace = true }
+sansio-mqtt-v5-types = { workspace = true }
+bytes = { workspace = true }
 tokio = { workspace = true, features = ["macros", "net", "io-util", "io-std", "signal", "rt", "sync", "time"] }
 tokio-util = { workspace = true, features = ["time"] }
 tracing = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "net", "io-util", "io-std", "signal", "rt-multi-thread", "sync", "time"] }
-encode = { workspace = true, default-features = false }
+encode = { workspace = true }
