@@ -108,3 +108,11 @@ The following remaining-module entries were updated and are now **Applied**:
 - `suback.rs::{SubAck, SubAckProperties, SubAckHeaderFlags}`
 - `unsuback.rs::{UnsubAck, UnsubAckHeaderFlags, UnsubAckProperties}`
 - `unsubscribe.rs::{Unsubscribe, UnsubscribeHeaderFlags, UnsubscribeProperties}`
+
+## Final Summary
+
+- Control packet types checked: no `Default`.
+- Empty marker types checked: no `Hash`, `Ord`, or `PartialOrd`.
+- Per-type decisions applied and validated across all `types/*.rs` modules.
+- Verification detail (control packets): precise `rg -UP` check over `ControlPacket` + all concrete packet types (`Reserved`, `Connect`, `ConnAck`, `Publish`, `PubAck`, `PubRec`, `PubRel`, `PubComp`, `Subscribe`, `SubAck`, `Unsubscribe`, `UnsubAck`, `PingReq`, `PingResp`, `Disconnect`, `Auth`) found no `#[derive(...Default...)]` on those declarations.
+- Verification detail (marker errors): precise `rg -UP` check over `PayloadError`, `BinaryDataError`, `Utf8StringError`, `TopicError`, `TooManyUserPropertiesError`, and `MissingAuthenticationMethodError` found no `#[derive(...Hash|Ord|PartialOrd...)]` on those declarations.
