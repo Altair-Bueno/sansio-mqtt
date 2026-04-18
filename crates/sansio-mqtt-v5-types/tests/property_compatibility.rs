@@ -11,7 +11,7 @@ use encode::Encodable;
 use encode::EncodableSize;
 use rstest::rstest;
 use sansio_mqtt_v5_types::*;
-use std::num::NonZero;
+use core::num::NonZero;
 use winnow::error::ContextError;
 use winnow::Parser;
 

@@ -2,10 +2,10 @@
 //!
 //! Note that some tests were not spec complaint, so they were adapted.
 
+use core::num::NonZero;
 use encode::Encodable;
 use encode::EncodableSize;
 use sansio_mqtt_v5_types::*;
-use std::num::NonZero;
 use winnow::error::ContextError;
 use winnow::Parser;
 

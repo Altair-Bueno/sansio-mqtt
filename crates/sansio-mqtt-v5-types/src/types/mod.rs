@@ -42,9 +42,11 @@ pub use subscribe::*;
 pub use unsuback::*;
 pub use unsubscribe::*;
 
+use alloc::string::String;
+use alloc::vec::Vec;
 use bytes::Bytes;
-use std::borrow::Borrow;
-use std::num::NonZero;
+use core::borrow::Borrow;
+use core::num::NonZero;
 use strum::Display;
 use strum::EnumDiscriminants;
 use strum::EnumIter;

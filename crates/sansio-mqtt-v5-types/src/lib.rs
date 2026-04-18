@@ -1,4 +1,5 @@
-#![warn(clippy::multiple_bound_locations)]
+#![no_std]
+
 mod encoder;
 mod parser;
 mod types;

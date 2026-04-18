@@ -21,7 +21,8 @@ mod subscribe;
 mod unsuback;
 mod unsubscribe;
 
-use super::types::*;
+use super::*;
+use alloc::vec::Vec;
 use core::any::type_name;
 use core::num::TryFromIntError;
 use core::str::Utf8Error;
