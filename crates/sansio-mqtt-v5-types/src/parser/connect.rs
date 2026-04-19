@@ -37,6 +37,8 @@ where
 }
 
 impl Connect {
+    /// Returns a parser for the body of a `CONNECT` packet
+    /// ([§3.1](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901033)).
     #[inline]
     pub fn parser<'input, 'settings, ByteInput, ByteError, BitError>(
         parser_settings: &'settings ParserSettings,
@@ -139,6 +141,9 @@ impl Connect {
 }
 
 impl ConnectHeaderFlags {
+    /// Parses the 4-bit Fixed Header flags for `CONNECT`
+    /// ([§3.1.1](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901034),
+    /// [MQTT-3.1.1-1]).
     #[inline]
     pub fn parser<Input, Error>(input: &mut (Input, usize)) -> Result<Self, Error>
     where
@@ -155,6 +160,8 @@ impl ConnectHeaderFlags {
 }
 
 impl ConnectProperties {
+    /// Returns a parser for the `CONNECT` properties section
+    /// ([§3.1.2.11](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901046)).
     #[inline]
     pub fn parser<'input, 'settings, Input, Error>(
         parser_settings: &'settings ParserSettings,
@@ -308,6 +315,8 @@ impl ConnectProperties {
 }
 
 impl WillProperties {
+    /// Returns a parser for the Will Properties section of a `CONNECT` payload
+    /// ([§3.1.3.2](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901060)).
     #[inline]
     pub fn parser<'input, 'settings, Input, Error>(
         parser_settings: &'settings ParserSettings,
