@@ -326,7 +326,7 @@ fn publish_with_all_valid_properties_roundtrip() {
             topic_alias: NonZero::new(100),
             response_topic: Some(Topic::new("response/topic")),
             correlation_data: BinaryData::try_from(&[1, 2]).ok(),
-            subscription_identifier: NonZero::new(42),
+            subscription_identifiers: vec![NonZero::new(42).unwrap()],
             content_type: Some(Utf8String::new("text/plain")),
             user_properties: vec![],
         },

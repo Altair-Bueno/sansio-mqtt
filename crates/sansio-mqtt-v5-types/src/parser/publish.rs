@@ -163,14 +163,14 @@ impl PublishProperties {
                                     }
                                 }
                                 Property::SubscriptionIdentifier(value) => {
-                                    match &mut properties.subscription_identifier {
-                                        slot @ None => *slot = Some(value),
-                                        _ => {
-                                            return Err(PropertiesError::from(
-                                                DuplicatedPropertyError { property_type },
-                                            ))
-                                        }
+                                    if properties.subscription_identifiers.len()
+                                        >= parser_settings.max_subscription_identifiers_len
+                                    {
+                                        return Err(PropertiesError::from(
+                                            TooManySubscriptionIdentifiersError,
+                                        ));
                                     }
+                                    properties.subscription_identifiers.push(value);
                                 }
                                 Property::ContentType(value) => {
                                     match &mut properties.content_type {

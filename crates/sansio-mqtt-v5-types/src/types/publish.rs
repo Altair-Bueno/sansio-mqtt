@@ -64,7 +64,9 @@ pub struct PublishProperties {
     pub correlation_data: Option<BinaryData>,
 
     pub user_properties: Vec<(Utf8String, Utf8String)>,
-    pub subscription_identifier: Option<NonZero<u64>>,
+    /// Zero or more Subscription Identifiers per [MQTT-3.3.2.3.8]. An empty
+    /// `Vec` means the property is absent on the wire.
+    pub subscription_identifiers: Vec<NonZero<u64>>,
 
     pub content_type: Option<Utf8String>,
 }

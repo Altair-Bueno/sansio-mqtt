@@ -221,29 +221,6 @@ fn assert_that_parsing_an_invalid_field_on_connack_fails(
 }
 
 #[rstest::rstest]
-#[case::to_repeated_subscription_identifiers_property(
-    vec! [
-        61, 22, // Header
-        0, 4, // Topic length
-        116, 101, 115, 116, // Topic (test)
-        0, 10, // Message ID
-        9,  // properties length
-        1, 0, // payloadFormatIndicator
-        11, 1, // subscriptionIdentifier
-        11, 255, 255, 255, 127, // subscriptionIdentifier (max value)
-        116, 101, 115, 116, // Payload (test)
-    ]
-)]
-fn assert_that_parsing_an_invalid_field_on_publish_fails(
-    settings: ParserSettings,
-    #[case] input: Vec<u8>,
-) {
-    ControlPacket::parser::<_, ContextError, ContextError>(&settings)
-        .parse(&input[..])
-        .unwrap_err();
-}
-
-#[rstest::rstest]
 #[case::no_payload(
     vec! [
         130, // Header
@@ -846,8 +823,44 @@ fn assert_that_parsing_an_invalid_field_on_unsuback_fails(
                     Utf8String::new("test"),
                 ),
             ],
-            subscription_identifier: NonZero::new(120),
+            subscription_identifiers: vec![NonZero::new(120).unwrap()],
             content_type: Utf8String::try_from("test").ok(),
+        },
+    })
+)]
+#[case::publish_with_multiple_subscription_identifiers(
+    vec![
+        61, 22, // Header: PUBLISH with dup=1, qos=ExactlyOnce, retain=1
+        0, 4, // Topic length
+        116, 101, 115, 116, // Topic ("test")
+        0, 10, // Packet ID
+        9,  // properties length
+        1, 0, // PayloadFormatIndicator = Unspecified
+        11, 1, // SubscriptionIdentifier = 1
+        11, 255, 255, 255, 127, // SubscriptionIdentifier = 268_435_455 (VBI max)
+        116, 101, 115, 116, // Payload ("test")
+    ],
+    ControlPacket::Publish(Publish {
+        kind: PublishKind::Repetible {
+            packet_id: NonZero::new(10).unwrap(),
+            qos: GuaranteedQoS::ExactlyOnce,
+            dup: true,
+        },
+        retain: true,
+        topic: Topic::new("test"),
+        payload: Payload::new([116, 101, 115, 116].as_slice()),
+        properties: PublishProperties {
+            payload_format_indicator: Some(FormatIndicator::Unspecified),
+            message_expiry_interval: None,
+            topic_alias: None,
+            response_topic: None,
+            correlation_data: None,
+            user_properties: vec![],
+            subscription_identifiers: vec![
+                NonZero::new(1).unwrap(),
+                NonZero::new(268_435_455).unwrap(),
+            ],
+            content_type: None,
         },
     })
 )]

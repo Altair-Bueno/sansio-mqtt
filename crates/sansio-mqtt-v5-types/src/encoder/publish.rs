@@ -17,9 +17,12 @@ where
         let topic_alias = self.topic_alias.map(Property::TopicAlias);
         let response_topic = self.response_topic.clone().map(Property::ResponseTopic);
         let correlation_data = self.correlation_data.clone().map(Property::CorrelationData);
-        let subscription_identifier = self
-            .subscription_identifier
-            .map(Property::SubscriptionIdentifier);
+        let subscription_identifiers = encode::combinators::Iter::new(
+            self.subscription_identifiers
+                .iter()
+                .copied()
+                .map(Property::SubscriptionIdentifier),
+        );
         let user_properties = encode::combinators::Iter::new(
             self.user_properties
                 .iter()
@@ -35,7 +38,7 @@ where
             response_topic,
             correlation_data,
             user_properties,
-            subscription_identifier,
+            subscription_identifiers,
             content_type,
         ))
         .encode(encoder)
