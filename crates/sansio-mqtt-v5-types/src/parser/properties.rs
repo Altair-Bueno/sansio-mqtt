@@ -1,6 +1,9 @@
 use super::*;
 
 impl PropertyType {
+    /// Parses a property identifier (Variable Byte Integer)
+    /// ([§2.2.2.2](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901029),
+    /// [MQTT-2.2.2-1]).
     #[inline]
     pub fn parser<Input, Error>(input: &mut Input) -> Result<Self, Error>
     where
@@ -22,6 +25,8 @@ impl PropertyType {
 }
 
 impl Property {
+    /// Returns a parser for a single MQTT v5.0 [`Property`]
+    /// ([§2.2.2.2](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901029)).
     #[inline]
     pub fn parser<'input, 'settings, Input, Error>(
         parser_settings: &'settings ParserSettings,

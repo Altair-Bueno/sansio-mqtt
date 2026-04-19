@@ -56,6 +56,9 @@ where
 }
 
 impl Payload {
+    /// Returns a parser that consumes the remaining bytes of the
+    /// current frame as the PUBLISH payload
+    /// ([§3.3.3](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901119)).
     #[inline]
     pub fn parser<'input, Input, Error>(
         _: &ParserSettings,
@@ -78,6 +81,10 @@ impl Payload {
 }
 
 impl BinaryData {
+    /// Returns a parser for a length-prefixed Binary Data value
+    /// ([§1.5.6](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901012),
+    /// [MQTT-1.5.6-1]). The length is capped by
+    /// [`ParserSettings::max_bytes_binary_data`].
     #[inline]
     pub fn parser<'input, Input, Error>(
         parser_settings: &ParserSettings,
@@ -124,6 +131,10 @@ where
 }
 
 impl Utf8String {
+    /// Returns a parser for a length-prefixed UTF-8 Encoded String
+    /// ([§1.5.4](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901010),
+    /// [MQTT-1.5.4-1]). The length is capped by
+    /// [`ParserSettings::max_bytes_string`].
     #[inline]
     pub fn parser<'input, Input, Error>(
         parser_settings: &ParserSettings,
@@ -150,6 +161,9 @@ impl Utf8String {
 }
 
 impl Topic {
+    /// Returns a parser for a Topic Name (UTF-8 string without
+    /// wildcards, [§4.7.1](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901242),
+    /// [MQTT-4.7.1-1], [MQTT-4.7.1-2]).
     #[inline]
     pub fn parser<'input, Input, Error>(
         parser_settings: &ParserSettings,
@@ -174,6 +188,8 @@ impl Topic {
 }
 
 impl ControlPacketType {
+    /// Parses the 4-bit Control Packet Type nibble from the Fixed
+    /// Header ([§2.1.2](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901022)).
     #[inline]
     pub fn parser<Input, Error>(input: &mut (Input, usize)) -> Result<Self, Error>
     where
@@ -195,6 +211,8 @@ impl ControlPacketType {
 }
 
 impl Qos {
+    /// Parses a 2-bit QoS field ([§4.3](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901234),
+    /// [MQTT-3.3.1-4]). A value of 3 yields Malformed Packet.
     #[inline]
     pub fn parser<Input, Error>(input: &mut (Input, usize)) -> Result<Self, Error>
     where
@@ -215,6 +233,9 @@ impl Qos {
     }
 }
 impl FormatIndicator {
+    /// Parses the one-byte Payload Format Indicator value
+    /// ([§3.3.2.3.2](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901111),
+    /// [MQTT-3.3.2-5]).
     #[inline]
     pub fn parser<'input, Input, Error>(input: &mut Input) -> Result<Self, Error>
     where
@@ -232,6 +253,9 @@ impl FormatIndicator {
     }
 }
 impl RetainHandling {
+    /// Parses the 2-bit Retain Handling field of the Subscription
+    /// Options byte ([§3.8.3.1](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901169),
+    /// [MQTT-3.8.3-4]).
     #[inline]
     pub fn parser<Input, Error>(input: &mut (Input, usize)) -> Result<Self, Error>
     where
@@ -253,6 +277,10 @@ impl RetainHandling {
 }
 
 impl Subscription {
+    /// Returns a parser for one `SUBSCRIBE` Topic Filter plus its
+    /// Subscription Options byte
+    /// ([§3.8.3](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901168),
+    /// [§3.8.3.1](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901169)).
     #[inline]
     pub fn parser<'input, 'settings, ByteInput, ByteError, BitError>(
         parser_settings: &'settings ParserSettings,
@@ -303,6 +331,8 @@ impl Subscription {
 macro_rules! impl_parser_for_reason_code {
     ($name:ty) => {
         impl $name {
+            /// Parses this Reason Code from a single byte
+            /// ([§2.4](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901031)).
             #[inline]
             pub fn parser<Input, Error>(input: &mut Input) -> Result<Self, Error>
             where

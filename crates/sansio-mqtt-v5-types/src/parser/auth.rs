@@ -1,6 +1,9 @@
 use super::*;
 
 impl AuthHeaderFlags {
+    /// Parses the 4-bit Fixed Header flags for `AUTH`
+    /// ([§3.15.1](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901218),
+    /// [MQTT-3.15.1-1]).
     #[inline]
     pub fn parser<Input, Error>(input: &mut (Input, usize)) -> Result<Self, Error>
     where
@@ -17,6 +20,8 @@ impl AuthHeaderFlags {
 }
 
 impl Auth {
+    /// Returns a parser for the body of an `AUTH` packet
+    /// ([§3.15](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901217)).
     #[inline]
     pub fn parser<'input, 'settings, ByteInput, ByteError, BitError>(
         parser_settings: &'settings ParserSettings,
@@ -60,6 +65,8 @@ impl Auth {
 }
 
 impl AuthProperties {
+    /// Returns a parser for the `AUTH` properties section
+    /// ([§3.15.2.2](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901221)).
     #[inline]
     pub fn parser<'input, 'settings, Input, Error>(
         parser_settings: &'settings ParserSettings,
