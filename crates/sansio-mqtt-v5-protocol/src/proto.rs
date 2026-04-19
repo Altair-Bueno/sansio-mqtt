@@ -130,6 +130,10 @@ where
     effective_broker_maximum_packet_size: Option<NonZero<u32>>,
     effective_broker_topic_alias_maximum: u16,
     effective_broker_maximum_qos: Option<MaximumQoS>,
+    effective_retain_available: bool,
+    effective_wildcard_subscription_available: bool,
+    effective_shared_subscription_available: bool,
+    effective_subscription_identifiers_available: bool,
     negotiated_receive_maximum: NonZero<u16>,
     negotiated_maximum_packet_size: Option<NonZero<u32>>,
     negotiated_topic_alias_maximum: u16,
@@ -173,6 +177,10 @@ where
             effective_broker_maximum_packet_size: None,
             effective_broker_topic_alias_maximum: u16::MAX,
             effective_broker_maximum_qos: None,
+            effective_retain_available: true,
+            effective_wildcard_subscription_available: true,
+            effective_shared_subscription_available: true,
+            effective_subscription_identifiers_available: true,
             negotiated_receive_maximum: NonZero::new(u16::MAX)
                 .expect("u16::MAX is always non-zero for receive_maximum"),
             negotiated_maximum_packet_size: None,
@@ -373,7 +381,13 @@ impl<Time> Client<Time> {
         self.scratchpad.effective_client_max_bytes_string = self.settings.max_bytes_string;
         self.scratchpad.effective_client_max_bytes_binary_data =
             self.settings.max_bytes_binary_data;
-        self.scratchpad.effective_client_max_remaining_bytes = self.settings.max_remaining_bytes;
+        self.scratchpad.effective_client_max_remaining_bytes =
+            self.settings.max_remaining_bytes.min(
+                self.scratchpad
+                    .effective_client_maximum_packet_size
+                    .map(|x| u64::from(x.get()))
+                    .unwrap_or(u64::MAX),
+            );
         self.scratchpad.effective_client_max_subscriptions_len =
             self.settings.max_subscriptions_len;
         self.scratchpad.effective_client_max_user_properties_len =
@@ -412,6 +426,19 @@ impl<Time> Client<Time> {
             self.settings.max_outgoing_qos,
             self.scratchpad.negotiated_maximum_qos,
         );
+        self.scratchpad.effective_retain_available =
+            self.settings.allow_retain && self.scratchpad.negotiated_retain_available;
+        self.scratchpad.effective_wildcard_subscription_available =
+            self.settings.allow_wildcard_subscriptions
+                && self.scratchpad.negotiated_wildcard_subscription_available;
+        self.scratchpad.effective_shared_subscription_available =
+            self.settings.allow_shared_subscriptions
+                && self.scratchpad.negotiated_shared_subscription_available;
+        self.scratchpad.effective_subscription_identifiers_available =
+            self.settings.allow_subscription_identifiers
+                && self
+                    .scratchpad
+                    .negotiated_subscription_identifiers_available;
     }
 
     fn next_packet_id(&mut self) -> NonZero<u16> {
@@ -486,7 +513,7 @@ impl<Time> Client<Time> {
             }
         }
 
-        if msg.retain && !self.scratchpad.negotiated_retain_available {
+        if msg.retain && !self.scratchpad.effective_retain_available {
             return Err(Error::ProtocolError);
         }
 
@@ -1366,9 +1393,7 @@ where
                 }
 
                 if options.subscription_identifier.is_some()
-                    && !self
-                        .scratchpad
-                        .negotiated_subscription_identifiers_available
+                    && !self.scratchpad.effective_subscription_identifiers_available
                 {
                     return Err(Error::ProtocolError);
                 }
@@ -1382,13 +1407,13 @@ where
                             topic_filter_str.contains('+') || topic_filter_str.contains('#');
 
                         if has_wildcard
-                            && !self.scratchpad.negotiated_wildcard_subscription_available
+                            && !self.scratchpad.effective_wildcard_subscription_available
                         {
                             return Err(Error::ProtocolError);
                         }
 
                         if is_shared {
-                            if !self.scratchpad.negotiated_shared_subscription_available {
+                            if !self.scratchpad.effective_shared_subscription_available {
                                 return Err(Error::ProtocolError);
                             }
 

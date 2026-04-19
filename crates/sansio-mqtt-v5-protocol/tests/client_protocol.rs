@@ -2073,6 +2073,87 @@ fn app_topic_alias_setting_is_applied_when_connect_option_omits_alias_limit() {
 }
 
 #[test]
+fn app_retain_policy_false_blocks_retain_publish_even_if_broker_allows() {
+    let settings = ClientSettings {
+        allow_retain: false,
+        ..ClientSettings::default()
+    };
+    let mut client = Client::<u64>::with_settings(settings);
+
+    assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
+    assert!(client.poll_write().is_some());
+    let connack = ControlPacket::ConnAck(ConnAck {
+        kind: ConnAckKind::Other {
+            reason_code: ConnackReasonCode::Success,
+        },
+        properties: ConnAckProperties {
+            retain_available: Some(true),
+            ..ConnAckProperties::default()
+        },
+    });
+    assert_eq!(client.handle_read(encode_packet(&connack)), Ok(()));
+    assert!(matches!(client.poll_read(), Some(UserWriteOut::Connected)));
+
+    let retained_message = ClientMessage {
+        retain: true,
+        topic: Topic::try_new("retain/topic").expect("valid topic"),
+        payload: Payload::new(b"retained".as_slice()),
+        ..ClientMessage::default()
+    };
+    assert_eq!(
+        client.handle_write(UserWriteIn::PublishMessage(retained_message)),
+        Err(Error::ProtocolError)
+    );
+}
+
+#[test]
+fn app_subscription_policy_flags_override_broker_allowances() {
+    let settings = ClientSettings {
+        allow_subscription_identifiers: false,
+        allow_wildcard_subscriptions: false,
+        allow_shared_subscriptions: false,
+        ..ClientSettings::default()
+    };
+    let mut client = Client::<u64>::with_settings(settings);
+
+    assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
+    assert!(client.poll_write().is_some());
+    let connack = ControlPacket::ConnAck(ConnAck {
+        kind: ConnAckKind::Other {
+            reason_code: ConnackReasonCode::Success,
+        },
+        properties: ConnAckProperties {
+            wildcard_subscription_available: Some(true),
+            shared_subscription_available: Some(true),
+            subscription_identifiers_available: Some(true),
+            ..ConnAckProperties::default()
+        },
+    });
+    assert_eq!(client.handle_read(encode_packet(&connack)), Ok(()));
+    assert!(matches!(client.poll_read(), Some(UserWriteOut::Connected)));
+
+    assert_eq!(
+        client.handle_write(UserWriteIn::Subscribe(SubscribeOptions {
+            subscription: make_subscription("topic/+"),
+            extra_subscriptions: Vec::new(),
+            subscription_identifier: Some(NonZero::new(1).expect("non-zero")),
+            user_properties: Vec::new(),
+        })),
+        Err(Error::ProtocolError)
+    );
+
+    assert_eq!(
+        client.handle_write(UserWriteIn::Subscribe(SubscribeOptions {
+            subscription: make_subscription("$share/g/topic"),
+            extra_subscriptions: Vec::new(),
+            subscription_identifier: None,
+            user_properties: Vec::new(),
+        })),
+        Err(Error::ProtocolError)
+    );
+}
+
+#[test]
 fn outbound_qos2_publish_emits_completed_event_on_pubcomp() {
     let mut client = Client::<u64>::default();
 
