@@ -86,6 +86,11 @@ pub struct UnsupportedPropertyError {
 pub struct TooManyUserPropertiesError;
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Error)]
+#[error("The number of subscription identifiers exceeds the maximum allowed")]
+#[repr(transparent)]
+pub struct TooManySubscriptionIdentifiersError;
+
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Error)]
 #[error(
     "Properties included {}, but {} is required",
     PropertyType::AuthenticationData,
@@ -100,6 +105,8 @@ pub enum PropertiesError {
     DuplicatedProperty(#[from] DuplicatedPropertyError),
     #[error(transparent)]
     TooManyUserProperties(#[from] TooManyUserPropertiesError),
+    #[error(transparent)]
+    TooManySubscriptionIdentifiers(#[from] TooManySubscriptionIdentifiersError),
     #[error(transparent)]
     MissingAuthenticationMethod(#[from] MissingAuthenticationMethodError),
     #[error(transparent)]
@@ -199,6 +206,10 @@ mod marker_trait_guards {
     impl MustNotImplementOrd for MissingAuthenticationMethodError {}
     impl MustNotImplementPartialOrd for MissingAuthenticationMethodError {}
 
+    impl MustNotImplementHash for TooManySubscriptionIdentifiersError {}
+    impl MustNotImplementOrd for TooManySubscriptionIdentifiersError {}
+    impl MustNotImplementPartialOrd for TooManySubscriptionIdentifiersError {}
+
     fn assert_not_hash<T: MustNotImplementHash>() {}
     fn assert_not_ord<T: MustNotImplementOrd>() {}
     fn assert_not_partial_ord<T: MustNotImplementPartialOrd>() {}
@@ -212,5 +223,9 @@ mod marker_trait_guards {
         assert_not_hash::<MissingAuthenticationMethodError>();
         assert_not_ord::<MissingAuthenticationMethodError>();
         assert_not_partial_ord::<MissingAuthenticationMethodError>();
+
+        assert_not_hash::<TooManySubscriptionIdentifiersError>();
+        assert_not_ord::<TooManySubscriptionIdentifiersError>();
+        assert_not_partial_ord::<TooManySubscriptionIdentifiersError>();
     }
 }
