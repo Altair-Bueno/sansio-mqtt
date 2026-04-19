@@ -62,11 +62,11 @@ Defaults remain permissive except parser maxima inherited from `ParserSettings::
 `ClientScratchpad` holds computed current effective limits used at runtime:
 
 - Effective parser envelope:
-  - `effective_max_bytes_string: u16`
-  - `effective_max_bytes_binary_data: u16`
-  - `effective_max_remaining_bytes: u64`
-  - `effective_max_subscriptions_len: u32`
-  - `effective_max_user_properties_len: usize`
+  - `effective_client_max_bytes_string: u16`
+  - `effective_client_max_bytes_binary_data: u16`
+  - `effective_client_max_remaining_bytes: u64`
+  - `effective_client_max_subscriptions_len: u32`
+  - `effective_client_max_user_properties_len: usize`
 - Effective protocol envelope:
   - `effective_receive_maximum: NonZero<u16>`
   - `effective_maximum_packet_size: Option<NonZero<u32>>`
@@ -83,7 +83,9 @@ Naming rule:
 - Use neutral names for shared limits/capabilities (`effective_maximum_packet_size`,
   `effective_topic_alias_maximum`, etc.) and route those values to both parser/protocol checks
   when applicable.
-- Prefix only when audience differs and values diverge.
+- Prefix only when audience differs and values diverge:
+  - client-only value: `effective_client_*`
+  - broker-only value: `effective_broker_*`
 
 Broker-advertised raw values may also remain in scratchpad for traceability if needed,
 but all behavior checks must reference effective fields.
@@ -143,11 +145,11 @@ Note: `CONNACK.maximum_packet_size` constrains outbound packet size to broker, n
 
 ```rust
 ParserSettings {
-    max_bytes_string: self.scratchpad.effective_max_bytes_string,
-    max_bytes_binary_data: self.scratchpad.effective_max_bytes_binary_data,
-    max_remaining_bytes: self.scratchpad.effective_max_remaining_bytes,
-    max_subscriptions_len: self.scratchpad.effective_max_subscriptions_len,
-    max_user_properties_len: self.scratchpad.effective_max_user_properties_len,
+    max_bytes_string: self.scratchpad.effective_client_max_bytes_string,
+    max_bytes_binary_data: self.scratchpad.effective_client_max_bytes_binary_data,
+    max_remaining_bytes: self.scratchpad.effective_client_max_remaining_bytes,
+    max_subscriptions_len: self.scratchpad.effective_client_max_subscriptions_len,
+    max_user_properties_len: self.scratchpad.effective_client_max_user_properties_len,
 }
 ```
 
