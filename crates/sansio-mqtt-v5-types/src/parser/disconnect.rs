@@ -1,5 +1,8 @@
 use super::*;
 impl DisconnectHeaderFlags {
+    /// Parses the 4-bit Fixed Header flags for `DISCONNECT`
+    /// ([§3.14.1](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901206),
+    /// [MQTT-3.14.1-1]).
     #[inline]
     pub fn parser<Input, Error>(input: &mut (Input, usize)) -> Result<Self, Error>
     where
@@ -16,6 +19,8 @@ impl DisconnectHeaderFlags {
 }
 
 impl Disconnect {
+    /// Returns a parser for the body of a `DISCONNECT` packet
+    /// ([§3.14](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901205)).
     #[inline]
     pub fn parser<'input, 'settings, ByteInput, ByteError, BitError>(
         parser_settings: &'settings ParserSettings,
@@ -61,6 +66,8 @@ impl Disconnect {
 }
 
 impl DisconnectProperties {
+    /// Returns a parser for the `DISCONNECT` properties section
+    /// ([§3.14.2.2](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901209)).
     #[inline]
     pub fn parser<'input, 'settings, Input, Error>(
         parser_settings: &'settings ParserSettings,

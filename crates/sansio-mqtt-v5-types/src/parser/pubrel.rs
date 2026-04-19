@@ -1,5 +1,8 @@
 use super::*;
 impl PubRelHeaderFlags {
+    /// Parses the 4-bit Fixed Header flags for `PUBREL`
+    /// ([§3.6.1](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901142),
+    /// [MQTT-3.6.1-1]). The bit pattern `0b0010` is required.
     #[inline]
     pub fn parser<Input, Error>(input: &mut (Input, usize)) -> Result<Self, Error>
     where
@@ -19,6 +22,8 @@ impl PubRelHeaderFlags {
 }
 
 impl PubRel {
+    /// Returns a parser for the body of a `PUBREL` packet
+    /// ([§3.6](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901141)).
     #[inline]
     pub fn parser<'input, 'settings, ByteInput, ByteError, BitError>(
         parser_settings: &'settings ParserSettings,
@@ -68,6 +73,8 @@ impl PubRel {
 }
 
 impl PubRelProperties {
+    /// Returns a parser for the `PUBREL` properties section
+    /// ([§3.6.2.2](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901145)).
     #[inline]
     pub fn parser<'input, 'settings, Input, Error>(
         parser_settings: &'settings ParserSettings,

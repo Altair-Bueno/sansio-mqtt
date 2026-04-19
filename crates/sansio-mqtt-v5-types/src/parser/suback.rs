@@ -1,5 +1,8 @@
 use super::*;
 impl SubAckHeaderFlags {
+    /// Parses the 4-bit Fixed Header flags for `SUBACK`
+    /// ([§3.9.1](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901172),
+    /// [MQTT-3.9.1-1]).
     #[inline]
     pub fn parser<Input, Error>(input: &mut (Input, usize)) -> Result<Self, Error>
     where
@@ -16,6 +19,8 @@ impl SubAckHeaderFlags {
 }
 
 impl SubAck {
+    /// Returns a parser for the body of a `SUBACK` packet
+    /// ([§3.9](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901171)).
     #[inline]
     pub fn parser<'input, 'settings, ByteInput, ByteError, BitError>(
         parser_settings: &'settings ParserSettings,
@@ -61,6 +66,8 @@ impl SubAck {
 }
 
 impl SubAckProperties {
+    /// Returns a parser for the `SUBACK` properties section
+    /// ([§3.9.2.1](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901174)).
     #[inline]
     pub fn parser<'input, 'settings, Input, Error>(
         parser_settings: &'settings ParserSettings,

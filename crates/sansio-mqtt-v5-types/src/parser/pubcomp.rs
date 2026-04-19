@@ -1,6 +1,9 @@
 use super::*;
 
 impl PubCompHeaderFlags {
+    /// Parses the 4-bit Fixed Header flags for `PUBCOMP`
+    /// ([§3.7.1](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901151),
+    /// [MQTT-3.7.1-1]).
     #[inline]
     pub fn parser<Input, Error>(input: &mut (Input, usize)) -> Result<Self, Error>
     where
@@ -17,6 +20,8 @@ impl PubCompHeaderFlags {
 }
 
 impl PubComp {
+    /// Returns a parser for the body of a `PUBCOMP` packet
+    /// ([§3.7](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901151)).
     #[inline]
     pub fn parser<'input, 'settings, ByteInput, ByteError, BitError>(
         parser_settings: &'settings ParserSettings,
@@ -66,6 +71,8 @@ impl PubComp {
 }
 
 impl PubCompProperties {
+    /// Returns a parser for the `PUBCOMP` properties section
+    /// ([§3.7.2.2](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901155)).
     #[inline]
     pub fn parser<'input, 'settings, Input, Error>(
         parser_settings: &'settings ParserSettings,

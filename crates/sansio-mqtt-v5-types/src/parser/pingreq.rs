@@ -1,5 +1,8 @@
 use super::*;
 impl PingReqHeaderFlags {
+    /// Parses the 4-bit Fixed Header flags for `PINGREQ`
+    /// ([§3.12.1](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901196),
+    /// [MQTT-3.12.1-1]).
     #[inline]
     pub fn parser<Input, Error>(input: &mut (Input, usize)) -> Result<Self, Error>
     where
@@ -16,6 +19,11 @@ impl PingReqHeaderFlags {
 }
 
 impl PingReq {
+    /// Returns a parser for the body of a `PINGREQ` packet
+    /// ([§3.12](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901195)).
+    ///
+    /// The packet has no Variable Header or Payload, so the parser
+    /// only asserts that no bytes remain.
     #[inline]
     pub fn parser<'input, 'settings, ByteInput, ByteError, BitError>(
         _parser_settings: &'settings ParserSettings,

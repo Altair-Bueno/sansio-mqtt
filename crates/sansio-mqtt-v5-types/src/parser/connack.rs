@@ -15,6 +15,8 @@ where
 use super::*;
 
 impl ConnAck {
+    /// Returns a parser for the body of a `CONNACK` packet
+    /// ([§3.2](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901074)).
     #[inline]
     pub fn parser<'input, 'settings, ByteInput, ByteError, BitError>(
         parser_settings: &'settings ParserSettings,
@@ -58,6 +60,8 @@ impl ConnAck {
 }
 
 impl ConnAckHeaderFlags {
+    /// Parses the 4-bit Fixed Header flags for `CONNACK`
+    /// ([§3.2.1](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901075)).
     #[inline]
     pub fn parser<Input, Error>(input: &mut (Input, usize)) -> Result<Self, Error>
     where
@@ -74,6 +78,8 @@ impl ConnAckHeaderFlags {
 }
 
 impl ConnAckProperties {
+    /// Returns a parser for the `CONNACK` properties section
+    /// ([§3.2.2.3](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901080)).
     #[inline]
     pub fn parser<'input, 'settings, Input, Error>(
         parser_settings: &'settings ParserSettings,

@@ -1,30 +1,94 @@
+//! Basic MQTT v5.0 wire types.
+//!
+//! These types model the basic data representations used throughout
+//! the MQTT v5.0 protocol, as defined in
+//! [§1.5 — Data representation](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901007).
 use super::*;
 
+/// Error returned when constructing a [`Payload`] from invalid data.
+///
+/// In practice the only way a [`Payload`] can be rejected is if it
+/// exceeds the theoretical addressable length (a [`u64`] worth of
+/// bytes); this error exists to keep the API symmetric with other wire
+/// types.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
 #[error("invalid MQTT payload")]
 pub struct PayloadError;
 
+/// Application message payload carried inside a [`Publish`] packet
+/// ([§3.3.3 — PUBLISH Payload](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901119)).
+///
+/// The payload is an opaque sequence of bytes; MQTT does not interpret
+/// it except as dictated by the Payload Format Indicator property
+/// ([MQTT-3.3.2-5]). A zero-length payload is valid ([MQTT-3.3.1-2]).
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
 pub struct Payload(bytes::Bytes);
 
+/// Error returned when constructing [`BinaryData`] from bytes that
+/// exceed the `u16::MAX` length limit mandated by the wire format.
+///
+/// See [§1.5.6 — Binary Data](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901012).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
 #[error("invalid MQTT binary data")]
 pub struct BinaryDataError;
 
+/// MQTT v5.0 Binary Data
+/// ([§1.5.6](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901012)).
+///
+/// A length-prefixed byte string whose length MUST be representable in
+/// a Two Byte Integer (`u16`). This invariant is enforced by the
+/// constructors of this type.
+///
+/// Conformance: `[MQTT-1.5.6-1]`.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
 pub struct BinaryData(bytes::Bytes);
 
+/// Error returned when constructing a [`Utf8String`] from bytes that
+/// are not valid UTF-8, exceed `u16::MAX`, or contain
+/// MQTT-disallowed characters.
+///
+/// See [§1.5.4 — UTF-8 Encoded String](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901010).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
 #[error("invalid MQTT UTF-8 string")]
 pub struct Utf8StringError;
 
+/// MQTT v5.0 UTF-8 Encoded String
+/// ([§1.5.4](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901010)).
+///
+/// Character data encoded using UTF-8 as defined in RFC 3629.
+///
+/// Invariants enforced by the constructors:
+///
+/// * The UTF-8 encoded byte form has length ≤ `u16::MAX`
+///   ([MQTT-1.5.4-1]).
+/// * The data is well-formed UTF-8 — no encodings of surrogate
+///   code points, no overlong encodings ([MQTT-1.5.4-1]).
+/// * Does not contain the null character `U+0000` ([MQTT-1.5.4-2]).
+/// * Does not contain any disallowed control characters
+///   (`U+0001..=U+001F`, `U+007F..=U+009F`) or the non-characters
+///   `U+FFFE`, `U+FFFF` ([MQTT-1.5.4-3]).
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
 pub struct Utf8String(bytes::Bytes);
 
+/// Error returned when constructing a [`Topic`] from a value that
+/// contains the `#` or `+` wildcard characters, or is not a valid
+/// [`Utf8String`].
+///
+/// See [§4.7 — Topic Names and Topic Filters](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901241).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
 #[error("invalid MQTT topic")]
 pub struct TopicError;
 
+/// MQTT v5.0 Topic Name
+/// ([§4.7 — Topic Names and Topic Filters](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901241)).
+///
+/// A [`Utf8String`] that additionally MUST NOT contain wildcard
+/// characters: the multi-level wildcard `#` ([MQTT-4.7.1-1]) or the
+/// single-level wildcard `+` ([MQTT-4.7.1-2]). Topic names identify
+/// the information channel to which payload data is published and are
+/// distinct from Topic Filters used by `SUBSCRIBE`.
+///
+/// Conformance: `[MQTT-4.7.3-1]`, `[MQTT-4.7.3-2]`, `[MQTT-4.7.3-3]`.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
 pub struct Topic(Utf8String);
 
@@ -64,6 +128,7 @@ impl Payload {
         Self(value)
     }
 
+    /// Consumes the [`Payload`] and returns the underlying bytes.
     #[inline]
     pub fn into_inner(self) -> bytes::Bytes {
         self.0
@@ -103,6 +168,7 @@ impl BinaryData {
         Self(value)
     }
 
+    /// Consumes the [`BinaryData`] and returns the underlying bytes.
     #[inline]
     pub fn into_inner(self) -> bytes::Bytes {
         self.0
@@ -149,6 +215,9 @@ impl Utf8String {
         Self(value)
     }
 
+    /// Consumes the [`Utf8String`] and returns the underlying bytes.
+    ///
+    /// The returned bytes are the raw UTF-8 encoding.
     #[inline]
     pub fn into_inner(self) -> bytes::Bytes {
         self.0
@@ -185,6 +254,8 @@ impl Topic {
         Self(value)
     }
 
+    /// Consumes the [`Topic`] and returns the underlying
+    /// [`Utf8String`].
     #[inline]
     pub fn into_inner(self) -> Utf8String {
         self.0
@@ -363,6 +434,7 @@ impl core::fmt::Display for Utf8String {
 }
 
 impl Utf8String {
+    /// Returns the underlying UTF-8 encoded bytes as a slice.
     pub fn as_bytes(&self) -> &[u8] {
         let b: &bytes::Bytes = self.as_ref();
         b
@@ -450,38 +522,91 @@ impl<'a> TryFrom<&'a str> for Utf8String {
     }
 }
 
+/// Retain Handling option carried inside a `SUBSCRIBE` Subscription
+/// Options byte
+/// ([§3.8.3.1 — Subscription Options](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901169)).
+///
+/// Tells the Server whether to send retained messages when a
+/// subscription is established. Encoded as bits 4 and 5 of the
+/// Subscription Options byte; value `3` is Malformed Packet
+/// ([MQTT-3.8.3-4]).
 #[derive(Debug, PartialEq, Clone, Copy, EnumIter, Hash, PartialOrd, Eq, Ord, Default)]
 pub enum RetainHandling {
+    /// Send retained messages at the time of the subscribe.
     #[default]
     SendRetained = 0,
+    /// Send retained messages only if the subscription does not
+    /// currently exist.
     SendRetainedIfSubscriptionDoesNotExist = 1,
+    /// Do not send retained messages at the time of the subscribe.
     DoNotSend = 2,
 }
 
+/// Payload Format Indicator property value
+/// ([§3.3.2.3.2](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901111)).
+///
+/// Indicates whether the Application Message is unspecified bytes or
+/// UTF-8 encoded character data. Conformance: `[MQTT-1.5.4-1]`,
+/// `[MQTT-3.3.2-5]`.
 #[derive(Debug, PartialEq, Clone, Copy, EnumIter, Hash, PartialOrd, Eq, Ord, Default)]
 pub enum FormatIndicator {
+    /// The Application Message is unspecified bytes (equivalent to
+    /// the property being absent).
     #[default]
     Unspecified = 0,
+    /// The Application Message is UTF-8 Encoded Character Data.
     Utf8 = 1,
 }
 
+/// Quality of Service level associated with a `PUBLISH` packet or a
+/// subscription
+/// ([§4.3 — Quality of Service levels and protocol flows](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901234)).
+///
+/// The value `3` is Malformed Packet ([MQTT-3.3.1-4]). Conformance:
+/// `[MQTT-4.3.1-1]`, `[MQTT-4.3.2-1]`, `[MQTT-4.3.3-1]`.
 #[derive(Debug, PartialEq, Clone, Copy, EnumIter, Hash, PartialOrd, Eq, Ord, Default)]
 pub enum Qos {
+    /// At most once delivery — the message is delivered at most
+    /// once, or it is not delivered at all
+    /// ([§4.3.1](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901235)).
     #[default]
     AtMostOnce = 0,
+    /// At least once delivery — the message is assured to arrive
+    /// but duplicates can occur
+    /// ([§4.3.2](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901236)).
     AtLeastOnce = 1,
+    /// Exactly once delivery — the message is assured to arrive
+    /// exactly once
+    /// ([§4.3.3](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901237)).
     ExactlyOnce = 2,
 }
 
+/// Subset of [`Qos`] used by the Maximum QoS property
+/// ([§3.2.2.3.4](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901084))
+/// advertised by the Server in `CONNACK`.
+///
+/// Excludes [`Qos::ExactlyOnce`]: if a Server advertises Maximum QoS
+/// it MUST be `0` or `1` ([MQTT-3.2.2-12]). A Client receiving this
+/// property MUST NOT send PUBLISH packets at a higher QoS
+/// ([MQTT-3.2.2-11]).
 #[derive(Debug, PartialEq, Clone, Copy, EnumIter, Hash, PartialOrd, Eq, Ord)]
 pub enum MaximumQoS {
+    /// At most once delivery (see [`Qos::AtMostOnce`]).
     AtMostOnce = 0,
+    /// At least once delivery (see [`Qos::AtLeastOnce`]).
     AtLeastOnce = 1,
 }
 
+/// Subset of [`Qos`] containing only the delivery-guaranteed levels.
+///
+/// Used in contexts where `QoS 0` messages are not expected
+/// (e.g. `PUBREL` / `PUBCOMP` flow, see
+/// [§4.3.3](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901237)).
 #[derive(Debug, PartialEq, Clone, Copy, EnumIter, Hash, PartialOrd, Eq, Ord)]
 pub enum GuaranteedQoS {
+    /// At least once delivery (see [`Qos::AtLeastOnce`]).
     AtLeastOnce = 1,
+    /// Exactly once delivery (see [`Qos::ExactlyOnce`]).
     ExactlyOnce = 2,
 }
 
@@ -492,10 +617,15 @@ impl From<RetainHandling> for u8 {
     }
 }
 
+/// Error returned when converting a byte into a [`RetainHandling`]
+/// fails because the value is outside the set `{0, 1, 2}`
+/// ([MQTT-3.8.3-4]).
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy, Error)]
 #[error("Invalid retain handling value: {value}")]
 #[repr(transparent)]
 pub struct InvalidRetainHandlingError {
+    /// Offending byte value that could not be mapped onto a
+    /// [`RetainHandling`] variant.
     pub value: u8,
 }
 
@@ -516,10 +646,15 @@ impl From<FormatIndicator> for u8 {
     }
 }
 
+/// Error returned when converting a byte into a [`FormatIndicator`]
+/// fails because the value is outside the set `{0, 1}`
+/// ([MQTT-3.3.2-5]).
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy, Error)]
 #[error("Unknown format indicator: {format_indicator}")]
 #[repr(transparent)]
 pub struct UnknownFormatIndicatorError {
+    /// Offending byte value that could not be mapped onto a
+    /// [`FormatIndicator`] variant.
     pub format_indicator: u8,
 }
 
@@ -543,10 +678,16 @@ impl From<Qos> for u8 {
     }
 }
 
+/// Error returned when converting a byte into a [`Qos`],
+/// [`MaximumQoS`], or [`GuaranteedQoS`] value fails because the byte
+/// is outside the set `{0, 1, 2}` ([MQTT-3.3.1-4]) or outside the
+/// narrower range admitted by the target type.
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy, Error)]
 #[error("Invalid QoS value: {qos}")]
 #[repr(transparent)]
 pub struct InvalidQosError {
+    /// Offending byte value that could not be mapped onto a valid
+    /// QoS variant.
     pub qos: u8,
 }
 
