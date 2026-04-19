@@ -577,9 +577,52 @@ fn inbound_publish_qos0_is_forwarded_to_user_queue() {
             assert_eq!(message.topic_alias, None);
             assert_eq!(message.response_topic, None);
             assert_eq!(message.correlation_data, None);
-            assert_eq!(message.subscription_identifier, None);
+            assert!(message.subscription_identifiers.is_empty());
             assert_eq!(message.content_type, None);
             assert!(message.user_properties.is_empty());
+        }
+        other => panic!("expected received message, got {other:?}"),
+    }
+}
+
+#[test]
+fn inbound_publish_multiple_subscription_identifiers_surface_to_user() {
+    let mut client = Client::<u64>::default();
+
+    assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
+    assert!(client.poll_write().is_some());
+    let connack = ControlPacket::ConnAck(ConnAck {
+        kind: ConnAckKind::Other {
+            reason_code: ConnackReasonCode::Success,
+        },
+        properties: ConnAckProperties::default(),
+    });
+    assert_eq!(client.handle_read(encode_packet(&connack)), Ok(()));
+    assert!(matches!(client.poll_read(), Some(UserWriteOut::Connected)));
+
+    let publish_topic = Topic::try_new("t/multi").expect("valid topic");
+    let publish_payload = Payload::new(b"hello".as_slice());
+    let publish = ControlPacket::Publish(Publish {
+        kind: PublishKind::FireAndForget,
+        retain: false,
+        payload: publish_payload.clone(),
+        topic: publish_topic.clone(),
+        properties: PublishProperties {
+            subscription_identifiers: vec![NonZero::new(7).unwrap(), NonZero::new(42).unwrap()],
+            ..PublishProperties::default()
+        },
+    });
+
+    assert_eq!(client.handle_read(encode_packet(&publish)), Ok(()));
+
+    match client.poll_read() {
+        Some(UserWriteOut::ReceivedMessage(message)) => {
+            assert_eq!(message.topic, publish_topic);
+            assert_eq!(message.payload, publish_payload);
+            assert_eq!(
+                message.subscription_identifiers,
+                vec![NonZero::new(7).unwrap(), NonZero::new(42).unwrap()]
+            );
         }
         other => panic!("expected received message, got {other:?}"),
     }

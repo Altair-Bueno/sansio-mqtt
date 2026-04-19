@@ -1140,7 +1140,7 @@ impl<Time> Client<Time> {
             topic_alias: properties.topic_alias,
             response_topic: properties.response_topic,
             correlation_data: properties.correlation_data,
-            subscription_identifier: properties.subscription_identifier,
+            subscription_identifiers: properties.subscription_identifiers,
             content_type: properties.content_type,
             user_properties: properties.user_properties,
         }
@@ -1288,7 +1288,7 @@ where
                     response_topic: msg.response_topic,
                     correlation_data: msg.correlation_data,
                     user_properties: msg.user_properties,
-                    subscription_identifier: None,
+                    subscription_identifiers: Vec::new(),
                     content_type: msg.content_type,
                 };
                 let kind = match msg.qos {
