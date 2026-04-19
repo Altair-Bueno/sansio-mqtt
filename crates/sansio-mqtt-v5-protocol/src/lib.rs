@@ -4,6 +4,7 @@ extern crate alloc;
 
 mod limits;
 mod proto;
+mod queues;
 mod types;
 
 pub use proto::Client;
