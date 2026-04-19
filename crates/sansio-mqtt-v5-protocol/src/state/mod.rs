@@ -19,7 +19,7 @@ use crate::types::{ClientSettings, DriverEventIn, Error, UserWriteIn};
 /// `Transitioning` is a zero-size default used as a `core::mem::take` sentinel.
 /// It is never observable in stable code — the `unreachable!` in its trait impl
 /// fires only if a bug leaves the FSM without a next state after `dispatch`.
-#[derive(Default)]
+#[derive(Default, Debug)]
 #[allow(dead_code, clippy::large_enum_variant)]
 pub(crate) enum ClientState {
     #[default]

@@ -33,6 +33,7 @@ use crate::types::{
     InboundMessageId, IncomingRejectReason, UserWriteIn, UserWriteOut,
 };
 
+#[derive(Debug)]
 pub(crate) struct Connected;
 
 fn map_inbound_publish_to_broker_message(publish: Publish) -> BrokerMessage {

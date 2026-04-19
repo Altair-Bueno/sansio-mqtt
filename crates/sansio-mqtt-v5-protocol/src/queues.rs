@@ -8,7 +8,7 @@ use sansio_mqtt_v5_types::{
     PubRecProperties, PubRecReasonCode, PubRel, PubRelProperties, PubRelReasonCode,
 };
 
-use crate::scratchpad::{ClientLifecycleState, ClientScratchpad};
+use crate::scratchpad::ClientScratchpad;
 use crate::session::ClientSession;
 use crate::types::{ClientSettings, DriverEventOut, Error};
 
@@ -53,7 +53,6 @@ pub(crate) fn fail_protocol_and_disconnect<Time: 'static>(
     scratchpad
         .action_queue
         .push_back(DriverEventOut::CloseSocket);
-    scratchpad.lifecycle_state = ClientLifecycleState::Disconnected; // removed in Task 12
     scratchpad.read_buffer.clear();
     crate::session_ops::reset_keepalive(scratchpad);
     // reset negotiated limits (also clears inbound topic aliases)

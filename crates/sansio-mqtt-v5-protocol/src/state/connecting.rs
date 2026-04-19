@@ -16,7 +16,6 @@ use sansio_mqtt_v5_types::WillProperties;
 use crate::limits;
 use crate::queues;
 use crate::scratchpad::ClientScratchpad;
-use crate::scratchpad::ConnectingPhase;
 use crate::session::ClientSession;
 use crate::session_ops;
 use crate::state::connected::Connected;
@@ -27,8 +26,12 @@ use crate::types::{
     UserWriteOut,
 };
 
+#[derive(Debug)]
 pub(crate) struct Connecting {
     pub(crate) pending_connect_options: ConnectionOptions,
+    /// Set to `true` after the CONNECT packet has been sent (i.e., after SocketConnected fires
+    /// and the CONNECT is enqueued). Used to reject a second SocketConnected in Connecting state.
+    pub(crate) connect_sent: bool,
 }
 
 /// Builds a CONNECT packet from [`ClientSettings`] and [`ConnectionOptions`].
@@ -111,7 +114,7 @@ fn build_connect(settings: &ClientSettings, options: &ConnectionOptions) -> Resu
 ///
 /// Resets negotiated limits, builds and enqueues the CONNECT packet, and
 /// resets keepalive tracking flags. On error, stays in Connecting.
-fn on_socket_connected<Time: Copy + Ord + 'static>(
+pub(crate) fn on_socket_connected<Time: Copy + Ord + 'static>(
     connecting: Connecting,
     settings: &ClientSettings,
     session: &mut ClientSession,
@@ -124,10 +127,15 @@ fn on_socket_connected<Time: Copy + Ord + 'static>(
     };
     match queues::enqueue_packet(scratchpad, &ControlPacket::Connect(connect)) {
         Ok(()) => {
-            scratchpad.connecting_phase = ConnectingPhase::AwaitConnAck;
             scratchpad.keep_alive_saw_network_activity = false;
             scratchpad.keep_alive_ping_outstanding = false;
-            (ClientState::Connecting(connecting), Ok(()))
+            (
+                ClientState::Connecting(Connecting {
+                    connect_sent: true,
+                    ..connecting
+                }),
+                Ok(()),
+            )
         }
         Err(e) => (ClientState::Connecting(connecting), Err(e)),
     }
@@ -147,8 +155,8 @@ fn on_socket_closed_or_error<Time: Copy + Ord + 'static>(
     session_ops::reset_keepalive(scratchpad);
     limits::reset_negotiated_limits(settings, session, scratchpad);
     session_ops::maybe_reset_session_state(session, scratchpad);
-    scratchpad.read_queue.push_back(UserWriteOut::Disconnected);
     if is_error {
+        // Socket error does not emit Disconnected; only enqueues CloseSocket.
         scratchpad
             .action_queue
             .push_back(DriverEventOut::CloseSocket);
@@ -157,6 +165,7 @@ fn on_socket_closed_or_error<Time: Copy + Ord + 'static>(
             Err(Error::ProtocolError),
         )
     } else {
+        scratchpad.read_queue.push_back(UserWriteOut::Disconnected);
         (ClientState::Disconnected(Disconnected), Ok(()))
     }
 }
@@ -194,10 +203,14 @@ fn on_connack_success<Time: Copy + Ord + 'static>(
         .properties
         .shared_subscription_available
         .unwrap_or(true);
+    // Restore connect options to scratchpad so recompute_effective_limits can read them
+    // (e.g., topic_alias_maximum, receive_maximum). After CONNACK, the options are saved
+    // in scratchpad for potential reconnect.
+    scratchpad.pending_connect_options = connecting.pending_connect_options;
     limits::recompute_effective_limits(settings, scratchpad);
     scratchpad.keep_alive_interval_secs = match scratchpad.negotiated_server_keep_alive {
         Some(server_keep_alive) => NonZero::new(server_keep_alive),
-        None => connecting.pending_connect_options.keep_alive,
+        None => scratchpad.pending_connect_options.keep_alive,
     };
     scratchpad.keep_alive_saw_network_activity = false;
     scratchpad.keep_alive_ping_outstanding = false;
@@ -207,7 +220,7 @@ fn on_connack_success<Time: Copy + Ord + 'static>(
     match connack.kind {
         ConnAckKind::ResumePreviousSession => {
             // [MQTT-3.2.2-2] Session Present=1 is only valid when CONNECT had Clean Start=0.
-            if connecting.pending_connect_options.clean_start {
+            if scratchpad.pending_connect_options.clean_start {
                 let _ = queues::fail_protocol_and_disconnect(
                     settings,
                     session,
@@ -310,7 +323,6 @@ impl<Time: Copy + Ord + 'static> StateHandler<Time> for Connecting {
                     );
                 }
 
-                scratchpad.connecting_phase = ConnectingPhase::AuthInProgress;
                 (ClientState::Connecting(self), Ok(()))
             }
             _ => {
@@ -337,6 +349,7 @@ impl<Time: Copy + Ord + 'static> StateHandler<Time> for Connecting {
     ) -> (ClientState, Result<(), Error>) {
         match msg {
             UserWriteIn::Disconnect => {
+                scratchpad.pending_connect_options = self.pending_connect_options;
                 let _ = queues::enqueue_packet(
                     scratchpad,
                     &ControlPacket::Disconnect(Disconnect {
@@ -370,12 +383,24 @@ impl<Time: Copy + Ord + 'static> StateHandler<Time> for Connecting {
     ) -> (ClientState, Result<(), Error>) {
         match evt {
             DriverEventIn::SocketConnected => {
-                on_socket_connected(self, settings, session, scratchpad)
+                if self.connect_sent {
+                    // CONNECT was already sent; a second SocketConnected is invalid.
+                    (
+                        ClientState::Connecting(self),
+                        Err(Error::InvalidStateTransition),
+                    )
+                } else {
+                    // CONNECT not yet sent (transition came from handle_write(Connect));
+                    // send CONNECT now.
+                    on_socket_connected(self, settings, session, scratchpad)
+                }
             }
             DriverEventIn::SocketClosed => {
+                scratchpad.pending_connect_options = self.pending_connect_options;
                 on_socket_closed_or_error(settings, session, scratchpad, false)
             }
             DriverEventIn::SocketError => {
+                scratchpad.pending_connect_options = self.pending_connect_options;
                 on_socket_closed_or_error(settings, session, scratchpad, true)
             }
         }
@@ -398,6 +423,7 @@ impl<Time: Copy + Ord + 'static> StateHandler<Time> for Connecting {
         session: &mut ClientSession,
         scratchpad: &mut ClientScratchpad<Time>,
     ) -> (ClientState, Result<(), Error>) {
+        scratchpad.pending_connect_options = self.pending_connect_options;
         let _ = queues::enqueue_packet(
             scratchpad,
             &ControlPacket::Disconnect(Disconnect {

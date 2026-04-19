@@ -5,28 +5,11 @@ use sansio_mqtt_v5_types::MaximumQoS;
 
 use crate::types::{ConnectionOptions, DriverEventOut, UserWriteOut};
 
-#[derive(Debug, PartialEq, Default)]
-pub(crate) enum ClientLifecycleState {
-    #[default]
-    Start,
-    Disconnected,
-    Connecting,
-    Connected,
-}
-
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
-pub(crate) enum ConnectingPhase {
-    AwaitConnAck,
-    AuthInProgress,
-}
-
 #[derive(Debug)]
 pub struct ClientScratchpad<Time>
 where
     Time: 'static,
 {
-    pub(crate) lifecycle_state: ClientLifecycleState,
-    pub(crate) connecting_phase: ConnectingPhase,
     pub(crate) pending_connect_options: ConnectionOptions,
     pub(crate) session_should_persist: bool,
     pub(crate) effective_client_max_bytes_string: u16,
@@ -71,8 +54,6 @@ where
 {
     fn default() -> Self {
         Self {
-            lifecycle_state: ClientLifecycleState::default(),
-            connecting_phase: ConnectingPhase::AwaitConnAck,
             pending_connect_options: ConnectionOptions::default(),
             session_should_persist: false,
             effective_client_max_bytes_string: u16::MAX,

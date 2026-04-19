@@ -9,24 +9,29 @@ use crate::session_ops;
 use crate::state::connecting::Connecting;
 use crate::state::disconnected::Disconnected;
 use crate::state::{ClientState, StateHandler};
-use crate::types::{ClientSettings, ConnectionOptions, DriverEventIn, Error, UserWriteIn};
+use crate::types::{
+    ClientSettings, ConnectionOptions, DriverEventIn, DriverEventOut, Error, UserWriteIn,
+    UserWriteOut,
+};
 
 #[allow(dead_code)]
+#[derive(Debug)]
 pub(crate) struct Start;
 
 /// Shared logic for handling a `UserWriteIn::Connect` in the Start or Disconnected state.
 ///
 /// Stores the connection options, recomputes effective limits, optionally clears session
 /// state for a clean start, marks the session persistence flag, enqueues `OpenSocket` if
-/// not already present, and transitions to the `Connecting` state.
+/// not already present, and stays in the caller's state (Start or Disconnected).
+/// The actual transition to Connecting happens when `SocketConnected` fires.
 ///
 /// [MQTT-3.1.2-4] Clean Start=1 starts a new Session.
-pub(crate) fn handle_connect<Time: Copy + Ord + 'static>(
+pub(crate) fn store_connect_options_and_enqueue_open_socket<Time: Copy + Ord + 'static>(
     settings: &ClientSettings,
     session: &mut ClientSession,
     scratchpad: &mut ClientScratchpad<Time>,
     options: ConnectionOptions,
-) -> (ClientState, Result<(), Error>) {
+) {
     scratchpad.pending_connect_options = options;
     limits::recompute_effective_limits(settings, scratchpad);
     if scratchpad.pending_connect_options.clean_start {
@@ -48,11 +53,6 @@ pub(crate) fn handle_connect<Time: Copy + Ord + 'static>(
             .action_queue
             .push_back(crate::types::DriverEventOut::OpenSocket);
     }
-
-    let connecting = Connecting {
-        pending_connect_options: core::mem::take(&mut scratchpad.pending_connect_options),
-    };
-    (ClientState::Connecting(connecting), Ok(()))
 }
 
 impl<Time: Copy + Ord + 'static> StateHandler<Time> for Start {
@@ -83,19 +83,53 @@ impl<Time: Copy + Ord + 'static> StateHandler<Time> for Start {
         msg: UserWriteIn,
     ) -> (ClientState, Result<(), Error>) {
         match msg {
-            UserWriteIn::Connect(options) => handle_connect(settings, session, scratchpad, options),
+            UserWriteIn::Connect(options) => {
+                store_connect_options_and_enqueue_open_socket(
+                    settings, session, scratchpad, options,
+                );
+                (ClientState::Start(self), Ok(()))
+            }
             _ => (ClientState::Start(self), Err(Error::InvalidStateTransition)),
         }
     }
 
     fn handle_event(
         self,
-        _settings: &ClientSettings,
-        _session: &mut ClientSession,
-        _scratchpad: &mut ClientScratchpad<Time>,
-        _evt: DriverEventIn,
+        settings: &ClientSettings,
+        session: &mut ClientSession,
+        scratchpad: &mut ClientScratchpad<Time>,
+        evt: DriverEventIn,
     ) -> (ClientState, Result<(), Error>) {
-        (ClientState::Start(self), Err(Error::InvalidStateTransition))
+        match evt {
+            DriverEventIn::SocketConnected => {
+                // In Start state the user may not have called Connect first; use stored
+                // pending_connect_options (defaults when never set).
+                let connecting = Connecting {
+                    pending_connect_options: core::mem::take(
+                        &mut scratchpad.pending_connect_options,
+                    ),
+                    connect_sent: false,
+                };
+                crate::state::connecting::on_socket_connected(
+                    connecting, settings, session, scratchpad,
+                )
+            }
+            DriverEventIn::SocketClosed => {
+                // Socket closed unexpectedly in Start state; emit Disconnected and transition.
+                scratchpad.read_queue.push_back(UserWriteOut::Disconnected);
+                (ClientState::Disconnected(Disconnected), Ok(()))
+            }
+            DriverEventIn::SocketError => {
+                // Socket error in Start state; enqueue CloseSocket and return error.
+                scratchpad
+                    .action_queue
+                    .push_back(DriverEventOut::CloseSocket);
+                (
+                    ClientState::Disconnected(Disconnected),
+                    Err(Error::ProtocolError),
+                )
+            }
+        }
     }
 
     fn handle_timeout(
