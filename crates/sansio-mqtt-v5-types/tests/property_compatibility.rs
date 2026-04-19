@@ -742,7 +742,7 @@ fn publish_parser_rejects_subscription_identifiers_exceeding_bound() {
         0x30, 17, // Header: PUBLISH, qos=0, retain=0; remaining length = 17
         0, 4, // Topic length
         116, 101, 115, 116, // Topic ("test")
-        6,    // properties length
+        6,   // properties length
         11, 1, // SubscriptionIdentifier = 1
         11, 1, // SubscriptionIdentifier = 1
         11, 1, // SubscriptionIdentifier = 1
@@ -764,7 +764,7 @@ fn publish_parser_accepts_many_subscription_identifiers_under_unlimited_settings
         0x30, 17, // Header: PUBLISH, qos=0, retain=0; remaining length = 17
         0, 4, // Topic length
         116, 101, 115, 116, // Topic ("test")
-        6,    // properties length
+        6,   // properties length
         11, 1, // SubscriptionIdentifier = 1
         11, 1, // SubscriptionIdentifier = 1
         11, 1, // SubscriptionIdentifier = 1
