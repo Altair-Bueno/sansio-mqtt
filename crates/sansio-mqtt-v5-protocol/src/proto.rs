@@ -123,6 +123,7 @@ where
     effective_client_max_remaining_bytes: u64,
     effective_client_max_subscriptions_len: u32,
     effective_client_max_user_properties_len: usize,
+    effective_client_max_subscription_identifiers_len: usize,
     effective_client_receive_maximum: NonZero<u16>,
     effective_client_maximum_packet_size: Option<NonZero<u32>>,
     effective_client_topic_alias_maximum: u16,
@@ -168,6 +169,7 @@ where
             effective_client_max_remaining_bytes: u64::MAX,
             effective_client_max_subscriptions_len: u32::MAX,
             effective_client_max_user_properties_len: usize::MAX,
+            effective_client_max_subscription_identifiers_len: usize::MAX,
             effective_client_receive_maximum: NonZero::new(u16::MAX)
                 .expect("u16::MAX is always non-zero for receive_maximum"),
             effective_client_maximum_packet_size: None,
@@ -358,6 +360,9 @@ impl<Time> Client<Time> {
             max_remaining_bytes: self.scratchpad.effective_client_max_remaining_bytes,
             max_subscriptions_len: self.scratchpad.effective_client_max_subscriptions_len,
             max_user_properties_len: self.scratchpad.effective_client_max_user_properties_len,
+            max_subscription_identifiers_len: self
+                .scratchpad
+                .effective_client_max_subscription_identifiers_len,
         }
     }
 
@@ -392,6 +397,9 @@ impl<Time> Client<Time> {
             self.settings.max_subscriptions_len;
         self.scratchpad.effective_client_max_user_properties_len =
             self.settings.max_user_properties_len;
+        self.scratchpad
+            .effective_client_max_subscription_identifiers_len =
+            self.settings.max_subscription_identifiers_len;
 
         self.scratchpad.effective_client_receive_maximum = Self::min_option_nonzero_u16(
             self.settings.max_incoming_receive_maximum,
