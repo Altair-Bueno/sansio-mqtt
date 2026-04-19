@@ -102,18 +102,18 @@ fn driver_events_are_pattern_matchable_without_equality() {
 
 #[test]
 fn client_new_uses_default_state_and_blank_scratchpad() {
-    let _client = Client::<u64>::new(ClientSettings::default());
+    let _client = Client::<u64>::with_settings(ClientSettings::default());
 }
 
 #[test]
 fn client_new_with_state_accepts_preloaded_state() {
     let state = sansio_mqtt_v5_protocol::ClientState::default();
-    let _client = Client::<u64>::new_with_state(ClientSettings::default(), state);
+    let _client = Client::<u64>::with_settings_and_state(ClientSettings::default(), state);
 }
 
 #[test]
 fn clean_start_true_drops_preloaded_state() {
-    let mut client = Client::<u64>::new_with_state(
+    let mut client = Client::<u64>::with_settings_and_state(
         ClientSettings::default(),
         sansio_mqtt_v5_protocol::ClientState::default(),
     );
@@ -135,7 +135,7 @@ fn clean_start_true_drops_preloaded_state() {
 
 #[test]
 fn clean_start_false_keeps_preloaded_state_until_session_rules_clear_it() {
-    let mut client = Client::<u64>::new_with_state(
+    let mut client = Client::<u64>::with_settings_and_state(
         ClientSettings::default(),
         sansio_mqtt_v5_protocol::ClientState::default(),
     );
@@ -159,21 +159,12 @@ fn clean_start_false_keeps_preloaded_state_until_session_rules_clear_it() {
 fn config_and_error_are_instantiable() {
     let config = ClientSettings::default();
     let settings = ParserSettings::default();
-    assert_eq!(config.parser_max_bytes_string, settings.max_bytes_string);
+    assert_eq!(config.max_bytes_string, settings.max_bytes_string);
+    assert_eq!(config.max_bytes_binary_data, settings.max_bytes_binary_data);
+    assert_eq!(config.max_remaining_bytes, settings.max_remaining_bytes);
+    assert_eq!(config.max_subscriptions_len, settings.max_subscriptions_len);
     assert_eq!(
-        config.parser_max_bytes_binary_data,
-        settings.max_bytes_binary_data
-    );
-    assert_eq!(
-        config.parser_max_remaining_bytes,
-        settings.max_remaining_bytes
-    );
-    assert_eq!(
-        config.parser_max_subscriptions_len,
-        settings.max_subscriptions_len
-    );
-    assert_eq!(
-        config.parser_max_user_properties_len,
+        config.max_user_properties_len,
         settings.max_user_properties_len
     );
 

@@ -181,20 +181,12 @@ where
 
 impl<Time> Default for Client<Time> {
     fn default() -> Self {
-        Self::new(ClientSettings::default())
+        Self::with_settings(Default::default())
     }
 }
 
 impl<Time> Client<Time> {
-    pub fn new(settings: ClientSettings) -> Self {
-        Self {
-            settings,
-            state: ClientState::default(),
-            scratchpad: ClientScratchpad::default(),
-        }
-    }
-
-    pub fn new_with_state(settings: ClientSettings, state: ClientState) -> Self {
+    pub fn with_settings_and_state(settings: ClientSettings, state: ClientState) -> Self {
         Self {
             settings,
             state,
@@ -202,8 +194,8 @@ impl<Time> Client<Time> {
         }
     }
 
-    pub fn with_config(settings: ClientSettings) -> Self {
-        Self::new(settings)
+    pub fn with_settings(settings: ClientSettings) -> Self {
+        Self::with_settings_and_state(settings, Default::default())
     }
 
     fn encode_control_packet(packet: &ControlPacket) -> Result<Bytes, Error> {
@@ -282,11 +274,11 @@ impl<Time> Client<Time> {
 
     fn parser_settings(&self) -> ParserSettings {
         ParserSettings {
-            max_bytes_string: self.settings.parser_max_bytes_string,
-            max_bytes_binary_data: self.settings.parser_max_bytes_binary_data,
-            max_remaining_bytes: self.settings.parser_max_remaining_bytes,
-            max_subscriptions_len: self.settings.parser_max_subscriptions_len,
-            max_user_properties_len: self.settings.parser_max_user_properties_len,
+            max_bytes_string: self.settings.max_bytes_string,
+            max_bytes_binary_data: self.settings.max_bytes_binary_data,
+            max_remaining_bytes: self.settings.max_remaining_bytes,
+            max_subscriptions_len: self.settings.max_subscriptions_len,
+            max_user_properties_len: self.settings.max_user_properties_len,
         }
     }
 

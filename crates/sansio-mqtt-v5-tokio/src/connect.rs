@@ -30,7 +30,8 @@ impl Default for ConnectOptions {
 
 pub async fn connect(options: ConnectOptions) -> Result<(Client, EventLoop), ConnectError> {
     let mut stream = TcpStream::connect(options.addr).await?;
-    let mut protocol = ProtocolClient::<tokio::time::Instant>::with_config(options.protocol_config);
+    let mut protocol =
+        ProtocolClient::<tokio::time::Instant>::with_settings(options.protocol_config);
 
     protocol.handle_write(UserWriteIn::Connect(options.connection))?;
 

@@ -18,11 +18,11 @@ use sansio_mqtt_v5_types::ParserSettings;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ClientSettings {
-    pub parser_max_bytes_string: u16,
-    pub parser_max_bytes_binary_data: u16,
-    pub parser_max_remaining_bytes: u64,
-    pub parser_max_subscriptions_len: u32,
-    pub parser_max_user_properties_len: usize,
+    pub max_bytes_string: u16,
+    pub max_bytes_binary_data: u16,
+    pub max_remaining_bytes: u64,
+    pub max_subscriptions_len: u32,
+    pub max_user_properties_len: usize,
 }
 
 impl Default for ClientSettings {
@@ -30,11 +30,11 @@ impl Default for ClientSettings {
         let settings = ParserSettings::default();
 
         Self {
-            parser_max_bytes_string: settings.max_bytes_string,
-            parser_max_bytes_binary_data: settings.max_bytes_binary_data,
-            parser_max_remaining_bytes: settings.max_remaining_bytes,
-            parser_max_subscriptions_len: settings.max_subscriptions_len,
-            parser_max_user_properties_len: settings.max_user_properties_len,
+            max_bytes_string: settings.max_bytes_string,
+            max_bytes_binary_data: settings.max_bytes_binary_data,
+            max_remaining_bytes: settings.max_remaining_bytes,
+            max_subscriptions_len: settings.max_subscriptions_len,
+            max_user_properties_len: settings.max_user_properties_len,
         }
     }
 }

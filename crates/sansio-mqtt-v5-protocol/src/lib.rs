@@ -7,17 +7,4 @@ mod types;
 
 pub use proto::Client;
 pub use proto::ClientState;
-pub use types::BrokerMessage;
-pub use types::ClientMessage;
-pub use types::ClientSettings;
-pub use types::ConnectionOptions;
-pub use types::DriverEventIn;
-pub use types::DriverEventOut;
-pub use types::Error;
-pub use types::InboundMessageId;
-pub use types::IncomingRejectReason;
-pub use types::SubscribeOptions;
-pub use types::UnsubscribeOptions;
-pub use types::UserWriteIn;
-pub use types::UserWriteOut;
-pub use types::Will;
+pub use types::*;
