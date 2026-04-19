@@ -4,9 +4,9 @@ use core::time::Duration;
 use crate::limits;
 use crate::queues;
 use crate::scratchpad::{ClientLifecycleState, ClientScratchpad, ConnectingPhase};
+use crate::session::{ClientSession, InboundInflightState, OutboundInflightState};
 use crate::session_ops;
 use crate::types::*;
-use alloc::collections::btree_map::BTreeMap;
 use alloc::vec::Vec;
 use bytes::Bytes;
 use bytes::BytesMut;
@@ -31,7 +31,6 @@ use sansio_mqtt_v5_types::PublishProperties;
 use sansio_mqtt_v5_types::Qos;
 use sansio_mqtt_v5_types::Subscribe;
 use sansio_mqtt_v5_types::SubscribeProperties;
-use sansio_mqtt_v5_types::Topic;
 use sansio_mqtt_v5_types::Unsubscribe;
 use sansio_mqtt_v5_types::UnsubscribeProperties;
 use sansio_mqtt_v5_types::Utf8String;
@@ -40,50 +39,6 @@ use sansio_mqtt_v5_types::WillProperties;
 use winnow::error::ErrMode;
 use winnow::stream::Partial;
 use winnow::Parser;
-
-#[derive(Debug, Clone, PartialEq)]
-pub(crate) enum OutboundInflightState {
-    Qos1AwaitPubAck { publish: Publish },
-    Qos2AwaitPubRec { publish: Publish },
-    Qos2AwaitPubComp,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum InboundInflightState {
-    Qos1AwaitAppDecision,
-    Qos2AwaitAppDecision,
-    Qos2AwaitPubRel,
-    Qos2Rejected(PubRecReasonCode),
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct ClientSession {
-    pub(crate) on_flight_sent: BTreeMap<NonZero<u16>, OutboundInflightState>,
-    pub(crate) on_flight_received: BTreeMap<NonZero<u16>, InboundInflightState>,
-    pub(crate) pending_subscribe: BTreeMap<NonZero<u16>, ()>,
-    pub(crate) pending_unsubscribe: BTreeMap<NonZero<u16>, ()>,
-    pub(crate) inbound_topic_aliases: BTreeMap<NonZero<u16>, Topic>,
-    pub(crate) next_packet_id: u16,
-}
-
-impl ClientSession {
-    pub fn clear(&mut self) {
-        *self = Self::default();
-    }
-}
-
-impl Default for ClientSession {
-    fn default() -> Self {
-        Self {
-            on_flight_sent: BTreeMap::new(),
-            on_flight_received: BTreeMap::new(),
-            pending_subscribe: BTreeMap::new(),
-            pending_unsubscribe: BTreeMap::new(),
-            inbound_topic_aliases: BTreeMap::new(),
-            next_packet_id: 1,
-        }
-    }
-}
 
 #[derive(Debug)]
 pub struct Client<Time>

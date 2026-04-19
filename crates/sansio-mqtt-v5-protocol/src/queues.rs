@@ -8,8 +8,8 @@ use sansio_mqtt_v5_types::{
     PubRecProperties, PubRecReasonCode, PubRel, PubRelProperties, PubRelReasonCode,
 };
 
-use crate::proto::ClientSession;
 use crate::scratchpad::{ClientLifecycleState, ClientScratchpad};
+use crate::session::ClientSession;
 use crate::types::{ClientSettings, DriverEventOut, Error};
 
 pub(crate) fn encode_control_packet(packet: &ControlPacket) -> Result<Bytes, Error> {

@@ -6,9 +6,10 @@ mod limits;
 mod proto;
 mod queues;
 mod scratchpad;
+mod session;
 mod session_ops;
 mod types;
 
 pub use proto::Client;
-pub use proto::ClientSession;
+pub use session::ClientSession;
 pub use types::*;

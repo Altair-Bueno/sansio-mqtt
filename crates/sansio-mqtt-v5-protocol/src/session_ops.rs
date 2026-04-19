@@ -4,8 +4,8 @@ use sansio_mqtt_v5_types::{
     ControlPacket, PubRel, PubRelProperties, PubRelReasonCode, PublishKind,
 };
 
-use crate::proto::{ClientSession, OutboundInflightState};
 use crate::scratchpad::ClientScratchpad;
+use crate::session::{ClientSession, OutboundInflightState};
 use crate::types::{Error, UserWriteOut};
 
 /// Resets all keep-alive fields on the scratchpad.
