@@ -18,7 +18,9 @@
 - Spec gate: MUST read the MQTT v5.0 spec before implementing anything: https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html
 - TDD: for behavior changes, add/adjust tests before implementation when feasible; run relevant tests after.
 - Type safety: encode invariants in types; avoid runtime checks when types can enforce.
-- No `unsafe`: enforce with `#![forbid(unsafe_code)]`.
+- Prefer `#![forbid(unsafe_code)]` by default. `unsafe` is allowed only when:
+  - Providing a `Type::*_unchecked` public function (e.g. `new_unchecked` that skips invariant validation).
+  - Calling a `Type::*_unchecked` public function instead of the validated constructor, to make unsafe type construction easy to track.
 - no_std-first: use `alloc` only when required.
 - Required formatting: `cargo fmt`.
 - Required linting: `cargo clippy`.
