@@ -118,6 +118,18 @@ where
     connecting_phase: ConnectingPhase,
     pending_connect_options: ConnectionOptions,
     session_should_persist: bool,
+    effective_client_max_bytes_string: u16,
+    effective_client_max_bytes_binary_data: u16,
+    effective_client_max_remaining_bytes: u64,
+    effective_client_max_subscriptions_len: u32,
+    effective_client_max_user_properties_len: usize,
+    effective_client_receive_maximum: NonZero<u16>,
+    effective_client_maximum_packet_size: Option<NonZero<u32>>,
+    effective_client_topic_alias_maximum: u16,
+    effective_broker_receive_maximum: NonZero<u16>,
+    effective_broker_maximum_packet_size: Option<NonZero<u32>>,
+    effective_broker_topic_alias_maximum: u16,
+    effective_broker_maximum_qos: Option<MaximumQoS>,
     negotiated_receive_maximum: NonZero<u16>,
     negotiated_maximum_packet_size: Option<NonZero<u32>>,
     negotiated_topic_alias_maximum: u16,
@@ -147,6 +159,20 @@ where
             connecting_phase: ConnectingPhase::AwaitConnAck,
             pending_connect_options: ConnectionOptions::default(),
             session_should_persist: false,
+            effective_client_max_bytes_string: u16::MAX,
+            effective_client_max_bytes_binary_data: u16::MAX,
+            effective_client_max_remaining_bytes: u64::MAX,
+            effective_client_max_subscriptions_len: u32::MAX,
+            effective_client_max_user_properties_len: usize::MAX,
+            effective_client_receive_maximum: NonZero::new(u16::MAX)
+                .expect("u16::MAX is always non-zero for receive_maximum"),
+            effective_client_maximum_packet_size: None,
+            effective_client_topic_alias_maximum: u16::MAX,
+            effective_broker_receive_maximum: NonZero::new(u16::MAX)
+                .expect("u16::MAX is always non-zero for receive_maximum"),
+            effective_broker_maximum_packet_size: None,
+            effective_broker_topic_alias_maximum: u16::MAX,
+            effective_broker_maximum_qos: None,
             negotiated_receive_maximum: NonZero::new(u16::MAX)
                 .expect("u16::MAX is always non-zero for receive_maximum"),
             negotiated_maximum_packet_size: None,
@@ -187,11 +213,13 @@ impl<Time> Default for Client<Time> {
 
 impl<Time> Client<Time> {
     pub fn with_settings_and_state(settings: ClientSettings, state: ClientState) -> Self {
-        Self {
+        let mut client = Self {
             settings,
             state,
             scratchpad: ClientScratchpad::default(),
-        }
+        };
+        client.recompute_effective_limits();
+        client
     }
 
     pub fn with_settings(settings: ClientSettings) -> Self {
@@ -274,12 +302,96 @@ impl<Time> Client<Time> {
 
     fn parser_settings(&self) -> ParserSettings {
         ParserSettings {
-            max_bytes_string: self.settings.max_bytes_string,
-            max_bytes_binary_data: self.settings.max_bytes_binary_data,
-            max_remaining_bytes: self.settings.max_remaining_bytes,
-            max_subscriptions_len: self.settings.max_subscriptions_len,
-            max_user_properties_len: self.settings.max_user_properties_len,
+            max_bytes_string: self.scratchpad.effective_client_max_bytes_string,
+            max_bytes_binary_data: self.scratchpad.effective_client_max_bytes_binary_data,
+            max_remaining_bytes: self.scratchpad.effective_client_max_remaining_bytes,
+            max_subscriptions_len: self.scratchpad.effective_client_max_subscriptions_len,
+            max_user_properties_len: self.scratchpad.effective_client_max_user_properties_len,
         }
+    }
+
+    fn recompute_effective_limits(&mut self) {
+        fn min_option_nonzero_u16(
+            a: Option<NonZero<u16>>,
+            b: Option<NonZero<u16>>,
+        ) -> Option<NonZero<u16>> {
+            match (a, b) {
+                (Some(a), Some(b)) => Some(if a.get() <= b.get() { a } else { b }),
+                (Some(a), None) => Some(a),
+                (None, Some(b)) => Some(b),
+                (None, None) => None,
+            }
+        }
+
+        fn min_option_nonzero_u32(
+            a: Option<NonZero<u32>>,
+            b: Option<NonZero<u32>>,
+        ) -> Option<NonZero<u32>> {
+            match (a, b) {
+                (Some(a), Some(b)) => Some(if a.get() <= b.get() { a } else { b }),
+                (Some(a), None) => Some(a),
+                (None, Some(b)) => Some(b),
+                (None, None) => None,
+            }
+        }
+
+        fn min_option_maximum_qos(
+            a: Option<MaximumQoS>,
+            b: Option<MaximumQoS>,
+        ) -> Option<MaximumQoS> {
+            match (a, b) {
+                (Some(MaximumQoS::AtMostOnce), _) | (_, Some(MaximumQoS::AtMostOnce)) => {
+                    Some(MaximumQoS::AtMostOnce)
+                }
+                (Some(MaximumQoS::AtLeastOnce), Some(MaximumQoS::AtLeastOnce)) => {
+                    Some(MaximumQoS::AtLeastOnce)
+                }
+                (Some(x), None) | (None, Some(x)) => Some(x),
+                (None, None) => None,
+            }
+        }
+
+        self.scratchpad.effective_client_max_bytes_string = self.settings.max_bytes_string;
+        self.scratchpad.effective_client_max_bytes_binary_data =
+            self.settings.max_bytes_binary_data;
+        self.scratchpad.effective_client_max_remaining_bytes = self.settings.max_remaining_bytes;
+        self.scratchpad.effective_client_max_subscriptions_len =
+            self.settings.max_subscriptions_len;
+        self.scratchpad.effective_client_max_user_properties_len =
+            self.settings.max_user_properties_len;
+
+        self.scratchpad.effective_client_receive_maximum = min_option_nonzero_u16(
+            self.settings.max_incoming_receive_maximum,
+            self.scratchpad.pending_connect_options.receive_maximum,
+        )
+        .unwrap_or(NonZero::new(u16::MAX).expect("u16::MAX is always non-zero"));
+
+        self.scratchpad.effective_client_maximum_packet_size = min_option_nonzero_u32(
+            self.settings.max_incoming_packet_size,
+            self.scratchpad.pending_connect_options.maximum_packet_size,
+        );
+
+        self.scratchpad.effective_client_topic_alias_maximum = self
+            .settings
+            .max_incoming_topic_alias_maximum
+            .unwrap_or(u16::MAX)
+            .min(
+                self.scratchpad
+                    .pending_connect_options
+                    .topic_alias_maximum
+                    .unwrap_or(0),
+            );
+
+        self.scratchpad.effective_broker_receive_maximum =
+            self.scratchpad.negotiated_receive_maximum;
+        self.scratchpad.effective_broker_maximum_packet_size =
+            self.scratchpad.negotiated_maximum_packet_size;
+        self.scratchpad.effective_broker_topic_alias_maximum =
+            self.scratchpad.negotiated_topic_alias_maximum;
+        self.scratchpad.effective_broker_maximum_qos = min_option_maximum_qos(
+            self.settings.max_outgoing_qos,
+            self.scratchpad.negotiated_maximum_qos,
+        );
     }
 
     fn next_packet_id(&mut self) -> NonZero<u16> {
@@ -310,7 +422,7 @@ impl<Time> Client<Time> {
     fn ensure_outbound_receive_maximum_capacity(&self) -> Result<(), Error> {
         // [MQTT-4.9.0-2] [MQTT-4.9.0-3] Sender enforces peer Receive Maximum by limiting concurrent QoS>0 in-flight PUBLISH packets.
         if self.state.on_flight_sent.len()
-            >= usize::from(self.scratchpad.negotiated_receive_maximum.get())
+            >= usize::from(self.scratchpad.effective_broker_receive_maximum.get())
         {
             return Err(Error::ReceiveMaximumExceeded);
         }
@@ -323,7 +435,7 @@ impl<Time> Client<Time> {
         topic_alias: Option<NonZero<u16>>,
     ) -> Result<(), Error> {
         if let Some(alias) = topic_alias {
-            let topic_alias_maximum = self.scratchpad.negotiated_topic_alias_maximum;
+            let topic_alias_maximum = self.scratchpad.effective_broker_topic_alias_maximum;
             if topic_alias_maximum == 0 || alias.get() > topic_alias_maximum {
                 return Err(Error::ProtocolError);
             }
@@ -333,7 +445,7 @@ impl<Time> Client<Time> {
     }
 
     fn validate_outbound_packet_size(&self, packet_size_bytes: usize) -> Result<(), Error> {
-        if let Some(maximum_packet_size) = self.scratchpad.negotiated_maximum_packet_size {
+        if let Some(maximum_packet_size) = self.scratchpad.effective_broker_maximum_packet_size {
             if packet_size_bytes > maximum_packet_size.get() as usize {
                 return Err(Error::PacketTooLarge);
             }
@@ -343,7 +455,7 @@ impl<Time> Client<Time> {
     }
 
     fn validate_outbound_publish_capabilities(&self, msg: &ClientMessage) -> Result<(), Error> {
-        if let Some(maximum_qos) = self.scratchpad.negotiated_maximum_qos {
+        if let Some(maximum_qos) = self.scratchpad.effective_broker_maximum_qos {
             let exceeds = match maximum_qos {
                 MaximumQoS::AtMostOnce => !matches!(msg.qos, Qos::AtMostOnce),
                 MaximumQoS::AtLeastOnce => matches!(msg.qos, Qos::ExactlyOnce),
@@ -374,6 +486,7 @@ impl<Time> Client<Time> {
         self.scratchpad
             .negotiated_subscription_identifiers_available = true;
         self.state.inbound_topic_aliases.clear();
+        self.recompute_effective_limits();
     }
 
     fn apply_inbound_publish_topic_alias(&mut self, publish: &mut Publish) -> Result<(), Error> {
@@ -386,11 +499,7 @@ impl<Time> Client<Time> {
             return Ok(());
         };
 
-        let topic_alias_maximum = self
-            .scratchpad
-            .pending_connect_options
-            .topic_alias_maximum
-            .unwrap_or(0);
+        let topic_alias_maximum = self.scratchpad.effective_client_topic_alias_maximum;
         if topic_alias.get() > topic_alias_maximum {
             return Err(Error::ProtocolError);
         }
@@ -627,6 +736,7 @@ impl<Time> Client<Time> {
                             .properties
                             .shared_subscription_available
                             .unwrap_or(true);
+                        self.recompute_effective_limits();
                         self.scratchpad.keep_alive_interval_secs =
                             match self.scratchpad.negotiated_server_keep_alive {
                                 Some(server_keep_alive) => NonZero::new(server_keep_alive),
@@ -1070,6 +1180,7 @@ where
                     || self.scratchpad.lifecycle_state == ClientLifecycleState::Disconnected
                 {
                     self.scratchpad.pending_connect_options = options;
+                    self.recompute_effective_limits();
                     if self.scratchpad.pending_connect_options.clean_start {
                         // [MQTT-3.1.2-4] Clean Start=1 starts a new Session.
                         self.state.clear();
@@ -1609,7 +1720,7 @@ mod tests {
         let packet_id = NonZero::new(1).expect("non-zero packet id");
 
         client.scratchpad.lifecycle_state = ClientLifecycleState::Connected;
-        client.scratchpad.negotiated_maximum_packet_size =
+        client.scratchpad.effective_broker_maximum_packet_size =
             NonZero::new(1).expect("non-zero packet size limit").into();
         client.state.on_flight_sent.insert(
             packet_id,
