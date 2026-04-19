@@ -69,8 +69,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                     Event::Disconnected => {
                         tracing::info!("Disconnected from broker");
                     }
-                    Event::Message(packet_id, message) => {
-                        tracing::info!(topic = %message.topic, len = message.payload.len(), ?packet_id, "Received message");
+                    Event::Message(message) => {
+                        tracing::info!(topic = %message.topic, len = message.payload.len(), "Received message");
+                        stdout.write_all(b"[").await?;
+                        stdout.write_all(message.topic.as_bytes()).await?;
+                        stdout.write_all(b"]\t").await?;
+                        stdout.write_all(&message.payload).await?;
+                        stdout.write_all(b"\n").await?;
+                        stdout.flush().await?;
+                    }
+                    Event::MessageWithRequiredAcknowledgement(message_id, message) => {
+                        tracing::info!(topic = %message.topic, len = message.payload.len(), ?message_id, "Received message requiring acknowledgement");
                         stdout.write_all(b"[").await?;
                         stdout.write_all(message.topic.as_bytes()).await?;
                         stdout.write_all(b"]\t").await?;

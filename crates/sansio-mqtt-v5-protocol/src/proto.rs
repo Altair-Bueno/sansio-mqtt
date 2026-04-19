@@ -1538,7 +1538,10 @@ mod tests {
         );
 
         assert_eq!(client.state, ClientState::Disconnected);
-        assert_eq!(client.poll_event(), Some(DriverEventOut::CloseSocket));
+        assert!(matches!(
+            client.poll_event(),
+            Some(DriverEventOut::CloseSocket)
+        ));
         assert!(client.on_flight_sent.is_empty());
     }
 }

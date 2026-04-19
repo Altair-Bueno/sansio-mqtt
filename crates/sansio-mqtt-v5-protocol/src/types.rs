@@ -119,6 +119,19 @@ pub struct BrokerMessage {
     pub content_type: Option<Utf8String>,
 }
 
+#[derive(Debug)]
+pub struct InboundMessageId(NonZero<u16>);
+
+impl InboundMessageId {
+    pub(crate) fn new(id: NonZero<u16>) -> Self {
+        Self(id)
+    }
+
+    pub(crate) fn get(self) -> NonZero<u16> {
+        self.0
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SubscribeOptions {
     pub subscription: Subscription,
@@ -135,9 +148,10 @@ pub struct UnsubscribeOptions {
 }
 
 // Things that the protocol can read from the socket (via the driver)
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug)]
 pub enum UserWriteOut {
-    ReceivedMessage(Option<NonZero<u16>>, BrokerMessage),
+    ReceivedMessage(BrokerMessage),
+    ReceivedMessageWithRequiredAcknowledgement(InboundMessageId, BrokerMessage),
     PublishAcknowledged(NonZero<u16>, PubAckReasonCode),
     PublishCompleted(NonZero<u16>, PubCompReasonCode),
     PublishDroppedDueToSessionNotResumed(NonZero<u16>),
@@ -157,19 +171,19 @@ pub enum IncomingRejectReason {
 }
 
 // Things that the client can write to the socket (via the driver)
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug)]
 pub enum UserWriteIn {
     Connect(ConnectionOptions),
     PublishMessage(ClientMessage),
-    AcknowledgeMessage(NonZero<u16>),
-    RejectMessage(NonZero<u16>, IncomingRejectReason),
+    AcknowledgeMessage(InboundMessageId),
+    RejectMessage(InboundMessageId, IncomingRejectReason),
     Subscribe(SubscribeOptions),
     Unsubscribe(UnsubscribeOptions),
     Disconnect,
 }
 
 // Driver events to the protocol
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+#[derive(Debug)]
 pub enum DriverEventIn {
     SocketClosed,
     SocketConnected,
@@ -177,7 +191,7 @@ pub enum DriverEventIn {
 }
 
 // Actions that the protocol wants to perform on the driver
-#[derive(Debug, PartialEq, Eq, Clone, Hash)]
+#[derive(Debug)]
 pub enum DriverEventOut {
     OpenSocket,
     CloseSocket,
