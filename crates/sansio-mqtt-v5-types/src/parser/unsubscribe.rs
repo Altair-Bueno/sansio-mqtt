@@ -1,6 +1,9 @@
 use super::*;
 
 impl UnsubscribeHeaderFlags {
+    /// Parses the 4-bit Fixed Header flags for `UNSUBSCRIBE`
+    /// ([§3.10.1](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901180),
+    /// [MQTT-3.10.1-1]). The bit pattern `0b0010` is required.
     #[inline]
     pub fn parser<Input, Error>(input: &mut (Input, usize)) -> Result<Self, Error>
     where
@@ -20,6 +23,10 @@ impl UnsubscribeHeaderFlags {
 }
 
 impl Unsubscribe {
+    /// Returns a parser for the body of an `UNSUBSCRIBE` packet
+    /// ([§3.10](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901179)).
+    ///
+    /// The Payload MUST contain at least one Topic Filter ([MQTT-3.10.3-2]).
     #[inline]
     pub fn parser<'input, 'settings, ByteInput, ByteError, BitError>(
         parser_settings: &'settings ParserSettings,
@@ -73,6 +80,8 @@ impl Unsubscribe {
 }
 
 impl UnsubscribeProperties {
+    /// Returns a parser for the `UNSUBSCRIBE` properties section
+    /// ([§3.10.2.1](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901182)).
     #[inline]
     pub fn parser<'input, 'settings, Input, Error>(
         parser_settings: &'settings ParserSettings,
