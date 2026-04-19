@@ -2010,6 +2010,69 @@ fn app_topic_alias_zero_disables_inbound_alias_even_if_connect_requests_more() {
 }
 
 #[test]
+fn app_topic_alias_setting_is_applied_when_connect_option_omits_alias_limit() {
+    let settings = ClientSettings {
+        max_incoming_topic_alias_maximum: Some(2),
+        ..ClientSettings::default()
+    };
+    let mut client = Client::<u64>::with_settings(settings);
+
+    assert_eq!(
+        client.handle_write(UserWriteIn::Connect(ConnectionOptions::default())),
+        Ok(())
+    );
+    assert!(matches!(
+        client.poll_event(),
+        Some(DriverEventOut::OpenSocket)
+    ));
+    assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
+    assert!(client.poll_write().is_some());
+
+    let connack = ControlPacket::ConnAck(ConnAck {
+        kind: ConnAckKind::Other {
+            reason_code: ConnackReasonCode::Success,
+        },
+        properties: ConnAckProperties::default(),
+    });
+    assert_eq!(client.handle_read(encode_packet(&connack)), Ok(()));
+    assert!(matches!(client.poll_read(), Some(UserWriteOut::Connected)));
+
+    let alias_set_publish = ControlPacket::Publish(Publish {
+        kind: PublishKind::FireAndForget,
+        retain: false,
+        payload: Payload::new(b"alias-set".as_slice()),
+        topic: Topic::try_new("alias/source").expect("valid topic"),
+        properties: PublishProperties {
+            topic_alias: Some(NonZero::new(2).expect("non-zero alias")),
+            ..PublishProperties::default()
+        },
+    });
+    assert_eq!(
+        client.handle_read(encode_packet(&alias_set_publish)),
+        Ok(())
+    );
+    assert!(matches!(
+        client.poll_read(),
+        Some(UserWriteOut::ReceivedMessage(_))
+    ));
+
+    let alias_over_limit_publish = ControlPacket::Publish(Publish {
+        kind: PublishKind::FireAndForget,
+        retain: false,
+        payload: Payload::new(b"alias-over".as_slice()),
+        topic: Topic::try_new("alias/over").expect("valid topic"),
+        properties: PublishProperties {
+            topic_alias: Some(NonZero::new(3).expect("non-zero alias")),
+            ..PublishProperties::default()
+        },
+    });
+    assert_eq!(
+        client.handle_read(encode_packet(&alias_over_limit_publish)),
+        Err(Error::ProtocolError)
+    );
+}
+
+#[test]
 fn outbound_qos2_publish_emits_completed_event_on_pubcomp() {
     let mut client = Client::<u64>::default();
 

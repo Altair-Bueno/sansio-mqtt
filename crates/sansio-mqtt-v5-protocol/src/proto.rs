@@ -321,17 +321,16 @@ impl<Time> Client<Time> {
                     options.maximum_packet_size,
                     self.settings.max_incoming_packet_size,
                 ),
-                topic_alias_maximum: Some(
-                    options
-                        .topic_alias_maximum
-                        .or(self.settings.max_incoming_topic_alias_maximum)
-                        .unwrap_or(0)
-                        .min(
+                topic_alias_maximum: options
+                    .topic_alias_maximum
+                    .or(self.settings.max_incoming_topic_alias_maximum)
+                    .map(|topic_alias_maximum| {
+                        topic_alias_maximum.min(
                             self.settings
                                 .max_incoming_topic_alias_maximum
                                 .unwrap_or(u16::MAX),
-                        ),
-                ),
+                        )
+                    }),
                 request_response_information: options
                     .request_response_information
                     .or(self.settings.default_request_response_information),
@@ -399,6 +398,7 @@ impl<Time> Client<Time> {
                 self.scratchpad
                     .pending_connect_options
                     .topic_alias_maximum
+                    .or(self.settings.max_incoming_topic_alias_maximum)
                     .unwrap_or(0),
             );
 
