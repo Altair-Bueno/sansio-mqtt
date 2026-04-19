@@ -16,17 +16,25 @@ impl<Time: Copy + Ord + 'static> StateHandler<Time> for Disconnected {
         _scratchpad: &mut ClientScratchpad<Time>,
         _packet: ControlPacket,
     ) -> (ClientState, Result<(), Error>) {
-        todo!("implemented in Task 9")
+        (ClientState::Disconnected(self), Err(Error::ProtocolError))
     }
 
     fn handle_write(
         self,
-        _settings: &ClientSettings,
-        _session: &mut ClientSession,
-        _scratchpad: &mut ClientScratchpad<Time>,
-        _msg: UserWriteIn,
+        settings: &ClientSettings,
+        session: &mut ClientSession,
+        scratchpad: &mut ClientScratchpad<Time>,
+        msg: UserWriteIn,
     ) -> (ClientState, Result<(), Error>) {
-        todo!("implemented in Task 9")
+        match msg {
+            UserWriteIn::Connect(options) => {
+                crate::state::start::handle_connect(settings, session, scratchpad, options)
+            }
+            _ => (
+                ClientState::Disconnected(self),
+                Err(Error::InvalidStateTransition),
+            ),
+        }
     }
 
     fn handle_event(
@@ -36,7 +44,10 @@ impl<Time: Copy + Ord + 'static> StateHandler<Time> for Disconnected {
         _scratchpad: &mut ClientScratchpad<Time>,
         _evt: DriverEventIn,
     ) -> (ClientState, Result<(), Error>) {
-        todo!("implemented in Task 9")
+        (
+            ClientState::Disconnected(self),
+            Err(Error::InvalidStateTransition),
+        )
     }
 
     fn handle_timeout(
@@ -46,7 +57,7 @@ impl<Time: Copy + Ord + 'static> StateHandler<Time> for Disconnected {
         _scratchpad: &mut ClientScratchpad<Time>,
         _now: Time,
     ) -> (ClientState, Result<(), Error>) {
-        todo!("implemented in Task 9")
+        (ClientState::Disconnected(self), Ok(()))
     }
 
     fn close(
@@ -55,6 +66,6 @@ impl<Time: Copy + Ord + 'static> StateHandler<Time> for Disconnected {
         _session: &mut ClientSession,
         _scratchpad: &mut ClientScratchpad<Time>,
     ) -> (ClientState, Result<(), Error>) {
-        todo!("implemented in Task 9")
+        (ClientState::Disconnected(self), Ok(()))
     }
 }
