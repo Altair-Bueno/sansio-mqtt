@@ -727,6 +727,7 @@ fn settings_default() {
     assert_eq!(settings.max_remaining_bytes, 1024 * 1024);
     assert_eq!(settings.max_subscriptions_len, 32);
     assert_eq!(settings.max_user_properties_len, 32);
+    assert_eq!(settings.max_subscription_identifiers_len, 32);
 }
 
 #[test]
@@ -737,6 +738,7 @@ fn settings_unlimited() {
     assert_eq!(settings.max_remaining_bytes, u64::MAX);
     assert_eq!(settings.max_subscriptions_len, u32::MAX);
     assert_eq!(settings.max_user_properties_len, usize::MAX);
+    assert_eq!(settings.max_subscription_identifiers_len, usize::MAX);
 }
 
 #[test]
