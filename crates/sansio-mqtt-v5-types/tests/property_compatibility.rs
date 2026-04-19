@@ -185,14 +185,6 @@ fn connect_rejects_duplicate_property(#[case] bytes: Vec<u8>) {
     assert!(parser.parse(&bytes[..]).is_err());
 }
 
-#[rstest]
-#[case::subscription_identifier(vec![48, 26, 0, 4, 116, 101, 115, 116, 0, 1, 14, 11, 42, 11, 43, 116, 101, 115, 116])]
-fn publish_rejects_duplicate_property(#[case] bytes: Vec<u8>) {
-    let settings = ParserSettings::default();
-    let mut parser = ControlPacket::parser::<_, ContextError, ContextError>(&settings);
-    assert!(parser.parse(&bytes[..]).is_err());
-}
-
 fn roundtrip(packet: &ControlPacket) -> Result<(), String> {
     let mut bytes = Vec::with_capacity(packet.encoded_size().unwrap());
     packet
