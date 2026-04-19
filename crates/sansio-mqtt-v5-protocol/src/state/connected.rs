@@ -29,8 +29,8 @@ use crate::session_ops;
 use crate::state::disconnected::Disconnected;
 use crate::state::{ClientState, StateHandler};
 use crate::types::{
-    BrokerMessage, ClientSettings, DriverEventIn, DriverEventOut, Error, InboundMessageId,
-    IncomingRejectReason, UserWriteIn, UserWriteOut,
+    BrokerMessage, ClientMessage, ClientSettings, DriverEventIn, DriverEventOut, Error,
+    InboundMessageId, IncomingRejectReason, UserWriteIn, UserWriteOut,
 };
 
 pub(crate) struct Connected;
@@ -87,6 +87,160 @@ fn map_incoming_reject_reason_to_pubrec(reason: IncomingRejectReason) -> PubRecR
     }
 }
 
+fn handle_inbound_qos1_publish<Time: 'static>(
+    settings: &ClientSettings,
+    session: &mut ClientSession,
+    scratchpad: &mut ClientScratchpad<Time>,
+    packet_id: core::num::NonZero<u16>,
+    publish: Publish,
+) -> Result<(), Error> {
+    match session.on_flight_received.get(&packet_id).copied() {
+        None => {
+            scratchpad.read_queue.push_back(
+                UserWriteOut::ReceivedMessageWithRequiredAcknowledgement(
+                    InboundMessageId::new(packet_id),
+                    map_inbound_publish_to_broker_message(publish),
+                ),
+            );
+            session
+                .on_flight_received
+                .insert(packet_id, InboundInflightState::Qos1AwaitAppDecision);
+            Ok(())
+        }
+        Some(InboundInflightState::Qos1AwaitAppDecision) => Ok(()),
+        Some(
+            InboundInflightState::Qos2AwaitAppDecision
+            | InboundInflightState::Qos2AwaitPubRel
+            | InboundInflightState::Qos2Rejected(_),
+        ) => {
+            let _ = queues::fail_protocol_and_disconnect(
+                settings,
+                session,
+                scratchpad,
+                DisconnectReasonCode::ProtocolError,
+            );
+            Err(Error::ProtocolError)
+        }
+    }
+}
+
+fn handle_inbound_qos2_publish<Time: 'static>(
+    settings: &ClientSettings,
+    session: &mut ClientSession,
+    scratchpad: &mut ClientScratchpad<Time>,
+    packet_id: core::num::NonZero<u16>,
+    publish: Publish,
+) -> Result<(), Error> {
+    match session.on_flight_received.get(&packet_id).copied() {
+        Some(InboundInflightState::Qos2AwaitPubRel) => queues::enqueue_pubrec_or_fail_protocol(
+            settings,
+            session,
+            scratchpad,
+            packet_id,
+            PubRecReasonCode::Success,
+        ),
+        Some(InboundInflightState::Qos2AwaitAppDecision) => Ok(()),
+        Some(InboundInflightState::Qos2Rejected(reason_code)) => {
+            queues::enqueue_pubrec_or_fail_protocol(
+                settings,
+                session,
+                scratchpad,
+                packet_id,
+                reason_code,
+            )
+        }
+        Some(InboundInflightState::Qos1AwaitAppDecision) => {
+            let _ = queues::fail_protocol_and_disconnect(
+                settings,
+                session,
+                scratchpad,
+                DisconnectReasonCode::ProtocolError,
+            );
+            Err(Error::ProtocolError)
+        }
+        None => {
+            scratchpad.read_queue.push_back(
+                UserWriteOut::ReceivedMessageWithRequiredAcknowledgement(
+                    InboundMessageId::new(packet_id),
+                    map_inbound_publish_to_broker_message(publish),
+                ),
+            );
+            session
+                .on_flight_received
+                .insert(packet_id, InboundInflightState::Qos2AwaitAppDecision);
+            Ok(())
+        }
+    }
+}
+
+fn build_outbound_publish(
+    msg: ClientMessage,
+    session: &mut ClientSession,
+) -> Result<(Publish, Option<OutboundInflightState>), Error> {
+    let message_expiry_interval = msg
+        .message_expiry_interval
+        .map(|interval| u32::try_from(interval.as_secs()).map_err(|_| Error::ProtocolError))
+        .transpose()?;
+    let properties = PublishProperties {
+        payload_format_indicator: msg.payload_format_indicator,
+        message_expiry_interval,
+        topic_alias: msg.topic_alias,
+        response_topic: msg.response_topic,
+        correlation_data: msg.correlation_data,
+        user_properties: msg.user_properties,
+        subscription_identifiers: Vec::new(),
+        content_type: msg.content_type,
+    };
+    let kind = match msg.qos {
+        Qos::AtMostOnce => PublishKind::FireAndForget,
+        Qos::AtLeastOnce => {
+            let packet_id = session_ops::next_outbound_publish_packet_id(session)?;
+            PublishKind::Repetible {
+                packet_id,
+                qos: GuaranteedQoS::AtLeastOnce,
+                dup: false,
+            }
+        }
+        Qos::ExactlyOnce => {
+            let packet_id = session_ops::next_outbound_publish_packet_id(session)?;
+            PublishKind::Repetible {
+                packet_id,
+                qos: GuaranteedQoS::ExactlyOnce,
+                dup: false,
+            }
+        }
+    };
+    let inflight_state = match msg.qos {
+        Qos::AtMostOnce => None,
+        Qos::AtLeastOnce => Some(OutboundInflightState::Qos1AwaitPubAck {
+            publish: Publish {
+                kind: kind.clone(),
+                retain: msg.retain,
+                payload: msg.payload.clone(),
+                topic: msg.topic.clone(),
+                properties: properties.clone(),
+            },
+        }),
+        Qos::ExactlyOnce => Some(OutboundInflightState::Qos2AwaitPubRec {
+            publish: Publish {
+                kind: kind.clone(),
+                retain: msg.retain,
+                payload: msg.payload.clone(),
+                topic: msg.topic.clone(),
+                properties: properties.clone(),
+            },
+        }),
+    };
+    let publish = Publish {
+        kind,
+        retain: msg.retain,
+        payload: msg.payload,
+        topic: msg.topic,
+        properties,
+    };
+    Ok((publish, inflight_state))
+}
+
 impl<Time: Copy + Ord + 'static> StateHandler<Time> for Connected {
     fn handle_control_packet(
         self,
@@ -125,98 +279,26 @@ impl<Time: Copy + Ord + 'static> StateHandler<Time> for Connected {
                         packet_id,
                         qos: GuaranteedQoS::AtLeastOnce,
                         ..
-                    } => match session.on_flight_received.get(&packet_id).copied() {
-                        None => {
-                            scratchpad.read_queue.push_back(
-                                UserWriteOut::ReceivedMessageWithRequiredAcknowledgement(
-                                    InboundMessageId::new(packet_id),
-                                    map_inbound_publish_to_broker_message(publish),
-                                ),
-                            );
-                            session
-                                .on_flight_received
-                                .insert(packet_id, InboundInflightState::Qos1AwaitAppDecision);
-                            (ClientState::Connected(self), Ok(()))
+                    } => {
+                        match handle_inbound_qos1_publish(
+                            settings, session, scratchpad, packet_id, publish,
+                        ) {
+                            Ok(()) => (ClientState::Connected(self), Ok(())),
+                            Err(e) => (ClientState::Disconnected(Disconnected), Err(e)),
                         }
-                        Some(InboundInflightState::Qos1AwaitAppDecision) => {
-                            (ClientState::Connected(self), Ok(()))
-                        }
-                        Some(
-                            InboundInflightState::Qos2AwaitAppDecision
-                            | InboundInflightState::Qos2AwaitPubRel
-                            | InboundInflightState::Qos2Rejected(_),
-                        ) => {
-                            let _ = queues::fail_protocol_and_disconnect(
-                                settings,
-                                session,
-                                scratchpad,
-                                DisconnectReasonCode::ProtocolError,
-                            );
-                            (
-                                ClientState::Disconnected(Disconnected),
-                                Err(Error::ProtocolError),
-                            )
-                        }
-                    },
+                    }
                     PublishKind::Repetible {
                         packet_id,
                         qos: GuaranteedQoS::ExactlyOnce,
                         ..
-                    } => match session.on_flight_received.get(&packet_id).copied() {
-                        Some(InboundInflightState::Qos2AwaitPubRel) => {
-                            let result = queues::enqueue_pubrec_or_fail_protocol(
-                                settings,
-                                session,
-                                scratchpad,
-                                packet_id,
-                                PubRecReasonCode::Success,
-                            );
-                            match result {
-                                Ok(()) => (ClientState::Connected(self), Ok(())),
-                                Err(e) => (ClientState::Disconnected(Disconnected), Err(e)),
-                            }
+                    } => {
+                        match handle_inbound_qos2_publish(
+                            settings, session, scratchpad, packet_id, publish,
+                        ) {
+                            Ok(()) => (ClientState::Connected(self), Ok(())),
+                            Err(e) => (ClientState::Disconnected(Disconnected), Err(e)),
                         }
-                        Some(InboundInflightState::Qos2AwaitAppDecision) => {
-                            (ClientState::Connected(self), Ok(()))
-                        }
-                        Some(InboundInflightState::Qos2Rejected(reason_code)) => {
-                            let result = queues::enqueue_pubrec_or_fail_protocol(
-                                settings,
-                                session,
-                                scratchpad,
-                                packet_id,
-                                reason_code,
-                            );
-                            match result {
-                                Ok(()) => (ClientState::Connected(self), Ok(())),
-                                Err(e) => (ClientState::Disconnected(Disconnected), Err(e)),
-                            }
-                        }
-                        Some(InboundInflightState::Qos1AwaitAppDecision) => {
-                            let _ = queues::fail_protocol_and_disconnect(
-                                settings,
-                                session,
-                                scratchpad,
-                                DisconnectReasonCode::ProtocolError,
-                            );
-                            (
-                                ClientState::Disconnected(Disconnected),
-                                Err(Error::ProtocolError),
-                            )
-                        }
-                        None => {
-                            scratchpad.read_queue.push_back(
-                                UserWriteOut::ReceivedMessageWithRequiredAcknowledgement(
-                                    InboundMessageId::new(packet_id),
-                                    map_inbound_publish_to_broker_message(publish),
-                                ),
-                            );
-                            session
-                                .on_flight_received
-                                .insert(packet_id, InboundInflightState::Qos2AwaitAppDecision);
-                            (ClientState::Connected(self), Ok(()))
-                        }
-                    },
+                    }
                 }
             }
             ControlPacket::PubRel(pubrel) => {
@@ -486,81 +568,12 @@ impl<Time: Copy + Ord + 'static> StateHandler<Time> for Connected {
                     }
                 }
 
-                let message_expiry_interval = match msg
-                    .message_expiry_interval
-                    .map(|interval| {
-                        u32::try_from(interval.as_secs()).map_err(|_| Error::ProtocolError)
-                    })
-                    .transpose()
-                {
+                let (publish, inflight_state) = match build_outbound_publish(msg, session) {
                     Ok(v) => v,
                     Err(e) => return (ClientState::Connected(self), Err(e)),
                 };
-                let properties = PublishProperties {
-                    payload_format_indicator: msg.payload_format_indicator,
-                    message_expiry_interval,
-                    topic_alias: msg.topic_alias,
-                    response_topic: msg.response_topic,
-                    correlation_data: msg.correlation_data,
-                    user_properties: msg.user_properties,
-                    subscription_identifiers: Vec::new(),
-                    content_type: msg.content_type,
-                };
-                let kind = match msg.qos {
-                    Qos::AtMostOnce => PublishKind::FireAndForget,
-                    Qos::AtLeastOnce => {
-                        let packet_id = match session_ops::next_outbound_publish_packet_id(session)
-                        {
-                            Ok(id) => id,
-                            Err(e) => return (ClientState::Connected(self), Err(e)),
-                        };
-                        PublishKind::Repetible {
-                            packet_id,
-                            qos: GuaranteedQoS::AtLeastOnce,
-                            dup: false,
-                        }
-                    }
-                    Qos::ExactlyOnce => {
-                        let packet_id = match session_ops::next_outbound_publish_packet_id(session)
-                        {
-                            Ok(id) => id,
-                            Err(e) => return (ClientState::Connected(self), Err(e)),
-                        };
-                        PublishKind::Repetible {
-                            packet_id,
-                            qos: GuaranteedQoS::ExactlyOnce,
-                            dup: false,
-                        }
-                    }
-                };
-                let inflight_state = match msg.qos {
-                    Qos::AtMostOnce => None,
-                    Qos::AtLeastOnce => Some(OutboundInflightState::Qos1AwaitPubAck {
-                        publish: Publish {
-                            kind: kind.clone(),
-                            retain: msg.retain,
-                            payload: msg.payload.clone(),
-                            topic: msg.topic.clone(),
-                            properties: properties.clone(),
-                        },
-                    }),
-                    Qos::ExactlyOnce => Some(OutboundInflightState::Qos2AwaitPubRec {
-                        publish: Publish {
-                            kind: kind.clone(),
-                            retain: msg.retain,
-                            payload: msg.payload.clone(),
-                            topic: msg.topic.clone(),
-                            properties: properties.clone(),
-                        },
-                    }),
-                };
-                let packet = ControlPacket::Publish(Publish {
-                    kind: kind.clone(),
-                    retain: msg.retain,
-                    payload: msg.payload,
-                    topic: msg.topic,
-                    properties,
-                });
+                let kind = publish.kind.clone();
+                let packet = ControlPacket::Publish(publish);
 
                 if let Err(e) = queues::enqueue_packet(scratchpad, &packet) {
                     return (ClientState::Connected(self), Err(e));
