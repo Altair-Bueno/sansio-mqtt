@@ -5,6 +5,7 @@ extern crate alloc;
 mod limits;
 mod proto;
 mod queues;
+mod scratchpad;
 mod session_ops;
 mod types;
 
