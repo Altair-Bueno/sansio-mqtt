@@ -81,7 +81,7 @@ enum InboundInflightState {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct ClientState {
+pub struct ClientSession {
     on_flight_sent: BTreeMap<NonZero<u16>, OutboundInflightState>,
     on_flight_received: BTreeMap<NonZero<u16>, InboundInflightState>,
     pending_subscribe: BTreeMap<NonZero<u16>, ()>,
@@ -90,13 +90,13 @@ pub struct ClientState {
     next_packet_id: u16,
 }
 
-impl ClientState {
+impl ClientSession {
     pub fn clear(&mut self) {
         *self = Self::default();
     }
 }
 
-impl Default for ClientState {
+impl Default for ClientSession {
     fn default() -> Self {
         Self {
             on_flight_sent: BTreeMap::new(),
@@ -211,7 +211,7 @@ where
     Time: 'static,
 {
     settings: ClientSettings,
-    state: ClientState,
+    session: ClientSession,
     scratchpad: ClientScratchpad<Time>,
 }
 
@@ -246,10 +246,10 @@ impl<Time> Client<Time> {
         }
     }
 
-    pub fn with_settings_and_state(settings: ClientSettings, state: ClientState) -> Self {
+    pub fn with_settings_and_session(settings: ClientSettings, session: ClientSession) -> Self {
         let mut client = Self {
             settings,
-            state,
+            session,
             scratchpad: ClientScratchpad::default(),
         };
         client.recompute_effective_limits();
@@ -257,7 +257,7 @@ impl<Time> Client<Time> {
     }
 
     pub fn with_settings(settings: ClientSettings) -> Self {
-        Self::with_settings_and_state(settings, Default::default())
+        Self::with_settings_and_session(settings, Default::default())
     }
 
     fn encode_control_packet(packet: &ControlPacket) -> Result<Bytes, Error> {
@@ -450,8 +450,8 @@ impl<Time> Client<Time> {
     }
 
     fn next_packet_id(&mut self) -> NonZero<u16> {
-        let packet_id = self.state.next_packet_id;
-        self.state.next_packet_id = if packet_id == u16::MAX {
+        let packet_id = self.session.next_packet_id;
+        self.session.next_packet_id = if packet_id == u16::MAX {
             1
         } else {
             packet_id + 1
@@ -463,9 +463,9 @@ impl<Time> Client<Time> {
     fn next_outbound_publish_packet_id(&mut self) -> Result<NonZero<u16>, Error> {
         for _ in 0..u16::MAX {
             let packet_id = self.next_packet_id();
-            if !self.state.on_flight_sent.contains_key(&packet_id)
-                && !self.state.pending_subscribe.contains_key(&packet_id)
-                && !self.state.pending_unsubscribe.contains_key(&packet_id)
+            if !self.session.on_flight_sent.contains_key(&packet_id)
+                && !self.session.pending_subscribe.contains_key(&packet_id)
+                && !self.session.pending_unsubscribe.contains_key(&packet_id)
             {
                 return Ok(packet_id);
             }
@@ -476,7 +476,7 @@ impl<Time> Client<Time> {
 
     fn ensure_outbound_receive_maximum_capacity(&self) -> Result<(), Error> {
         // [MQTT-4.9.0-2] [MQTT-4.9.0-3] Sender enforces peer Receive Maximum by limiting concurrent QoS>0 in-flight PUBLISH packets.
-        if self.state.on_flight_sent.len()
+        if self.session.on_flight_sent.len()
             >= usize::from(self.scratchpad.effective_broker_receive_maximum.get())
         {
             return Err(Error::ReceiveMaximumExceeded);
@@ -540,7 +540,7 @@ impl<Time> Client<Time> {
         self.scratchpad.negotiated_shared_subscription_available = true;
         self.scratchpad
             .negotiated_subscription_identifiers_available = true;
-        self.state.inbound_topic_aliases.clear();
+        self.session.inbound_topic_aliases.clear();
         self.recompute_effective_limits();
     }
 
@@ -561,13 +561,13 @@ impl<Time> Client<Time> {
 
         if topic.is_empty() {
             publish.topic = self
-                .state
+                .session
                 .inbound_topic_aliases
                 .get(&topic_alias)
                 .cloned()
                 .ok_or(Error::ProtocolError)?;
         } else {
-            self.state
+            self.session
                 .inbound_topic_aliases
                 .insert(topic_alias, publish.topic.clone());
         }
@@ -576,13 +576,13 @@ impl<Time> Client<Time> {
     }
 
     fn reset_inflight_transactions(&mut self) {
-        self.state.on_flight_sent.clear();
-        self.state.on_flight_received.clear();
+        self.session.on_flight_sent.clear();
+        self.session.on_flight_received.clear();
     }
 
     fn clear_pending_subscriptions(&mut self) {
-        self.state.pending_subscribe.clear();
-        self.state.pending_unsubscribe.clear();
+        self.session.pending_subscribe.clear();
+        self.session.pending_unsubscribe.clear();
     }
 
     fn reset_session_state(&mut self) {
@@ -609,9 +609,9 @@ impl<Time> Client<Time> {
         // [MQTT-2.2.1-2] Packet Identifier MUST be unused while an exchange is in-flight.
         for _ in 0..u16::MAX {
             let packet_id = self.next_packet_id();
-            if !self.state.on_flight_sent.contains_key(&packet_id)
-                && !self.state.pending_subscribe.contains_key(&packet_id)
-                && !self.state.pending_unsubscribe.contains_key(&packet_id)
+            if !self.session.on_flight_sent.contains_key(&packet_id)
+                && !self.session.pending_subscribe.contains_key(&packet_id)
+                && !self.session.pending_unsubscribe.contains_key(&packet_id)
             {
                 return Ok(packet_id);
             }
@@ -622,7 +622,7 @@ impl<Time> Client<Time> {
 
     fn replay_outbound_inflight_with_dup(&mut self) -> Result<(), Error> {
         // [MQTT-4.4.0-1] [MQTT-4.4.0-2] On session resume, retransmit unacknowledged QoS1/QoS2 PUBLISH with DUP=1.
-        for (packet_id, state) in self.state.on_flight_sent.clone() {
+        for (packet_id, state) in self.session.on_flight_sent.clone() {
             let publish = match state {
                 OutboundInflightState::Qos1AwaitPubAck { mut publish }
                 | OutboundInflightState::Qos2AwaitPubRec { mut publish } => {
@@ -643,7 +643,7 @@ impl<Time> Client<Time> {
 
             self.enqueue_packet(ControlPacket::Publish(publish.clone()))?;
 
-            match self.state.on_flight_sent.get_mut(&packet_id) {
+            match self.session.on_flight_sent.get_mut(&packet_id) {
                 Some(OutboundInflightState::Qos1AwaitPubAck {
                     publish: stored_publish,
                 })
@@ -660,7 +660,7 @@ impl<Time> Client<Time> {
     }
 
     fn emit_publish_dropped_for_all_inflight(&mut self) {
-        for packet_id in self.state.on_flight_sent.keys().copied() {
+        for packet_id in self.session.on_flight_sent.keys().copied() {
             self.scratchpad.read_queue.push_back(
                 UserWriteOut::PublishDroppedDueToSessionNotResumed(packet_id),
             );
@@ -899,7 +899,7 @@ impl<Time> Client<Time> {
                             packet_id,
                             qos: GuaranteedQoS::AtLeastOnce,
                             ..
-                        } => match self.state.on_flight_received.get(&packet_id).copied() {
+                        } => match self.session.on_flight_received.get(&packet_id).copied() {
                             None => {
                                 self.scratchpad.read_queue.push_back(
                                     UserWriteOut::ReceivedMessageWithRequiredAcknowledgement(
@@ -907,7 +907,7 @@ impl<Time> Client<Time> {
                                         Self::map_inbound_publish_to_broker_message(publish),
                                     ),
                                 );
-                                self.state
+                                self.session
                                     .on_flight_received
                                     .insert(packet_id, InboundInflightState::Qos1AwaitAppDecision);
                                 Ok(())
@@ -928,7 +928,7 @@ impl<Time> Client<Time> {
                             packet_id,
                             qos: GuaranteedQoS::ExactlyOnce,
                             ..
-                        } => match self.state.on_flight_received.get(&packet_id).copied() {
+                        } => match self.session.on_flight_received.get(&packet_id).copied() {
                             Some(InboundInflightState::Qos2AwaitPubRel) => self
                                 .enqueue_pubrec_or_fail_protocol(
                                     packet_id,
@@ -951,7 +951,7 @@ impl<Time> Client<Time> {
                                         Self::map_inbound_publish_to_broker_message(publish),
                                     ),
                                 );
-                                self.state
+                                self.session
                                     .on_flight_received
                                     .insert(packet_id, InboundInflightState::Qos2AwaitAppDecision);
                                 Ok(())
@@ -962,9 +962,9 @@ impl<Time> Client<Time> {
                 ControlPacket::PubRel(pubrel) => {
                     let packet_id = pubrel.packet_id;
 
-                    match self.state.on_flight_received.get(&packet_id).copied() {
+                    match self.session.on_flight_received.get(&packet_id).copied() {
                         Some(InboundInflightState::Qos2AwaitPubRel) => {
-                            let _ = self.state.on_flight_received.remove(&packet_id);
+                            let _ = self.session.on_flight_received.remove(&packet_id);
                             self.enqueue_pubcomp_or_fail_protocol(
                                 packet_id,
                                 PubCompReasonCode::Success,
@@ -978,7 +978,7 @@ impl<Time> Client<Time> {
                             Err(Error::ProtocolError)
                         }
                         Some(InboundInflightState::Qos2Rejected(_)) => {
-                            let _ = self.state.on_flight_received.remove(&packet_id);
+                            let _ = self.session.on_flight_received.remove(&packet_id);
                             self.enqueue_pubcomp_or_fail_protocol(
                                 packet_id,
                                 PubCompReasonCode::PacketIdentifierNotFound,
@@ -994,10 +994,10 @@ impl<Time> Client<Time> {
                     let packet_id = puback.packet_id;
                     let reason_code = puback.reason_code;
 
-                    match self.state.on_flight_sent.get(&packet_id) {
+                    match self.session.on_flight_sent.get(&packet_id) {
                         Some(OutboundInflightState::Qos1AwaitPubAck { .. }) => {
                             // [MQTT-4.3.2-3] QoS1 sender keeps PUBLISH unacknowledged until matching PUBACK is received.
-                            let _ = self.state.on_flight_sent.remove(&packet_id);
+                            let _ = self.session.on_flight_sent.remove(&packet_id);
                             self.scratchpad.read_queue.push_back(
                                 UserWriteOut::PublishAcknowledged(packet_id, reason_code),
                             );
@@ -1013,7 +1013,7 @@ impl<Time> Client<Time> {
                     let packet_id = pubrec.packet_id;
                     let reason_code = pubrec.reason_code;
 
-                    match self.state.on_flight_sent.get(&packet_id).cloned() {
+                    match self.session.on_flight_sent.get(&packet_id).cloned() {
                         Some(OutboundInflightState::Qos2AwaitPubRec { .. }) => {
                             // [MQTT-4.3.3-4] QoS2 sender sends PUBREL with the same Packet Identifier after PUBREC (Reason Code < 0x80).
                             if matches!(
@@ -1022,11 +1022,11 @@ impl<Time> Client<Time> {
                             ) {
                                 self.enqueue_pubrel_or_fail_protocol(packet_id)?;
 
-                                self.state
+                                self.session
                                     .on_flight_sent
                                     .insert(packet_id, OutboundInflightState::Qos2AwaitPubComp);
                             } else {
-                                let _ = self.state.on_flight_sent.remove(&packet_id);
+                                let _ = self.session.on_flight_sent.remove(&packet_id);
                                 self.scratchpad.read_queue.push_back(
                                     UserWriteOut::PublishDroppedDueToBrokerRejectedPubRec(
                                         packet_id,
@@ -1052,10 +1052,10 @@ impl<Time> Client<Time> {
                     let packet_id = pubcomp.packet_id;
                     let reason_code = pubcomp.reason_code;
 
-                    match self.state.on_flight_sent.get(&packet_id) {
+                    match self.session.on_flight_sent.get(&packet_id) {
                         Some(OutboundInflightState::Qos2AwaitPubComp) => {
                             // [MQTT-4.3.3-5] QoS2 sender treats PUBREL as unacknowledged until matching PUBCOMP is received.
-                            let _ = self.state.on_flight_sent.remove(&packet_id);
+                            let _ = self.session.on_flight_sent.remove(&packet_id);
                             self.scratchpad
                                 .read_queue
                                 .push_back(UserWriteOut::PublishCompleted(packet_id, reason_code));
@@ -1072,7 +1072,7 @@ impl<Time> Client<Time> {
                 ControlPacket::SubAck(suback) => {
                     // [MQTT-3.8.4-1] SUBACK MUST correspond to an outstanding SUBSCRIBE Packet Identifier.
                     if self
-                        .state
+                        .session
                         .pending_subscribe
                         .remove(&suback.packet_id)
                         .is_none()
@@ -1085,7 +1085,7 @@ impl<Time> Client<Time> {
                 ControlPacket::UnsubAck(unsuback) => {
                     // [MQTT-3.10.4-1] UNSUBACK MUST correspond to an outstanding UNSUBSCRIBE Packet Identifier.
                     if self
-                        .state
+                        .session
                         .pending_unsubscribe
                         .remove(&unsuback.packet_id)
                         .is_none()
@@ -1238,7 +1238,7 @@ where
                     self.recompute_effective_limits();
                     if self.scratchpad.pending_connect_options.clean_start {
                         // [MQTT-3.1.2-4] Clean Start=1 starts a new Session.
-                        self.state.clear();
+                        self.session.clear();
                     }
                     self.scratchpad.session_should_persist = self
                         .scratchpad
@@ -1338,7 +1338,7 @@ where
                 if let (PublishKind::Repetible { packet_id, .. }, Some(inflight_state)) =
                     (kind, inflight_state)
                 {
-                    self.state.on_flight_sent.insert(packet_id, inflight_state);
+                    self.session.on_flight_sent.insert(packet_id, inflight_state);
                 }
 
                 Ok(())
@@ -1349,15 +1349,15 @@ where
                     return Err(Error::InvalidStateTransition);
                 }
 
-                match self.state.on_flight_received.get(&packet_id).copied() {
+                match self.session.on_flight_received.get(&packet_id).copied() {
                     Some(InboundInflightState::Qos1AwaitAppDecision) => {
                         self.enqueue_puback_or_fail_protocol(packet_id, PubAckReasonCode::Success)?;
-                        let _ = self.state.on_flight_received.remove(&packet_id);
+                        let _ = self.session.on_flight_received.remove(&packet_id);
                         Ok(())
                     }
                     Some(InboundInflightState::Qos2AwaitAppDecision) => {
                         self.enqueue_pubrec_or_fail_protocol(packet_id, PubRecReasonCode::Success)?;
-                        self.state
+                        self.session
                             .on_flight_received
                             .insert(packet_id, InboundInflightState::Qos2AwaitPubRel);
                         Ok(())
@@ -1373,19 +1373,19 @@ where
                     return Err(Error::InvalidStateTransition);
                 }
 
-                match self.state.on_flight_received.get(&packet_id).copied() {
+                match self.session.on_flight_received.get(&packet_id).copied() {
                     Some(InboundInflightState::Qos1AwaitAppDecision) => {
                         self.enqueue_puback_or_fail_protocol(
                             packet_id,
                             Self::map_incoming_reject_reason_to_puback(reason),
                         )?;
-                        let _ = self.state.on_flight_received.remove(&packet_id);
+                        let _ = self.session.on_flight_received.remove(&packet_id);
                         Ok(())
                     }
                     Some(InboundInflightState::Qos2AwaitAppDecision) => {
                         let reason_code = Self::map_incoming_reject_reason_to_pubrec(reason);
                         self.enqueue_pubrec_or_fail_protocol(packet_id, reason_code)?;
-                        self.state
+                        self.session
                             .on_flight_received
                             .insert(packet_id, InboundInflightState::Qos2Rejected(reason_code));
                         Ok(())
@@ -1447,7 +1447,7 @@ where
                         user_properties: options.user_properties,
                     },
                 }))?;
-                self.state.pending_subscribe.insert(packet_id, ());
+                self.session.pending_subscribe.insert(packet_id, ());
 
                 Ok(())
             }
@@ -1465,7 +1465,7 @@ where
                     filter: options.filter,
                     extra_filters: options.extra_filters,
                 }))?;
-                self.state.pending_unsubscribe.insert(packet_id, ());
+                self.session.pending_unsubscribe.insert(packet_id, ());
 
                 Ok(())
             }
@@ -1775,7 +1775,7 @@ mod tests {
         client.scratchpad.lifecycle_state = ClientLifecycleState::Connected;
         client.scratchpad.effective_broker_maximum_packet_size =
             NonZero::new(1).expect("non-zero packet size limit").into();
-        client.state.on_flight_sent.insert(
+        client.session.on_flight_sent.insert(
             packet_id,
             OutboundInflightState::Qos2AwaitPubRec {
                 publish: Publish {
@@ -1810,6 +1810,6 @@ mod tests {
             client.poll_event(),
             Some(DriverEventOut::CloseSocket)
         ));
-        assert!(client.state.on_flight_sent.is_empty());
+        assert!(client.session.on_flight_sent.is_empty());
     }
 }

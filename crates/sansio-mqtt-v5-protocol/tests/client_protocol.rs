@@ -107,15 +107,15 @@ fn client_new_uses_default_state_and_blank_scratchpad() {
 
 #[test]
 fn client_new_with_state_accepts_preloaded_state() {
-    let state = sansio_mqtt_v5_protocol::ClientState::default();
-    let _client = Client::<u64>::with_settings_and_state(ClientSettings::default(), state);
+    let state = sansio_mqtt_v5_protocol::ClientSession::default();
+    let _client = Client::<u64>::with_settings_and_session(ClientSettings::default(), state);
 }
 
 #[test]
 fn clean_start_true_drops_preloaded_state() {
-    let mut client = Client::<u64>::with_settings_and_state(
+    let mut client = Client::<u64>::with_settings_and_session(
         ClientSettings::default(),
-        sansio_mqtt_v5_protocol::ClientState::default(),
+        sansio_mqtt_v5_protocol::ClientSession::default(),
     );
 
     assert_eq!(
@@ -135,9 +135,9 @@ fn clean_start_true_drops_preloaded_state() {
 
 #[test]
 fn clean_start_false_keeps_preloaded_state_until_session_rules_clear_it() {
-    let mut client = Client::<u64>::with_settings_and_state(
+    let mut client = Client::<u64>::with_settings_and_session(
         ClientSettings::default(),
-        sansio_mqtt_v5_protocol::ClientState::default(),
+        sansio_mqtt_v5_protocol::ClientSession::default(),
     );
 
     assert_eq!(

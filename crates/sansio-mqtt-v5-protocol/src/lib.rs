@@ -6,5 +6,5 @@ mod proto;
 mod types;
 
 pub use proto::Client;
-pub use proto::ClientState;
+pub use proto::ClientSession;
 pub use types::*;
