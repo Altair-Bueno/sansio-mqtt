@@ -1549,7 +1549,7 @@ fn qos1_inflight_receiving_pubrec_triggers_protocol_error_close() {
 }
 
 #[test]
-fn receive_maximum_full_returns_immediate_error_for_new_qos1_publish() {
+fn connack_receive_maximum_only_limits_broker_facing_publish_flow() {
     let mut client = Client::<u64>::default();
 
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
@@ -1598,6 +1598,53 @@ fn receive_maximum_full_returns_immediate_error_for_new_qos1_publish() {
         Some(encode_packet(&expected_first_publish))
     );
 
+    let inbound_publish = ControlPacket::Publish(Publish {
+        kind: PublishKind::FireAndForget,
+        retain: false,
+        payload: Payload::new(b"inbound-ok".as_slice()),
+        topic: Topic::try_new("inbound/unchanged").expect("valid topic"),
+        properties: PublishProperties::default(),
+    });
+    assert_eq!(client.handle_read(encode_packet(&inbound_publish)), Ok(()));
+    assert!(matches!(
+        client.poll_read(),
+        Some(UserWriteOut::ReceivedMessage(message)) if message.payload == Payload::new(b"inbound-ok".as_slice())
+    ));
+
+    let inbound_qos1_packet_id = NonZero::new(41).expect("non-zero packet id");
+    let inbound_qos1_publish = ControlPacket::Publish(Publish {
+        kind: PublishKind::Repetible {
+            packet_id: inbound_qos1_packet_id,
+            qos: GuaranteedQoS::AtLeastOnce,
+            dup: false,
+        },
+        retain: false,
+        payload: Payload::new(b"inbound-qos1-ok".as_slice()),
+        topic: Topic::try_new("inbound/qos1").expect("valid topic"),
+        properties: PublishProperties::default(),
+    });
+    assert_eq!(
+        client.handle_read(encode_packet(&inbound_qos1_publish)),
+        Ok(())
+    );
+    let inbound_message_id = match client.poll_read() {
+        Some(UserWriteOut::ReceivedMessageWithRequiredAcknowledgement(id, message)) => {
+            assert_eq!(message.payload, Payload::new(b"inbound-qos1-ok".as_slice()));
+            id
+        }
+        other => panic!("expected qos1 inbound message with ack id, got {other:?}"),
+    };
+    assert_eq!(
+        client.handle_write(UserWriteIn::AcknowledgeMessage(inbound_message_id)),
+        Ok(())
+    );
+    let expected_puback = ControlPacket::PubAck(PubAck {
+        packet_id: inbound_qos1_packet_id,
+        reason_code: PubAckReasonCode::Success,
+        properties: PubAckProperties::default(),
+    });
+    assert_eq!(client.poll_write(), Some(encode_packet(&expected_puback)));
+
     let second_message = ClientMessage {
         qos: Qos::AtLeastOnce,
         payload: Payload::from(&b"qos1-second"[..]),
@@ -1609,6 +1656,238 @@ fn receive_maximum_full_returns_immediate_error_for_new_qos1_publish() {
         Err(Error::ReceiveMaximumExceeded)
     );
     assert_eq!(client.poll_write(), None);
+}
+
+#[test]
+fn effective_limits_recompute_on_connect_socketconnected_connack_and_socketclosed() {
+    let settings = ClientSettings {
+        max_outgoing_qos: Some(MaximumQoS::AtMostOnce),
+        ..ClientSettings::default()
+    };
+    let mut client = Client::<u64>::with_settings(settings);
+
+    let topic = Topic::try_from(Utf8String::try_from("test/topic").expect("valid utf8"))
+        .expect("valid topic");
+    let qos1_message = ClientMessage {
+        topic,
+        qos: Qos::AtLeastOnce,
+        payload: Payload::from(&b"qos1"[..]),
+        ..ClientMessage::default()
+    };
+
+    assert_eq!(
+        client.handle_write(UserWriteIn::Connect(ConnectionOptions::default())),
+        Ok(())
+    );
+    assert!(matches!(
+        client.poll_event(),
+        Some(DriverEventOut::OpenSocket)
+    ));
+    assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
+    assert!(client.poll_write().is_some());
+
+    let connack = ControlPacket::ConnAck(ConnAck {
+        kind: ConnAckKind::Other {
+            reason_code: ConnackReasonCode::Success,
+        },
+        properties: ConnAckProperties {
+            maximum_qos: Some(MaximumQoS::AtLeastOnce),
+            ..ConnAckProperties::default()
+        },
+    });
+    assert_eq!(client.handle_read(encode_packet(&connack)), Ok(()));
+    assert!(matches!(client.poll_read(), Some(UserWriteOut::Connected)));
+
+    assert_eq!(
+        client.handle_write(UserWriteIn::PublishMessage(qos1_message.clone())),
+        Err(Error::ProtocolError)
+    );
+    assert_eq!(client.poll_write(), None);
+
+    assert_eq!(client.handle_event(DriverEventIn::SocketClosed), Ok(()));
+    assert!(matches!(
+        client.poll_read(),
+        Some(UserWriteOut::Disconnected)
+    ));
+
+    assert_eq!(
+        client.handle_write(UserWriteIn::Connect(ConnectionOptions::default())),
+        Ok(())
+    );
+    assert!(matches!(
+        client.poll_event(),
+        Some(DriverEventOut::OpenSocket)
+    ));
+    assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
+    assert!(client.poll_write().is_some());
+
+    let second_connack = ControlPacket::ConnAck(ConnAck {
+        kind: ConnAckKind::Other {
+            reason_code: ConnackReasonCode::Success,
+        },
+        properties: ConnAckProperties {
+            maximum_qos: Some(MaximumQoS::AtLeastOnce),
+            ..ConnAckProperties::default()
+        },
+    });
+    assert_eq!(client.handle_read(encode_packet(&second_connack)), Ok(()));
+    assert!(matches!(client.poll_read(), Some(UserWriteOut::Connected)));
+
+    assert_eq!(
+        client.handle_write(UserWriteIn::PublishMessage(qos1_message)),
+        Err(Error::ProtocolError)
+    );
+    assert_eq!(client.poll_write(), None);
+}
+
+#[test]
+fn effective_limits_recompute_on_connect_applies_pending_connect_options() {
+    let mut client = Client::<u64>::with_settings(ClientSettings {
+        max_outgoing_qos: None,
+        ..ClientSettings::default()
+    });
+
+    assert_eq!(
+        client.handle_write(UserWriteIn::Connect(ConnectionOptions::default())),
+        Ok(())
+    );
+    assert!(matches!(
+        client.poll_event(),
+        Some(DriverEventOut::OpenSocket)
+    ));
+    assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
+    assert!(client.poll_write().is_some());
+
+    let connack = ControlPacket::ConnAck(ConnAck {
+        kind: ConnAckKind::Other {
+            reason_code: ConnackReasonCode::Success,
+        },
+        properties: ConnAckProperties {
+            maximum_qos: Some(MaximumQoS::AtLeastOnce),
+            ..ConnAckProperties::default()
+        },
+    });
+    assert_eq!(client.handle_read(encode_packet(&connack)), Ok(()));
+    assert!(matches!(client.poll_read(), Some(UserWriteOut::Connected)));
+
+    let qos2_message = ClientMessage {
+        topic: Topic::try_new("test/qos2").expect("valid topic"),
+        qos: Qos::ExactlyOnce,
+        payload: Payload::from(&b"qos2"[..]),
+        ..ClientMessage::default()
+    };
+    assert_eq!(
+        client.handle_write(UserWriteIn::PublishMessage(qos2_message)),
+        Err(Error::ProtocolError)
+    );
+}
+
+#[test]
+fn effective_limits_recompute_on_connack_applies_broker_receive_maximum() {
+    let mut client = Client::<u64>::with_settings(ClientSettings::default());
+
+    assert_eq!(
+        client.handle_write(UserWriteIn::Connect(ConnectionOptions::default())),
+        Ok(())
+    );
+    assert!(matches!(
+        client.poll_event(),
+        Some(DriverEventOut::OpenSocket)
+    ));
+    assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
+    assert!(client.poll_write().is_some());
+
+    let connack = ControlPacket::ConnAck(ConnAck {
+        kind: ConnAckKind::Other {
+            reason_code: ConnackReasonCode::Success,
+        },
+        properties: ConnAckProperties {
+            receive_maximum: NonZero::new(1),
+            ..ConnAckProperties::default()
+        },
+    });
+    assert_eq!(client.handle_read(encode_packet(&connack)), Ok(()));
+    assert!(matches!(client.poll_read(), Some(UserWriteOut::Connected)));
+
+    let first = ClientMessage {
+        topic: Topic::try_new("test/first").expect("valid topic"),
+        qos: Qos::AtLeastOnce,
+        payload: Payload::from(&b"1"[..]),
+        ..ClientMessage::default()
+    };
+    assert_eq!(
+        client.handle_write(UserWriteIn::PublishMessage(first)),
+        Ok(())
+    );
+    assert!(client.poll_write().is_some());
+
+    let second = ClientMessage {
+        topic: Topic::try_new("test/second").expect("valid topic"),
+        qos: Qos::AtLeastOnce,
+        payload: Payload::from(&b"2"[..]),
+        ..ClientMessage::default()
+    };
+    assert_eq!(
+        client.handle_write(UserWriteIn::PublishMessage(second)),
+        Err(Error::ReceiveMaximumExceeded)
+    );
+}
+
+#[test]
+fn app_topic_alias_zero_disables_inbound_alias_even_if_connect_requests_more() {
+    let settings = ClientSettings {
+        max_incoming_topic_alias_maximum: Some(0),
+        ..ClientSettings::default()
+    };
+    let mut client = Client::<u64>::with_settings(settings);
+
+    assert_eq!(
+        client.handle_write(UserWriteIn::Connect(ConnectionOptions {
+            topic_alias_maximum: Some(10),
+            ..ConnectionOptions::default()
+        })),
+        Ok(())
+    );
+    assert!(matches!(
+        client.poll_event(),
+        Some(DriverEventOut::OpenSocket)
+    ));
+    assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
+    assert!(client.poll_write().is_some());
+
+    let connack = ControlPacket::ConnAck(ConnAck {
+        kind: ConnAckKind::Other {
+            reason_code: ConnackReasonCode::Success,
+        },
+        properties: ConnAckProperties::default(),
+    });
+    assert_eq!(client.handle_read(encode_packet(&connack)), Ok(()));
+    assert!(matches!(client.poll_read(), Some(UserWriteOut::Connected)));
+
+    let inbound_publish_with_alias = ControlPacket::Publish(Publish {
+        kind: PublishKind::FireAndForget,
+        retain: false,
+        payload: Payload::new(b"with-alias".as_slice()),
+        topic: Topic::try_new("alias/topic").expect("valid topic"),
+        properties: PublishProperties {
+            topic_alias: Some(NonZero::new(1).expect("non-zero alias")),
+            ..PublishProperties::default()
+        },
+    });
+
+    assert_eq!(
+        client.handle_read(encode_packet(&inbound_publish_with_alias)),
+        Err(Error::ProtocolError)
+    );
+    assert_eq!(
+        client.poll_write(),
+        Some(Bytes::from_static(&[0xE0, 0x02, 0x82, 0x00]))
+    );
+    assert!(matches!(
+        client.poll_event(),
+        Some(DriverEventOut::CloseSocket)
+    ));
+    assert!(matches!(client.poll_read(), None));
 }
 
 #[test]
