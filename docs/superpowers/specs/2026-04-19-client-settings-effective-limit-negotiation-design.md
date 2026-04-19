@@ -45,7 +45,7 @@ Placement decision:
 - New negotiation policy maxima/preferences:
   - `max_incoming_receive_maximum: Option<NonZero<u16>>`
   - `max_incoming_packet_size: Option<NonZero<u32>>`
-  - `max_incoming_topic_alias_maximum: Option<NonZero<u16>>`
+  - `max_incoming_topic_alias_maximum: Option<u16>`
   - `max_outgoing_qos: Option<MaximumQoS>`
   - `allow_retain: bool`
   - `allow_wildcard_subscriptions: bool`
@@ -56,6 +56,11 @@ Placement decision:
   - `default_keep_alive: Option<NonZero<u16>>`
 
 Defaults remain permissive except parser maxima inherited from `ParserSettings::default()`.
+
+Topic alias policy note:
+- `None` means "no additional app cap".
+- `Some(0)` explicitly disables inbound aliases.
+- `Some(n)` caps inbound alias maximum to `n`.
 
 ## 2) `ClientScratchpad` effective limit fields
 
@@ -68,10 +73,13 @@ Defaults remain permissive except parser maxima inherited from `ParserSettings::
   - `effective_client_max_subscriptions_len: u32`
   - `effective_client_max_user_properties_len: usize`
 - Effective protocol envelope:
-  - `effective_receive_maximum: NonZero<u16>`
-  - `effective_maximum_packet_size: Option<NonZero<u32>>`
-  - `effective_topic_alias_maximum: u16`
-  - `effective_maximum_qos: Option<MaximumQoS>`
+  - `effective_client_receive_maximum: NonZero<u16>`
+  - `effective_client_maximum_packet_size: Option<NonZero<u32>>`
+  - `effective_client_topic_alias_maximum: u16`
+  - `effective_broker_receive_maximum: NonZero<u16>`
+  - `effective_broker_maximum_packet_size: Option<NonZero<u32>>`
+  - `effective_broker_topic_alias_maximum: u16`
+  - `effective_broker_maximum_qos: Option<MaximumQoS>`
   - `effective_retain_available: bool`
   - `effective_wildcard_subscription_available: bool`
   - `effective_shared_subscription_available: bool`
@@ -79,10 +87,8 @@ Defaults remain permissive except parser maxima inherited from `ParserSettings::
   - Keepalive effective runtime fields (existing flattened keepalive fields remain)
 
 Naming rule:
-- Do not add parser/encoder prefixes where one effective value is shared.
-- Use neutral names for shared limits/capabilities (`effective_maximum_packet_size`,
-  `effective_topic_alias_maximum`, etc.) and route those values to both parser/protocol checks
-  when applicable.
+- Do not add client/broker prefixes where one effective value is truly shared.
+- Use neutral names only for shared limits/capabilities.
 - Prefix only when audience differs and values diverge:
   - client-only value: `effective_client_*`
   - broker-only value: `effective_broker_*`
@@ -117,14 +123,24 @@ Rule: after any state mutation that can affect limits, recompute immediately.
   - `None` means “no further restriction from this source.”
   - Effective option present if at least one restricting source present.
 
-Representative numeric merge:
+Representative directional merges:
 
 ```text
-effective_receive_maximum = min(
+effective_client_receive_maximum = min(
   app.max_incoming_receive_maximum or u16::MAX,
-  connect.receive_maximum or u16::MAX,
-  broker.receive_maximum or u16::MAX
+  connect.receive_maximum or u16::MAX
 )
+
+effective_broker_receive_maximum = broker.receive_maximum or u16::MAX
+```
+
+```text
+effective_client_topic_alias_maximum = min(
+  app.max_incoming_topic_alias_maximum or u16::MAX,
+  connect.topic_alias_maximum or u16::MAX
+)
+
+effective_broker_topic_alias_maximum = broker.topic_alias_maximum or 0
 ```
 
 Representative parser merge:
@@ -137,7 +153,10 @@ effective_max_remaining_bytes = min(
 )
 ```
 
-Note: `CONNACK.maximum_packet_size` constrains outbound packet size to broker, not inbound parser envelope.
+Direction note:
+- `CONNECT.maximum_packet_size` limits inbound packets accepted by the client.
+- `CONNACK.maximum_packet_size` limits outbound packets sent to the broker.
+- These are different directions and must not be collapsed into one field.
 
 ## Parser integration
 
@@ -162,20 +181,23 @@ When building CONNECT:
 - Use explicit `ConnectionOptions` values when provided.
 - Otherwise use `ClientSettings` defaults for request fields (`default_keep_alive`,
   request info defaults).
-- Clamp outgoing CONNECT-advertised limits to app policy maxima before encoding.
+- Clamp outgoing CONNECT-advertised client-facing limits to app policy maxima before encoding.
 
 Example:
 
 ```text
 connect.receive_maximum = min(connection.receive_maximum or u16::MAX,
-                              app.max_incoming_receive_maximum or u16::MAX)
+                               app.max_incoming_receive_maximum or u16::MAX)
 ```
+
+Broker-facing limits are then applied from CONNACK after connect succeeds.
 
 ## Behavioral invariants
 
 - Effective limits are always available and internally consistent after every transition.
 - Runtime checks (`publish`, `subscribe`, packet-size, keepalive, alias checks)
   use effective fields only.
+- Directional checks use directional effective fields only (client vs broker).
 - Reconnection starts from app+connect baseline and re-applies broker restrictions
   when CONNACK arrives.
 - Session state persistence does not carry negotiated/effective connection limits.
@@ -187,7 +209,7 @@ Required additions/updates in `crates/sansio-mqtt-v5-protocol/tests/client_proto
 1. Effective recompute on `Connect`:
    - connect options less restrictive than app still resolve to app caps.
 2. Effective recompute on `ConnAck`:
-   - broker-lower receive maximum/packet size/capabilities further restrict runtime behavior.
+   - broker-lower receive maximum/packet size/capabilities further restrict broker-facing behavior.
 3. Parser settings alignment:
    - parser uses effective values (including max_remaining_bytes clamp).
 4. Reconnect reset/recompute:
