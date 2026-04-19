@@ -1,6 +1,8 @@
 use super::*;
 
 impl ReservedHeaderFlags {
+    /// Parses the 4-bit Fixed Header flags for the Reserved (0) Control Packet type
+    /// ([§2.1.2](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901022)).
     #[inline]
     pub fn parser<Input, Error>(input: &mut (Input, usize)) -> Result<Self, Error>
     where
@@ -17,6 +19,11 @@ impl ReservedHeaderFlags {
 }
 
 impl Reserved {
+    /// Returns a parser for the body of a Reserved (0) Control Packet
+    /// ([§2.1.2](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901022)).
+    ///
+    /// The packet has no Variable Header or Payload, so the parser
+    /// only asserts that no bytes remain.
     #[inline]
     pub fn parser<ByteInput, ByteError>(
         _parser_settings: &ParserSettings,
