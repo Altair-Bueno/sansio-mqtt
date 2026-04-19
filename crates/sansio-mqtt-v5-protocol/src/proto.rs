@@ -117,7 +117,7 @@ enum InboundInflightState {
     Qos2Rejected(PubRecReasonCode),
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug)]
 pub struct Client<Time>
 where
     Time: 'static,
@@ -678,7 +678,6 @@ impl<Time> Client<Time> {
                     match publish.kind {
                         PublishKind::FireAndForget => {
                             self.read_queue.push_back(UserWriteOut::ReceivedMessage(
-                                None,
                                 Self::map_inbound_publish_to_broker_message(publish),
                             ));
                             Ok(())
@@ -689,10 +688,12 @@ impl<Time> Client<Time> {
                             ..
                         } => match self.on_flight_received.get(&packet_id).copied() {
                             None => {
-                                self.read_queue.push_back(UserWriteOut::ReceivedMessage(
-                                    Some(packet_id),
-                                    Self::map_inbound_publish_to_broker_message(publish),
-                                ));
+                                self.read_queue.push_back(
+                                    UserWriteOut::ReceivedMessageWithRequiredAcknowledgement(
+                                        InboundMessageId::new(packet_id),
+                                        Self::map_inbound_publish_to_broker_message(publish),
+                                    ),
+                                );
                                 self.on_flight_received
                                     .insert(packet_id, InboundInflightState::Qos1AwaitAppDecision);
                                 Ok(())
@@ -730,10 +731,12 @@ impl<Time> Client<Time> {
                                 Err(Error::ProtocolError)
                             }
                             None => {
-                                self.read_queue.push_back(UserWriteOut::ReceivedMessage(
-                                    Some(packet_id),
-                                    Self::map_inbound_publish_to_broker_message(publish),
-                                ));
+                                self.read_queue.push_back(
+                                    UserWriteOut::ReceivedMessageWithRequiredAcknowledgement(
+                                        InboundMessageId::new(packet_id),
+                                        Self::map_inbound_publish_to_broker_message(publish),
+                                    ),
+                                );
                                 self.on_flight_received
                                     .insert(packet_id, InboundInflightState::Qos2AwaitAppDecision);
                                 Ok(())
@@ -1014,7 +1017,11 @@ where
                         .unwrap_or(0)
                         > 0;
 
-                    if !self.action_queue.contains(&DriverEventOut::OpenSocket) {
+                    if !self
+                        .action_queue
+                        .iter()
+                        .any(|event| matches!(event, DriverEventOut::OpenSocket))
+                    {
                         self.action_queue.push_back(DriverEventOut::OpenSocket);
                     }
                     Ok(())
@@ -1103,7 +1110,8 @@ where
 
                 Ok(())
             }
-            UserWriteIn::AcknowledgeMessage(packet_id) => {
+            UserWriteIn::AcknowledgeMessage(inbound_message_id) => {
+                let packet_id = inbound_message_id.get();
                 if self.state != ClientState::Connected {
                     return Err(Error::InvalidStateTransition);
                 }
@@ -1125,7 +1133,8 @@ where
                     | None => Err(Error::ProtocolError),
                 }
             }
-            UserWriteIn::RejectMessage(packet_id, reason) => {
+            UserWriteIn::RejectMessage(inbound_message_id, reason) => {
+                let packet_id = inbound_message_id.get();
                 if self.state != ClientState::Connected {
                     return Err(Error::InvalidStateTransition);
                 }
