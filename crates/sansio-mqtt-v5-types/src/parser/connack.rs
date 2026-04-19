@@ -78,6 +78,8 @@ impl ConnAckHeaderFlags {
 }
 
 impl ConnAckProperties {
+    /// Returns a parser for the `CONNACK` properties section
+    /// ([§3.2.2.3](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901080)).
     #[inline]
     pub fn parser<'input, 'settings, Input, Error>(
         parser_settings: &'settings ParserSettings,
