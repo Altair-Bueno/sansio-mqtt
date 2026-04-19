@@ -734,6 +734,53 @@ fn settings_unlimited() {
 }
 
 #[test]
+fn publish_parser_rejects_subscription_identifiers_exceeding_bound() {
+    // 3 subscription identifiers inside one PUBLISH, each encoded as `0x0B 0x01`
+    // (property id 11, VBI value 1). With max_subscription_identifiers_len = 2,
+    // the third identifier must trigger TooManySubscriptionIdentifiersError.
+    let bytes = vec![
+        0x30, 17, // Header: PUBLISH, qos=0, retain=0; remaining length = 17
+        0, 4, // Topic length
+        116, 101, 115, 116, // Topic ("test")
+        6,    // properties length
+        11, 1, // SubscriptionIdentifier = 1
+        11, 1, // SubscriptionIdentifier = 1
+        11, 1, // SubscriptionIdentifier = 1
+        116, 101, 115, 116, // Payload ("test")
+    ];
+    let settings = ParserSettings {
+        max_subscription_identifiers_len: 2,
+        ..ParserSettings::default()
+    };
+    ControlPacket::parser::<_, ContextError, ContextError>(&settings)
+        .parse(&bytes[..])
+        .unwrap_err();
+}
+
+#[test]
+fn publish_parser_accepts_many_subscription_identifiers_under_unlimited_settings() {
+    // Same 3-identifier PUBLISH accepted under `unlimited` settings.
+    let bytes = vec![
+        0x30, 17, // Header: PUBLISH, qos=0, retain=0; remaining length = 17
+        0, 4, // Topic length
+        116, 101, 115, 116, // Topic ("test")
+        6,    // properties length
+        11, 1, // SubscriptionIdentifier = 1
+        11, 1, // SubscriptionIdentifier = 1
+        11, 1, // SubscriptionIdentifier = 1
+        116, 101, 115, 116, // Payload ("test")
+    ];
+    let settings = ParserSettings::unlimited();
+    let packet = ControlPacket::parser::<_, ContextError, ContextError>(&settings)
+        .parse(&bytes[..])
+        .unwrap();
+    let ControlPacket::Publish(publish) = packet else {
+        panic!("expected PUBLISH, got {packet:?}");
+    };
+    assert_eq!(publish.properties.subscription_identifiers.len(), 3);
+}
+
+#[test]
 fn utf8string_valid() {
     let s = Utf8String::try_from("hello").unwrap();
     assert_eq!(&*s, "hello");
