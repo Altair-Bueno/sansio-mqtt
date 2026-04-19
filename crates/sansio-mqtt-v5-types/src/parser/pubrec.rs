@@ -1,5 +1,8 @@
 use super::*;
 impl PubRecHeaderFlags {
+    /// Parses the 4-bit Fixed Header flags for `PUBREC`
+    /// ([§3.5.1](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901133),
+    /// [MQTT-3.5.1-1]).
     #[inline]
     pub fn parser<Input, Error>(input: &mut (Input, usize)) -> Result<Self, Error>
     where
@@ -16,6 +19,8 @@ impl PubRecHeaderFlags {
 }
 
 impl PubRec {
+    /// Returns a parser for the body of a `PUBREC` packet
+    /// ([§3.5](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901131)).
     #[inline]
     pub fn parser<'input, 'settings, ByteInput, ByteError, BitError>(
         parser_settings: &'settings ParserSettings,
@@ -65,6 +70,8 @@ impl PubRec {
 }
 
 impl PubRecProperties {
+    /// Returns a parser for the `PUBREC` properties section
+    /// ([§3.5.2.2](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901135)).
     #[inline]
     pub fn parser<'input, 'settings, Input, Error>(
         parser_settings: &'settings ParserSettings,
