@@ -22,7 +22,6 @@
 //! Conformance statements from Appendix B of that specification are
 //! cited using the verbatim `[MQTT-X.Y.Z-N]` labels used in the spec.
 #![no_std]
-#![forbid(unsafe_code)]
 #![deny(missing_docs)]
 #![deny(rustdoc::broken_intra_doc_links)]
 #![deny(rustdoc::private_intra_doc_links)]
