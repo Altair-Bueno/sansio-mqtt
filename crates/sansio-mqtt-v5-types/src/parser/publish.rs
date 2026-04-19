@@ -1,6 +1,11 @@
 use super::*;
 
 impl PublishHeaderFlags {
+    /// Parses the 4-bit Fixed Header flags for `PUBLISH`
+    /// ([§3.3.1](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901101)),
+    /// including DUP, QoS level, and RETAIN.
+    ///
+    /// Enforces [MQTT-3.3.1-2]: the DUP flag MUST be `0` for QoS 0 packets.
     #[inline]
     pub fn parser<Input, Error>(input: &mut (Input, usize)) -> Result<Self, Error>
     where
@@ -35,6 +40,11 @@ impl PublishHeaderFlags {
 }
 
 impl Publish {
+    /// Returns a parser for the body of a `PUBLISH` packet
+    /// ([§3.3](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901100)).
+    ///
+    /// The pre-parsed `header_flags` disambiguates whether a Packet
+    /// Identifier is present (QoS > 0).
     #[inline]
     pub fn parser<'input, 'settings, ByteInput, ByteError, BitError>(
         parser_settings: &'settings ParserSettings,
@@ -86,6 +96,8 @@ impl Publish {
 }
 
 impl PublishProperties {
+    /// Returns a parser for the `PUBLISH` properties section
+    /// ([§3.3.2.3](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901109)).
     #[inline]
     pub fn parser<'input, 'settings, Input, Error>(
         parser_settings: &'settings ParserSettings,
