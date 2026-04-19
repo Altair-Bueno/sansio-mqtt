@@ -45,7 +45,7 @@ Placement decision:
 - New negotiation policy maxima/preferences:
   - `max_incoming_receive_maximum: Option<NonZero<u16>>`
   - `max_incoming_packet_size: Option<NonZero<u32>>`
-  - `max_incoming_topic_alias_maximum: Option<u16>`
+  - `max_incoming_topic_alias_maximum: Option<NonZero<u16>>`
   - `max_outgoing_qos: Option<MaximumQoS>`
   - `allow_retain: bool`
   - `allow_wildcard_subscriptions: bool`
@@ -77,6 +77,13 @@ Defaults remain permissive except parser maxima inherited from `ParserSettings::
   - `effective_shared_subscription_available: bool`
   - `effective_subscription_identifiers_available: bool`
   - Keepalive effective runtime fields (existing flattened keepalive fields remain)
+
+Naming rule:
+- Do not add parser/encoder prefixes where one effective value is shared.
+- Use neutral names for shared limits/capabilities (`effective_maximum_packet_size`,
+  `effective_topic_alias_maximum`, etc.) and route those values to both parser/protocol checks
+  when applicable.
+- Prefix only when audience differs and values diverge.
 
 Broker-advertised raw values may also remain in scratchpad for traceability if needed,
 but all behavior checks must reference effective fields.
