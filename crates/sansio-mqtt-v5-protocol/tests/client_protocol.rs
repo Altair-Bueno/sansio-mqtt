@@ -293,6 +293,125 @@ fn connect_encodes_maximum_packet_size_when_configured() {
 }
 
 #[test]
+fn parser_uses_effective_client_limits_after_connect_policy_applied() {
+    // Small remaining-length cap intentionally below minimum CONNACK frame size.
+    let settings = ClientSettings {
+        max_remaining_bytes: 2,
+        ..ClientSettings::default()
+    };
+    let mut client = Client::<u64>::with_settings(settings);
+
+    assert_eq!(
+        client.handle_write(UserWriteIn::Connect(ConnectionOptions::default())),
+        Ok(())
+    );
+    assert!(matches!(
+        client.poll_event(),
+        Some(DriverEventOut::OpenSocket)
+    ));
+
+    assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
+    assert!(client.poll_write().is_some());
+
+    let connack = ControlPacket::ConnAck(ConnAck {
+        kind: ConnAckKind::Other {
+            reason_code: ConnackReasonCode::Success,
+        },
+        properties: ConnAckProperties::default(),
+    });
+
+    assert_eq!(
+        client.handle_read(encode_packet(&connack)),
+        Err(Error::MalformedPacket)
+    );
+    assert_eq!(
+        client.poll_write(),
+        Some(Bytes::from_static(&[0xE0, 0x02, 0x81, 0x00]))
+    );
+    assert!(matches!(
+        client.poll_event(),
+        Some(DriverEventOut::CloseSocket)
+    ));
+}
+
+#[test]
+fn connect_defaults_use_client_settings_when_connection_options_omit_values() {
+    let settings = ClientSettings {
+        default_keep_alive: NonZero::new(30),
+        default_request_response_information: Some(true),
+        default_request_problem_information: Some(false),
+        max_incoming_receive_maximum: NonZero::new(7),
+        max_incoming_packet_size: NonZero::new(1024),
+        max_incoming_topic_alias_maximum: Some(3),
+        ..ClientSettings::default()
+    };
+    let mut client = Client::<u64>::with_settings(settings);
+
+    assert_eq!(
+        client.handle_write(UserWriteIn::Connect(ConnectionOptions {
+            receive_maximum: NonZero::new(42),
+            maximum_packet_size: NonZero::new(8192),
+            topic_alias_maximum: Some(10),
+            ..ConnectionOptions::default()
+        })),
+        Ok(())
+    );
+    assert!(matches!(
+        client.poll_event(),
+        Some(DriverEventOut::OpenSocket)
+    ));
+
+    assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
+    let connect_bytes = client.poll_write().expect("connect frame expected");
+
+    let packet = ControlPacket::parser::<_, ContextError, ContextError>(&ParserSettings::default())
+        .parse(connect_bytes.as_ref())
+        .expect("connect packet should decode");
+
+    let connect = match packet {
+        ControlPacket::Connect(connect) => connect,
+        other => panic!("expected CONNECT, got {other:?}"),
+    };
+
+    assert_eq!(connect.keep_alive, NonZero::new(30));
+    assert_eq!(connect.properties.request_response_information, Some(true));
+    assert_eq!(connect.properties.request_problem_information, Some(false));
+    assert_eq!(connect.properties.receive_maximum, NonZero::new(7));
+    assert_eq!(connect.properties.maximum_packet_size, NonZero::new(1024));
+    assert_eq!(connect.properties.topic_alias_maximum, Some(3));
+}
+
+#[test]
+fn connect_topic_alias_defaults_to_client_settings_when_omitted() {
+    let settings = ClientSettings {
+        max_incoming_topic_alias_maximum: Some(3),
+        ..ClientSettings::default()
+    };
+    let mut client = Client::<u64>::with_settings(settings);
+
+    assert_eq!(
+        client.handle_write(UserWriteIn::Connect(ConnectionOptions::default())),
+        Ok(())
+    );
+    assert!(matches!(
+        client.poll_event(),
+        Some(DriverEventOut::OpenSocket)
+    ));
+    assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
+    let connect_bytes = client.poll_write().expect("connect frame expected");
+
+    let packet = ControlPacket::parser::<_, ContextError, ContextError>(&ParserSettings::default())
+        .parse(connect_bytes.as_ref())
+        .expect("connect packet should decode");
+    let connect = match packet {
+        ControlPacket::Connect(connect) => connect,
+        other => panic!("expected CONNECT, got {other:?}"),
+    };
+
+    assert_eq!(connect.properties.topic_alias_maximum, Some(3));
+}
+
+#[test]
 fn socket_closed_emits_disconnected_event() {
     let mut client = Client::<u64>::default();
 
