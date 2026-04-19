@@ -2,9 +2,15 @@
 #![forbid(unsafe_code)]
 extern crate alloc;
 
-mod proto;
+mod client;
+mod limits;
+mod queues;
+mod scratchpad;
+mod session;
+mod session_ops;
+mod state;
 mod types;
 
-pub use proto::Client;
-pub use proto::ClientState;
+pub use client::Client;
+pub use session::ClientSession;
 pub use types::*;

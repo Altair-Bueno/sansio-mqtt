@@ -107,15 +107,15 @@ fn client_new_uses_default_state_and_blank_scratchpad() {
 
 #[test]
 fn client_new_with_state_accepts_preloaded_state() {
-    let state = sansio_mqtt_v5_protocol::ClientState::default();
-    let _client = Client::<u64>::with_settings_and_state(ClientSettings::default(), state);
+    let state = sansio_mqtt_v5_protocol::ClientSession::default();
+    let _client = Client::<u64>::with_settings_and_session(ClientSettings::default(), state);
 }
 
 #[test]
 fn clean_start_true_drops_preloaded_state() {
-    let mut client = Client::<u64>::with_settings_and_state(
+    let mut client = Client::<u64>::with_settings_and_session(
         ClientSettings::default(),
-        sansio_mqtt_v5_protocol::ClientState::default(),
+        sansio_mqtt_v5_protocol::ClientSession::default(),
     );
 
     assert_eq!(
@@ -135,9 +135,9 @@ fn clean_start_true_drops_preloaded_state() {
 
 #[test]
 fn clean_start_false_keeps_preloaded_state_until_session_rules_clear_it() {
-    let mut client = Client::<u64>::with_settings_and_state(
+    let mut client = Client::<u64>::with_settings_and_session(
         ClientSettings::default(),
-        sansio_mqtt_v5_protocol::ClientState::default(),
+        sansio_mqtt_v5_protocol::ClientSession::default(),
     );
 
     assert_eq!(
@@ -445,7 +445,7 @@ fn fragmented_packet_is_buffered_until_complete() {
 
     assert_eq!(first_fragment, Ok(()));
     assert_eq!(client.poll_write(), None);
-    assert!(matches!(client.poll_event(), None));
+    assert!(client.poll_event().is_none());
 
     let second_fragment = client.handle_read(Bytes::from_static(&[0x00]));
 
@@ -493,7 +493,7 @@ fn protocol_error_emits_disconnect_bytes_before_close_action_polling() {
         Some(sansio_mqtt_v5_protocol::DriverEventOut::CloseSocket)
     ));
     assert_eq!(client.poll_write(), None);
-    assert!(matches!(client.poll_event(), None));
+    assert!(client.poll_event().is_none());
 }
 
 #[test]
@@ -532,7 +532,7 @@ fn connack_rejected_reason_closes_without_connected_event() {
         client.handle_read(encode_packet(&connack)),
         Err(Error::ProtocolError)
     );
-    assert!(matches!(client.poll_read(), None));
+    assert!(client.poll_read().is_none());
     assert!(matches!(
         client.poll_event(),
         Some(sansio_mqtt_v5_protocol::DriverEventOut::CloseSocket)
@@ -757,7 +757,7 @@ fn inbound_publish_alias_only_unknown_alias_is_protocol_error() {
         client.poll_event(),
         Some(sansio_mqtt_v5_protocol::DriverEventOut::CloseSocket)
     ));
-    assert!(matches!(client.poll_read(), None));
+    assert!(client.poll_read().is_none());
 }
 
 #[test]
@@ -792,7 +792,7 @@ fn inbound_publish_empty_topic_without_alias_is_protocol_error() {
         client.poll_event(),
         Some(sansio_mqtt_v5_protocol::DriverEventOut::CloseSocket)
     ));
-    assert!(matches!(client.poll_read(), None));
+    assert!(client.poll_read().is_none());
 }
 
 #[test]
@@ -845,7 +845,7 @@ fn inbound_publish_alias_exceeds_client_alias_max_is_protocol_error() {
         client.poll_event(),
         Some(sansio_mqtt_v5_protocol::DriverEventOut::CloseSocket)
     ));
-    assert!(matches!(client.poll_read(), None));
+    assert!(client.poll_read().is_none());
 }
 
 #[test]
@@ -903,7 +903,7 @@ fn inbound_qos1_publish_waits_for_app_ack_then_sends_puback() {
         properties: PubAckProperties::default(),
     });
     assert_eq!(client.poll_write(), Some(encode_packet(&expected_puback)));
-    assert!(matches!(client.poll_read(), None));
+    assert!(client.poll_read().is_none());
 }
 
 #[test]
@@ -964,7 +964,7 @@ fn inbound_qos1_publish_reject_sends_puback_failure_reason() {
         properties: PubAckProperties::default(),
     });
     assert_eq!(client.poll_write(), Some(encode_packet(&expected_puback)));
-    assert!(matches!(client.poll_read(), None));
+    assert!(client.poll_read().is_none());
 }
 
 #[test]
@@ -1028,7 +1028,7 @@ fn inbound_qos2_publish_waits_for_app_ack_then_sends_pubrec_and_completes_on_pub
         properties: PubCompProperties::default(),
     });
     assert_eq!(client.poll_write(), Some(encode_packet(&expected_pubcomp)));
-    assert!(matches!(client.poll_event(), None));
+    assert!(client.poll_event().is_none());
 }
 
 #[test]
@@ -1095,7 +1095,7 @@ fn inbound_qos2_publish_reject_sends_pubrec_failure_and_clears_state() {
         properties: PubCompProperties::default(),
     });
     assert_eq!(client.poll_write(), Some(encode_packet(&expected_pubcomp)));
-    assert!(matches!(client.poll_event(), None));
+    assert!(client.poll_event().is_none());
 }
 
 #[test]
@@ -1227,7 +1227,7 @@ fn duplicate_qos2_publish_after_reject_resends_same_failure_pubrec_without_redel
         client.handle_read(encode_packet(&duplicate_publish)),
         Ok(())
     );
-    assert!(matches!(client.poll_read(), None));
+    assert!(client.poll_read().is_none());
     assert_eq!(client.poll_write(), Some(encode_packet(&expected_pubrec)));
 }
 
@@ -1278,7 +1278,7 @@ fn manual_ack_sends_puback_success_for_pending_message_id() {
     });
     assert_eq!(client.poll_write(), Some(encode_packet(&expected_puback)));
 
-    assert!(matches!(client.poll_write(), None));
+    assert!(client.poll_write().is_none());
 }
 
 #[test]
@@ -1472,7 +1472,7 @@ fn inbound_qos2_unknown_pubrel_sends_pubcomp_packet_identifier_not_found() {
         properties: PubCompProperties::default(),
     });
     assert_eq!(client.poll_write(), Some(encode_packet(&expected_pubcomp)));
-    assert!(matches!(client.poll_event(), None));
+    assert!(client.poll_event().is_none());
 }
 
 #[test]
@@ -1506,7 +1506,7 @@ fn socket_closed_after_disconnect_does_not_duplicate_disconnected_event() {
         client.poll_read(),
         Some(UserWriteOut::Disconnected)
     ));
-    assert!(matches!(client.poll_read(), None));
+    assert!(client.poll_read().is_none());
 }
 
 #[test]
@@ -1564,7 +1564,7 @@ fn outbound_qos1_publish_emits_acknowledged_event_on_puback() {
         client.poll_read(),
         Some(UserWriteOut::PublishAcknowledged(id, PubAckReasonCode::Success)) if id == packet_id
     ));
-    assert!(matches!(client.poll_read(), None));
+    assert!(client.poll_read().is_none());
 }
 
 #[test]
@@ -1650,7 +1650,7 @@ fn qos2_inflight_receiving_puback_triggers_protocol_error_close() {
         client.poll_write(),
         Some(Bytes::from_static(&[0xE0, 0x02, 0x82, 0x00]))
     );
-    assert!(matches!(client.poll_read(), None));
+    assert!(client.poll_read().is_none());
     assert!(matches!(
         client.poll_event(),
         Some(sansio_mqtt_v5_protocol::DriverEventOut::CloseSocket)
@@ -1703,7 +1703,7 @@ fn qos1_inflight_receiving_pubrec_triggers_protocol_error_close() {
         client.poll_write(),
         Some(Bytes::from_static(&[0xE0, 0x02, 0x82, 0x00]))
     );
-    assert!(matches!(client.poll_read(), None));
+    assert!(client.poll_read().is_none());
     assert!(matches!(
         client.poll_event(),
         Some(sansio_mqtt_v5_protocol::DriverEventOut::CloseSocket)
@@ -2049,7 +2049,7 @@ fn app_topic_alias_zero_disables_inbound_alias_even_if_connect_requests_more() {
         client.poll_event(),
         Some(DriverEventOut::CloseSocket)
     ));
-    assert!(matches!(client.poll_read(), None));
+    assert!(client.poll_read().is_none());
 }
 
 #[test]
@@ -2265,7 +2265,7 @@ fn outbound_qos2_publish_emits_completed_event_on_pubcomp() {
         client.poll_read(),
         Some(UserWriteOut::PublishCompleted(id, PubCompReasonCode::Success)) if id == packet_id
     ));
-    assert!(matches!(client.poll_read(), None));
+    assert!(client.poll_read().is_none());
 }
 
 #[test]
@@ -2443,7 +2443,7 @@ fn duplicate_pubrec_in_qos2_await_pubcomp_resends_pubrel_without_disconnect() {
 
     assert_eq!(client.handle_read(encode_packet(&pubrec)), Ok(()));
     assert_eq!(client.poll_write(), Some(encode_packet(&expected_pubrel)));
-    assert!(matches!(client.poll_event(), None));
+    assert!(client.poll_event().is_none());
 
     let pubcomp = ControlPacket::PubComp(PubComp {
         packet_id,
@@ -2608,7 +2608,7 @@ fn repeated_connect_does_not_duplicate_open_socket_event() {
         client.poll_event(),
         Some(sansio_mqtt_v5_protocol::DriverEventOut::OpenSocket)
     ));
-    assert!(matches!(client.poll_event(), None));
+    assert!(client.poll_event().is_none());
 }
 
 #[test]
@@ -2724,7 +2724,7 @@ fn connack_resume_with_clean_start_is_protocol_error() {
         client.poll_event(),
         Some(sansio_mqtt_v5_protocol::DriverEventOut::CloseSocket)
     ));
-    assert!(matches!(client.poll_read(), None));
+    assert!(client.poll_read().is_none());
 }
 
 #[test]
@@ -2753,7 +2753,7 @@ fn connack_resume_without_local_state_is_accepted_when_clean_start_false() {
 
     assert_eq!(client.handle_read(encode_packet(&resumed_connack)), Ok(()));
     assert!(matches!(client.poll_read(), Some(UserWriteOut::Connected)));
-    assert!(matches!(client.poll_event(), None));
+    assert!(client.poll_event().is_none());
 }
 
 #[test]
@@ -2934,7 +2934,7 @@ fn resumed_session_replay_failure_does_not_emit_connected_and_closes() {
         client.poll_event(),
         Some(sansio_mqtt_v5_protocol::DriverEventOut::CloseSocket)
     ));
-    assert!(matches!(client.poll_read(), None));
+    assert!(client.poll_read().is_none());
 }
 
 #[test]
@@ -3174,7 +3174,7 @@ fn non_resumed_session_drops_inflight_and_emits_publish_dropped_events() {
         client.poll_read(),
         Some(UserWriteOut::PublishDroppedDueToSessionNotResumed(id)) if id == qos2_packet_id
     ));
-    assert!(matches!(client.poll_read(), None));
+    assert!(client.poll_read().is_none());
     assert_eq!(client.poll_write(), None);
 
     let pubrel = ControlPacket::PubRel(PubRel {
@@ -3535,10 +3535,10 @@ fn close_enqueues_disconnect_and_close_socket() {
         client.poll_read(),
         Some(UserWriteOut::Disconnected)
     ));
-    assert!(matches!(client.poll_read(), None));
+    assert!(client.poll_read().is_none());
 
     assert_eq!(client.handle_event(DriverEventIn::SocketClosed), Ok(()));
-    assert!(matches!(client.poll_read(), None));
+    assert!(client.poll_read().is_none());
 }
 
 #[test]
@@ -3570,10 +3570,10 @@ fn close_succeeds_even_when_disconnect_packet_exceeds_maximum_packet_size() {
         client.poll_read(),
         Some(UserWriteOut::Disconnected)
     ));
-    assert!(matches!(client.poll_read(), None));
+    assert!(client.poll_read().is_none());
 
     assert_eq!(client.handle_event(DriverEventIn::SocketClosed), Ok(()));
-    assert!(matches!(client.poll_read(), None));
+    assert!(client.poll_read().is_none());
 }
 
 #[test]
@@ -3605,10 +3605,10 @@ fn user_disconnect_succeeds_even_when_disconnect_packet_exceeds_maximum_packet_s
         client.poll_read(),
         Some(UserWriteOut::Disconnected)
     ));
-    assert!(matches!(client.poll_read(), None));
+    assert!(client.poll_read().is_none());
 
     assert_eq!(client.handle_event(DriverEventIn::SocketClosed), Ok(()));
-    assert!(matches!(client.poll_read(), None));
+    assert!(client.poll_read().is_none());
 }
 
 #[test]
@@ -3719,7 +3719,7 @@ fn connecting_accepts_auth_and_stays_open() {
         },
     });
     assert_eq!(client.handle_read(encode_packet(&auth)), Ok(()));
-    assert!(matches!(client.poll_event(), None));
+    assert!(client.poll_event().is_none());
 }
 
 #[test]
@@ -4268,7 +4268,7 @@ fn clean_start_true_clears_local_session_before_connect() {
         client.poll_event(),
         Some(sansio_mqtt_v5_protocol::DriverEventOut::CloseSocket)
     ));
-    assert!(matches!(client.poll_read(), None));
+    assert!(client.poll_read().is_none());
 }
 
 #[test]
@@ -4394,7 +4394,7 @@ fn zero_session_expiry_clears_inflight_on_disconnect() {
     assert_eq!(client.handle_read(encode_packet(&resumed_connack)), Ok(()));
     assert!(matches!(client.poll_read(), Some(UserWriteOut::Connected)));
     assert_eq!(client.poll_write(), None);
-    assert!(matches!(client.poll_event(), None));
+    assert!(client.poll_event().is_none());
 }
 
 #[test]

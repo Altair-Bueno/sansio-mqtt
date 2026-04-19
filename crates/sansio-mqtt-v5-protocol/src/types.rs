@@ -199,6 +199,7 @@ pub enum IncomingRejectReason {
 
 // Things that the client can write to the socket (via the driver)
 #[derive(Debug)]
+#[allow(clippy::large_enum_variant)]
 pub enum UserWriteIn {
     Connect(ConnectionOptions),
     PublishMessage(ClientMessage),

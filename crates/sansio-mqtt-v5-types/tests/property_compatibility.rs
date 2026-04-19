@@ -204,7 +204,7 @@ fn roundtrip(packet: &ControlPacket) -> Result<(), String> {
     if bytes == reencoded {
         Ok(())
     } else {
-        Err(format!("Round-trip mismatch"))
+        Err("Round-trip mismatch".to_string())
     }
 }
 
@@ -494,7 +494,7 @@ fn pubrel_with_all_valid_properties_roundtrip() {
 
 #[test]
 fn pingreq_parsing_valid() {
-    let bytes = vec![192, 0];
+    let bytes = [192, 0];
     let settings = ParserSettings::default();
     let mut parser = ControlPacket::parser::<_, ContextError, ContextError>(&settings);
     assert!(matches!(
@@ -505,7 +505,7 @@ fn pingreq_parsing_valid() {
 
 #[test]
 fn pingreq_rejects_with_payload() {
-    let bytes = vec![192, 1, 0];
+    let bytes = [192, 1, 0];
     let settings = ParserSettings::default();
     let mut parser = ControlPacket::parser::<_, ContextError, ContextError>(&settings);
     parser.parse(&bytes[..]).unwrap_err();
@@ -513,7 +513,7 @@ fn pingreq_rejects_with_payload() {
 
 #[test]
 fn pingresp_parsing_valid() {
-    let bytes = vec![208, 0];
+    let bytes = [208, 0];
     let settings = ParserSettings::default();
     let mut parser = ControlPacket::parser::<_, ContextError, ContextError>(&settings);
     assert!(matches!(
@@ -687,7 +687,7 @@ fn pingresp_encode_and_decode() {
 
 #[test]
 fn reserved_packet_parsing() {
-    let bytes = vec![0, 0];
+    let bytes = [0, 0];
     let settings = ParserSettings::default();
     let mut parser = ControlPacket::parser::<_, ContextError, ContextError>(&settings);
     assert!(matches!(
@@ -698,7 +698,7 @@ fn reserved_packet_parsing() {
 
 #[test]
 fn reserved_packet_rejects_with_payload() {
-    let bytes = vec![0, 1, 0];
+    let bytes = [0, 1, 0];
     let settings = ParserSettings::default();
     let mut parser = ControlPacket::parser::<_, ContextError, ContextError>(&settings);
     parser.parse(&bytes[..]).unwrap_err();
