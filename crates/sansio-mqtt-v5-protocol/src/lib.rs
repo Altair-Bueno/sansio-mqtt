@@ -8,6 +8,7 @@ mod queues;
 mod scratchpad;
 mod session;
 mod session_ops;
+mod state;
 mod types;
 
 pub use proto::Client;
