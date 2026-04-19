@@ -6,6 +6,7 @@ mod proto;
 mod types;
 
 pub use proto::Client;
+pub use proto::ClientState;
 pub use types::BrokerMessage;
 pub use types::ClientMessage;
 pub use types::ClientSettings;

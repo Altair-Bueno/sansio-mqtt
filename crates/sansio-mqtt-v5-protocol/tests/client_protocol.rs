@@ -101,6 +101,61 @@ fn driver_events_are_pattern_matchable_without_equality() {
 }
 
 #[test]
+fn client_new_uses_default_state_and_blank_scratchpad() {
+    let _client = Client::<u64>::new(ClientSettings::default());
+}
+
+#[test]
+fn client_new_with_state_accepts_preloaded_state() {
+    let state = sansio_mqtt_v5_protocol::ClientState::default();
+    let _client = Client::<u64>::new_with_state(ClientSettings::default(), state);
+}
+
+#[test]
+fn clean_start_true_drops_preloaded_state() {
+    let mut client = Client::<u64>::new_with_state(
+        ClientSettings::default(),
+        sansio_mqtt_v5_protocol::ClientState::default(),
+    );
+
+    assert_eq!(
+        client.handle_write(UserWriteIn::Connect(ConnectionOptions {
+            clean_start: true,
+            session_expiry_interval: Some(60),
+            ..ConnectionOptions::default()
+        })),
+        Ok(())
+    );
+
+    assert!(matches!(
+        client.poll_event(),
+        Some(DriverEventOut::OpenSocket)
+    ));
+}
+
+#[test]
+fn clean_start_false_keeps_preloaded_state_until_session_rules_clear_it() {
+    let mut client = Client::<u64>::new_with_state(
+        ClientSettings::default(),
+        sansio_mqtt_v5_protocol::ClientState::default(),
+    );
+
+    assert_eq!(
+        client.handle_write(UserWriteIn::Connect(ConnectionOptions {
+            clean_start: false,
+            session_expiry_interval: Some(60),
+            ..ConnectionOptions::default()
+        })),
+        Ok(())
+    );
+
+    assert!(matches!(
+        client.poll_event(),
+        Some(DriverEventOut::OpenSocket)
+    ));
+}
+
+#[test]
 fn config_and_error_are_instantiable() {
     let config = ClientSettings::default();
     let settings = ParserSettings::default();

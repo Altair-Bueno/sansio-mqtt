@@ -50,45 +50,8 @@ use winnow::error::ErrMode;
 use winnow::stream::Partial;
 use winnow::Parser;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct NegotiatedLimits {
-    receive_maximum: NonZero<u16>,
-    maximum_packet_size: Option<NonZero<u32>>,
-    topic_alias_maximum: u16,
-    server_keep_alive: Option<u16>,
-    maximum_qos: Option<MaximumQoS>,
-    retain_available: bool,
-    wildcard_subscription_available: bool,
-    shared_subscription_available: bool,
-    subscription_identifiers_available: bool,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
-struct KeepAliveState {
-    interval_secs: Option<NonZero<u16>>,
-    saw_network_activity: bool,
-    ping_outstanding: bool,
-}
-
-impl Default for NegotiatedLimits {
-    fn default() -> Self {
-        Self {
-            receive_maximum: NonZero::new(u16::MAX)
-                .expect("u16::MAX is always non-zero for receive_maximum"),
-            maximum_packet_size: None,
-            topic_alias_maximum: 0,
-            server_keep_alive: None,
-            maximum_qos: None,
-            retain_available: true,
-            wildcard_subscription_available: true,
-            shared_subscription_available: true,
-            subscription_identifiers_available: true,
-        }
-    }
-}
-
 #[derive(Debug, PartialEq, Default)]
-enum ClientState {
+enum ClientLifecycleState {
     #[default]
     Start,
     Disconnected,
@@ -117,69 +80,130 @@ enum InboundInflightState {
     Qos2Rejected(PubRecReasonCode),
 }
 
-#[derive(Debug)]
-pub struct Client<Time>
-where
-    Time: 'static,
-{
-    config: ClientSettings,
-    pending_connect_options: ConnectionOptions,
-    state: ClientState,
-    negotiated_limits: NegotiatedLimits,
-
-    // Buffer for accumulating incoming bytes until a full control packet can be parsed
-    read_buffer: BytesMut,
-
-    // Pending packages to be acknowledged indexed by packet identifier
+#[derive(Debug, Clone, PartialEq)]
+pub struct ClientState {
     on_flight_sent: BTreeMap<NonZero<u16>, OutboundInflightState>,
     on_flight_received: BTreeMap<NonZero<u16>, InboundInflightState>,
     pending_subscribe: BTreeMap<NonZero<u16>, ()>,
     pending_unsubscribe: BTreeMap<NonZero<u16>, ()>,
     inbound_topic_aliases: BTreeMap<NonZero<u16>, Topic>,
-
-    keep_alive: KeepAliveState,
-    session_should_persist: bool,
-
-    // Output queues
-    read_queue: VecDeque<UserWriteOut>,
-    write_queue: VecDeque<Bytes>,
-    action_queue: VecDeque<DriverEventOut>,
-    next_timeout: Option<Time>,
     next_packet_id: u16,
-    connecting_phase: ConnectingPhase,
 }
 
-impl<Time> Default for Client<Time> {
+impl ClientState {
+    pub fn clear(&mut self) {
+        *self = Self::default();
+    }
+}
+
+impl Default for ClientState {
     fn default() -> Self {
         Self {
-            config: ClientSettings::default(),
-            pending_connect_options: ConnectionOptions::default(),
-            state: ClientState::default(),
-            negotiated_limits: NegotiatedLimits::default(),
-            read_buffer: BytesMut::new(),
             on_flight_sent: BTreeMap::new(),
             on_flight_received: BTreeMap::new(),
             pending_subscribe: BTreeMap::new(),
             pending_unsubscribe: BTreeMap::new(),
             inbound_topic_aliases: BTreeMap::new(),
-            keep_alive: KeepAliveState::default(),
-            session_should_persist: false,
-            read_queue: VecDeque::new(),
-            write_queue: VecDeque::new(),
-            action_queue: VecDeque::new(),
-            next_timeout: None,
             next_packet_id: 1,
-            connecting_phase: ConnectingPhase::AwaitConnAck,
         }
     }
 }
 
-impl<Time> Client<Time> {
-    pub fn with_config(config: ClientSettings) -> Self {
+#[derive(Debug)]
+pub struct ClientScratchpad<Time>
+where
+    Time: 'static,
+{
+    lifecycle_state: ClientLifecycleState,
+    connecting_phase: ConnectingPhase,
+    pending_connect_options: ConnectionOptions,
+    session_should_persist: bool,
+    negotiated_receive_maximum: NonZero<u16>,
+    negotiated_maximum_packet_size: Option<NonZero<u32>>,
+    negotiated_topic_alias_maximum: u16,
+    negotiated_server_keep_alive: Option<u16>,
+    negotiated_maximum_qos: Option<MaximumQoS>,
+    negotiated_retain_available: bool,
+    negotiated_wildcard_subscription_available: bool,
+    negotiated_shared_subscription_available: bool,
+    negotiated_subscription_identifiers_available: bool,
+    keep_alive_interval_secs: Option<NonZero<u16>>,
+    keep_alive_saw_network_activity: bool,
+    keep_alive_ping_outstanding: bool,
+    read_buffer: BytesMut,
+    read_queue: VecDeque<UserWriteOut>,
+    write_queue: VecDeque<Bytes>,
+    action_queue: VecDeque<DriverEventOut>,
+    next_timeout: Option<Time>,
+}
+
+impl<Time> Default for ClientScratchpad<Time>
+where
+    Time: 'static,
+{
+    fn default() -> Self {
         Self {
-            config,
-            ..Self::default()
+            lifecycle_state: ClientLifecycleState::default(),
+            connecting_phase: ConnectingPhase::AwaitConnAck,
+            pending_connect_options: ConnectionOptions::default(),
+            session_should_persist: false,
+            negotiated_receive_maximum: NonZero::new(u16::MAX)
+                .expect("u16::MAX is always non-zero for receive_maximum"),
+            negotiated_maximum_packet_size: None,
+            negotiated_topic_alias_maximum: 0,
+            negotiated_server_keep_alive: None,
+            negotiated_maximum_qos: None,
+            negotiated_retain_available: true,
+            negotiated_wildcard_subscription_available: true,
+            negotiated_shared_subscription_available: true,
+            negotiated_subscription_identifiers_available: true,
+            keep_alive_interval_secs: None,
+            keep_alive_saw_network_activity: false,
+            keep_alive_ping_outstanding: false,
+            read_buffer: BytesMut::new(),
+            read_queue: VecDeque::new(),
+            write_queue: VecDeque::new(),
+            action_queue: VecDeque::new(),
+            next_timeout: None,
         }
+    }
+}
+
+#[derive(Debug)]
+pub struct Client<Time>
+where
+    Time: 'static,
+{
+    settings: ClientSettings,
+    state: ClientState,
+    scratchpad: ClientScratchpad<Time>,
+}
+
+impl<Time> Default for Client<Time> {
+    fn default() -> Self {
+        Self::new(ClientSettings::default())
+    }
+}
+
+impl<Time> Client<Time> {
+    pub fn new(settings: ClientSettings) -> Self {
+        Self {
+            settings,
+            state: ClientState::default(),
+            scratchpad: ClientScratchpad::default(),
+        }
+    }
+
+    pub fn new_with_state(settings: ClientSettings, state: ClientState) -> Self {
+        Self {
+            settings,
+            state,
+            scratchpad: ClientScratchpad::default(),
+        }
+    }
+
+    pub fn with_config(settings: ClientSettings) -> Self {
+        Self::new(settings)
     }
 
     fn encode_control_packet(packet: &ControlPacket) -> Result<Bytes, Error> {
@@ -196,8 +220,8 @@ impl<Time> Client<Time> {
     fn enqueue_packet(&mut self, packet: ControlPacket) -> Result<(), Error> {
         let encoded = Self::encode_control_packet(&packet)?;
         self.validate_outbound_packet_size(encoded.len())?;
-        self.write_queue.push_back(encoded);
-        self.keep_alive.saw_network_activity = true;
+        self.scratchpad.write_queue.push_back(encoded);
+        self.scratchpad.keep_alive_saw_network_activity = true;
         Ok(())
     }
 
@@ -258,17 +282,17 @@ impl<Time> Client<Time> {
 
     fn parser_settings(&self) -> ParserSettings {
         ParserSettings {
-            max_bytes_string: self.config.parser_max_bytes_string,
-            max_bytes_binary_data: self.config.parser_max_bytes_binary_data,
-            max_remaining_bytes: self.config.parser_max_remaining_bytes,
-            max_subscriptions_len: self.config.parser_max_subscriptions_len,
-            max_user_properties_len: self.config.parser_max_user_properties_len,
+            max_bytes_string: self.settings.parser_max_bytes_string,
+            max_bytes_binary_data: self.settings.parser_max_bytes_binary_data,
+            max_remaining_bytes: self.settings.parser_max_remaining_bytes,
+            max_subscriptions_len: self.settings.parser_max_subscriptions_len,
+            max_user_properties_len: self.settings.parser_max_user_properties_len,
         }
     }
 
     fn next_packet_id(&mut self) -> NonZero<u16> {
-        let packet_id = self.next_packet_id;
-        self.next_packet_id = if packet_id == u16::MAX {
+        let packet_id = self.state.next_packet_id;
+        self.state.next_packet_id = if packet_id == u16::MAX {
             1
         } else {
             packet_id + 1
@@ -280,9 +304,9 @@ impl<Time> Client<Time> {
     fn next_outbound_publish_packet_id(&mut self) -> Result<NonZero<u16>, Error> {
         for _ in 0..u16::MAX {
             let packet_id = self.next_packet_id();
-            if !self.on_flight_sent.contains_key(&packet_id)
-                && !self.pending_subscribe.contains_key(&packet_id)
-                && !self.pending_unsubscribe.contains_key(&packet_id)
+            if !self.state.on_flight_sent.contains_key(&packet_id)
+                && !self.state.pending_subscribe.contains_key(&packet_id)
+                && !self.state.pending_unsubscribe.contains_key(&packet_id)
             {
                 return Ok(packet_id);
             }
@@ -293,7 +317,9 @@ impl<Time> Client<Time> {
 
     fn ensure_outbound_receive_maximum_capacity(&self) -> Result<(), Error> {
         // [MQTT-4.9.0-2] [MQTT-4.9.0-3] Sender enforces peer Receive Maximum by limiting concurrent QoS>0 in-flight PUBLISH packets.
-        if self.on_flight_sent.len() >= usize::from(self.negotiated_limits.receive_maximum.get()) {
+        if self.state.on_flight_sent.len()
+            >= usize::from(self.scratchpad.negotiated_receive_maximum.get())
+        {
             return Err(Error::ReceiveMaximumExceeded);
         }
 
@@ -305,7 +331,7 @@ impl<Time> Client<Time> {
         topic_alias: Option<NonZero<u16>>,
     ) -> Result<(), Error> {
         if let Some(alias) = topic_alias {
-            let topic_alias_maximum = self.negotiated_limits.topic_alias_maximum;
+            let topic_alias_maximum = self.scratchpad.negotiated_topic_alias_maximum;
             if topic_alias_maximum == 0 || alias.get() > topic_alias_maximum {
                 return Err(Error::ProtocolError);
             }
@@ -315,7 +341,7 @@ impl<Time> Client<Time> {
     }
 
     fn validate_outbound_packet_size(&self, packet_size_bytes: usize) -> Result<(), Error> {
-        if let Some(maximum_packet_size) = self.negotiated_limits.maximum_packet_size {
+        if let Some(maximum_packet_size) = self.scratchpad.negotiated_maximum_packet_size {
             if packet_size_bytes > maximum_packet_size.get() as usize {
                 return Err(Error::PacketTooLarge);
             }
@@ -325,7 +351,7 @@ impl<Time> Client<Time> {
     }
 
     fn validate_outbound_publish_capabilities(&self, msg: &ClientMessage) -> Result<(), Error> {
-        if let Some(maximum_qos) = self.negotiated_limits.maximum_qos {
+        if let Some(maximum_qos) = self.scratchpad.negotiated_maximum_qos {
             let exceeds = match maximum_qos {
                 MaximumQoS::AtMostOnce => !matches!(msg.qos, Qos::AtMostOnce),
                 MaximumQoS::AtLeastOnce => matches!(msg.qos, Qos::ExactlyOnce),
@@ -336,7 +362,7 @@ impl<Time> Client<Time> {
             }
         }
 
-        if msg.retain && !self.negotiated_limits.retain_available {
+        if msg.retain && !self.scratchpad.negotiated_retain_available {
             return Err(Error::ProtocolError);
         }
 
@@ -344,8 +370,18 @@ impl<Time> Client<Time> {
     }
 
     fn reset_negotiated_limits(&mut self) {
-        self.negotiated_limits = NegotiatedLimits::default();
-        self.inbound_topic_aliases.clear();
+        self.scratchpad.negotiated_receive_maximum =
+            NonZero::new(u16::MAX).expect("u16::MAX is always non-zero for receive_maximum");
+        self.scratchpad.negotiated_maximum_packet_size = None;
+        self.scratchpad.negotiated_topic_alias_maximum = 0;
+        self.scratchpad.negotiated_server_keep_alive = None;
+        self.scratchpad.negotiated_maximum_qos = None;
+        self.scratchpad.negotiated_retain_available = true;
+        self.scratchpad.negotiated_wildcard_subscription_available = true;
+        self.scratchpad.negotiated_shared_subscription_available = true;
+        self.scratchpad
+            .negotiated_subscription_identifiers_available = true;
+        self.state.inbound_topic_aliases.clear();
     }
 
     fn apply_inbound_publish_topic_alias(&mut self, publish: &mut Publish) -> Result<(), Error> {
@@ -359,6 +395,7 @@ impl<Time> Client<Time> {
         };
 
         let topic_alias_maximum = self
+            .scratchpad
             .pending_connect_options
             .topic_alias_maximum
             .unwrap_or(0);
@@ -368,12 +405,14 @@ impl<Time> Client<Time> {
 
         if topic.is_empty() {
             publish.topic = self
+                .state
                 .inbound_topic_aliases
                 .get(&topic_alias)
                 .cloned()
                 .ok_or(Error::ProtocolError)?;
         } else {
-            self.inbound_topic_aliases
+            self.state
+                .inbound_topic_aliases
                 .insert(topic_alias, publish.topic.clone());
         }
 
@@ -381,13 +420,13 @@ impl<Time> Client<Time> {
     }
 
     fn reset_inflight_transactions(&mut self) {
-        self.on_flight_sent.clear();
-        self.on_flight_received.clear();
+        self.state.on_flight_sent.clear();
+        self.state.on_flight_received.clear();
     }
 
     fn clear_pending_subscriptions(&mut self) {
-        self.pending_subscribe.clear();
-        self.pending_unsubscribe.clear();
+        self.state.pending_subscribe.clear();
+        self.state.pending_unsubscribe.clear();
     }
 
     fn reset_session_state(&mut self) {
@@ -397,24 +436,26 @@ impl<Time> Client<Time> {
 
     fn maybe_reset_session_state(&mut self) {
         // [MQTT-3.1.2-4] Clean Start controls whether prior session state is discarded.
-        if !self.session_should_persist {
+        if !self.scratchpad.session_should_persist {
             self.reset_session_state();
         }
     }
 
     fn reset_keepalive(&mut self) {
         // [MQTT-3.1.2-22] [MQTT-3.1.2-23] Keep Alive tracking resets on connection lifecycle boundaries.
-        self.keep_alive = KeepAliveState::default();
-        self.next_timeout = None;
+        self.scratchpad.keep_alive_interval_secs = None;
+        self.scratchpad.keep_alive_saw_network_activity = false;
+        self.scratchpad.keep_alive_ping_outstanding = false;
+        self.scratchpad.next_timeout = None;
     }
 
     fn next_packet_id_checked(&mut self) -> Result<NonZero<u16>, Error> {
         // [MQTT-2.2.1-2] Packet Identifier MUST be unused while an exchange is in-flight.
         for _ in 0..u16::MAX {
             let packet_id = self.next_packet_id();
-            if !self.on_flight_sent.contains_key(&packet_id)
-                && !self.pending_subscribe.contains_key(&packet_id)
-                && !self.pending_unsubscribe.contains_key(&packet_id)
+            if !self.state.on_flight_sent.contains_key(&packet_id)
+                && !self.state.pending_subscribe.contains_key(&packet_id)
+                && !self.state.pending_unsubscribe.contains_key(&packet_id)
             {
                 return Ok(packet_id);
             }
@@ -425,7 +466,7 @@ impl<Time> Client<Time> {
 
     fn replay_outbound_inflight_with_dup(&mut self) -> Result<(), Error> {
         // [MQTT-4.4.0-1] [MQTT-4.4.0-2] On session resume, retransmit unacknowledged QoS1/QoS2 PUBLISH with DUP=1.
-        for (packet_id, state) in self.on_flight_sent.clone() {
+        for (packet_id, state) in self.state.on_flight_sent.clone() {
             let publish = match state {
                 OutboundInflightState::Qos1AwaitPubAck { mut publish }
                 | OutboundInflightState::Qos2AwaitPubRec { mut publish } => {
@@ -446,7 +487,7 @@ impl<Time> Client<Time> {
 
             self.enqueue_packet(ControlPacket::Publish(publish.clone()))?;
 
-            match self.on_flight_sent.get_mut(&packet_id) {
+            match self.state.on_flight_sent.get_mut(&packet_id) {
                 Some(OutboundInflightState::Qos1AwaitPubAck {
                     publish: stored_publish,
                 })
@@ -463,11 +504,10 @@ impl<Time> Client<Time> {
     }
 
     fn emit_publish_dropped_for_all_inflight(&mut self) {
-        for packet_id in self.on_flight_sent.keys().copied() {
-            self.read_queue
-                .push_back(UserWriteOut::PublishDroppedDueToSessionNotResumed(
-                    packet_id,
-                ));
+        for packet_id in self.state.on_flight_sent.keys().copied() {
+            self.scratchpad.read_queue.push_back(
+                UserWriteOut::PublishDroppedDueToSessionNotResumed(packet_id),
+            );
         }
     }
 
@@ -478,9 +518,11 @@ impl<Time> Client<Time> {
             properties: DisconnectProperties::default(),
         }));
 
-        self.action_queue.push_back(DriverEventOut::CloseSocket);
-        self.state = ClientState::Disconnected;
-        self.read_buffer.clear();
+        self.scratchpad
+            .action_queue
+            .push_back(DriverEventOut::CloseSocket);
+        self.scratchpad.lifecycle_state = ClientLifecycleState::Disconnected;
+        self.scratchpad.read_buffer.clear();
         self.reset_keepalive();
         self.reset_negotiated_limits();
         self.maybe_reset_session_state();
@@ -557,8 +599,8 @@ impl<Time> Client<Time> {
     }
 
     fn handle_read_control_packet(&mut self, packet: ControlPacket) -> Result<(), Error> {
-        match self.state {
-            ClientState::Connecting => match packet {
+        match self.scratchpad.lifecycle_state {
+            ClientLifecycleState::Connecting => match packet {
                 ControlPacket::ConnAck(connack) => {
                     if matches!(
                         connack.kind,
@@ -567,45 +609,46 @@ impl<Time> Client<Time> {
                                 reason_code: ConnackReasonCode::Success
                             }
                     ) {
-                        self.negotiated_limits.receive_maximum =
+                        self.scratchpad.negotiated_receive_maximum =
                             connack.properties.receive_maximum.unwrap_or(
                                 NonZero::new(u16::MAX).expect("u16::MAX is always non-zero"),
                             );
-                        self.negotiated_limits.maximum_packet_size =
+                        self.scratchpad.negotiated_maximum_packet_size =
                             connack.properties.maximum_packet_size;
-                        self.negotiated_limits.topic_alias_maximum =
+                        self.scratchpad.negotiated_topic_alias_maximum =
                             connack.properties.topic_alias_maximum.unwrap_or(0);
-                        self.negotiated_limits.server_keep_alive =
+                        self.scratchpad.negotiated_server_keep_alive =
                             connack.properties.server_keep_alive;
-                        self.negotiated_limits.maximum_qos = connack.properties.maximum_qos;
-                        self.negotiated_limits.retain_available =
+                        self.scratchpad.negotiated_maximum_qos = connack.properties.maximum_qos;
+                        self.scratchpad.negotiated_retain_available =
                             connack.properties.retain_available.unwrap_or(true);
-                        self.negotiated_limits.wildcard_subscription_available = connack
+                        self.scratchpad.negotiated_wildcard_subscription_available = connack
                             .properties
                             .wildcard_subscription_available
                             .unwrap_or(true);
-                        self.negotiated_limits.subscription_identifiers_available = connack
+                        self.scratchpad
+                            .negotiated_subscription_identifiers_available = connack
                             .properties
                             .subscription_identifiers_available
                             .unwrap_or(true);
-                        self.negotiated_limits.shared_subscription_available = connack
+                        self.scratchpad.negotiated_shared_subscription_available = connack
                             .properties
                             .shared_subscription_available
                             .unwrap_or(true);
-                        self.keep_alive.interval_secs =
-                            match self.negotiated_limits.server_keep_alive {
+                        self.scratchpad.keep_alive_interval_secs =
+                            match self.scratchpad.negotiated_server_keep_alive {
                                 Some(server_keep_alive) => NonZero::new(server_keep_alive),
-                                None => self.pending_connect_options.keep_alive,
+                                None => self.scratchpad.pending_connect_options.keep_alive,
                             };
-                        self.keep_alive.saw_network_activity = false;
-                        self.keep_alive.ping_outstanding = false;
+                        self.scratchpad.keep_alive_saw_network_activity = false;
+                        self.scratchpad.keep_alive_ping_outstanding = false;
 
                         let mut connected_emitted = false;
 
                         match connack.kind {
                             sansio_mqtt_v5_types::ConnAckKind::ResumePreviousSession => {
                                 // [MQTT-3.2.2-2] Session Present=1 is only valid when CONNECT had Clean Start=0.
-                                if self.pending_connect_options.clean_start {
+                                if self.scratchpad.pending_connect_options.clean_start {
                                     self.fail_protocol_and_disconnect(
                                         DisconnectReasonCode::ProtocolError,
                                     )?;
@@ -622,7 +665,9 @@ impl<Time> Client<Time> {
                             sansio_mqtt_v5_types::ConnAckKind::Other {
                                 reason_code: ConnackReasonCode::Success,
                             } => {
-                                self.read_queue.push_back(UserWriteOut::Connected);
+                                self.scratchpad
+                                    .read_queue
+                                    .push_back(UserWriteOut::Connected);
                                 connected_emitted = true;
                                 self.emit_publish_dropped_for_all_inflight();
                                 self.reset_session_state();
@@ -630,21 +675,30 @@ impl<Time> Client<Time> {
                             _ => unreachable!("successful CONNACK kind already matched"),
                         }
 
-                        self.state = ClientState::Connected;
+                        self.scratchpad.lifecycle_state = ClientLifecycleState::Connected;
                         if !connected_emitted {
-                            self.read_queue.push_back(UserWriteOut::Connected);
+                            self.scratchpad
+                                .read_queue
+                                .push_back(UserWriteOut::Connected);
                         }
 
                         Ok(())
                     } else {
-                        self.state = ClientState::Disconnected;
+                        self.scratchpad.lifecycle_state = ClientLifecycleState::Disconnected;
                         self.reset_negotiated_limits();
-                        self.action_queue.push_back(DriverEventOut::CloseSocket);
+                        self.scratchpad
+                            .action_queue
+                            .push_back(DriverEventOut::CloseSocket);
                         Err(Error::ProtocolError)
                     }
                 }
                 ControlPacket::Auth(auth) => {
-                    if self.pending_connect_options.authentication.is_none() {
+                    if self
+                        .scratchpad
+                        .pending_connect_options
+                        .authentication
+                        .is_none()
+                    {
                         self.fail_protocol_and_disconnect(DisconnectReasonCode::ProtocolError)?;
                         return Err(Error::ProtocolError);
                     }
@@ -657,7 +711,7 @@ impl<Time> Client<Time> {
                         return Err(Error::ProtocolError);
                     }
 
-                    self.connecting_phase = ConnectingPhase::AuthInProgress;
+                    self.scratchpad.connecting_phase = ConnectingPhase::AuthInProgress;
                     Ok(())
                 }
                 _ => {
@@ -665,7 +719,7 @@ impl<Time> Client<Time> {
                     Err(Error::ProtocolError)
                 }
             },
-            ClientState::Connected => match packet {
+            ClientLifecycleState::Connected => match packet {
                 ControlPacket::Publish(mut publish) => {
                     if self
                         .apply_inbound_publish_topic_alias(&mut publish)
@@ -677,24 +731,27 @@ impl<Time> Client<Time> {
 
                     match publish.kind {
                         PublishKind::FireAndForget => {
-                            self.read_queue.push_back(UserWriteOut::ReceivedMessage(
-                                Self::map_inbound_publish_to_broker_message(publish),
-                            ));
+                            self.scratchpad
+                                .read_queue
+                                .push_back(UserWriteOut::ReceivedMessage(
+                                    Self::map_inbound_publish_to_broker_message(publish),
+                                ));
                             Ok(())
                         }
                         PublishKind::Repetible {
                             packet_id,
                             qos: GuaranteedQoS::AtLeastOnce,
                             ..
-                        } => match self.on_flight_received.get(&packet_id).copied() {
+                        } => match self.state.on_flight_received.get(&packet_id).copied() {
                             None => {
-                                self.read_queue.push_back(
+                                self.scratchpad.read_queue.push_back(
                                     UserWriteOut::ReceivedMessageWithRequiredAcknowledgement(
                                         InboundMessageId::new(packet_id),
                                         Self::map_inbound_publish_to_broker_message(publish),
                                     ),
                                 );
-                                self.on_flight_received
+                                self.state
+                                    .on_flight_received
                                     .insert(packet_id, InboundInflightState::Qos1AwaitAppDecision);
                                 Ok(())
                             }
@@ -714,7 +771,7 @@ impl<Time> Client<Time> {
                             packet_id,
                             qos: GuaranteedQoS::ExactlyOnce,
                             ..
-                        } => match self.on_flight_received.get(&packet_id).copied() {
+                        } => match self.state.on_flight_received.get(&packet_id).copied() {
                             Some(InboundInflightState::Qos2AwaitPubRel) => self
                                 .enqueue_pubrec_or_fail_protocol(
                                     packet_id,
@@ -731,13 +788,14 @@ impl<Time> Client<Time> {
                                 Err(Error::ProtocolError)
                             }
                             None => {
-                                self.read_queue.push_back(
+                                self.scratchpad.read_queue.push_back(
                                     UserWriteOut::ReceivedMessageWithRequiredAcknowledgement(
                                         InboundMessageId::new(packet_id),
                                         Self::map_inbound_publish_to_broker_message(publish),
                                     ),
                                 );
-                                self.on_flight_received
+                                self.state
+                                    .on_flight_received
                                     .insert(packet_id, InboundInflightState::Qos2AwaitAppDecision);
                                 Ok(())
                             }
@@ -747,9 +805,9 @@ impl<Time> Client<Time> {
                 ControlPacket::PubRel(pubrel) => {
                     let packet_id = pubrel.packet_id;
 
-                    match self.on_flight_received.get(&packet_id).copied() {
+                    match self.state.on_flight_received.get(&packet_id).copied() {
                         Some(InboundInflightState::Qos2AwaitPubRel) => {
-                            let _ = self.on_flight_received.remove(&packet_id);
+                            let _ = self.state.on_flight_received.remove(&packet_id);
                             self.enqueue_pubcomp_or_fail_protocol(
                                 packet_id,
                                 PubCompReasonCode::Success,
@@ -763,7 +821,7 @@ impl<Time> Client<Time> {
                             Err(Error::ProtocolError)
                         }
                         Some(InboundInflightState::Qos2Rejected(_)) => {
-                            let _ = self.on_flight_received.remove(&packet_id);
+                            let _ = self.state.on_flight_received.remove(&packet_id);
                             self.enqueue_pubcomp_or_fail_protocol(
                                 packet_id,
                                 PubCompReasonCode::PacketIdentifierNotFound,
@@ -779,14 +837,13 @@ impl<Time> Client<Time> {
                     let packet_id = puback.packet_id;
                     let reason_code = puback.reason_code;
 
-                    match self.on_flight_sent.get(&packet_id) {
+                    match self.state.on_flight_sent.get(&packet_id) {
                         Some(OutboundInflightState::Qos1AwaitPubAck { .. }) => {
                             // [MQTT-4.3.2-3] QoS1 sender keeps PUBLISH unacknowledged until matching PUBACK is received.
-                            let _ = self.on_flight_sent.remove(&packet_id);
-                            self.read_queue.push_back(UserWriteOut::PublishAcknowledged(
-                                packet_id,
-                                reason_code,
-                            ));
+                            let _ = self.state.on_flight_sent.remove(&packet_id);
+                            self.scratchpad.read_queue.push_back(
+                                UserWriteOut::PublishAcknowledged(packet_id, reason_code),
+                            );
                             Ok(())
                         }
                         _ => {
@@ -799,7 +856,7 @@ impl<Time> Client<Time> {
                     let packet_id = pubrec.packet_id;
                     let reason_code = pubrec.reason_code;
 
-                    match self.on_flight_sent.get(&packet_id).cloned() {
+                    match self.state.on_flight_sent.get(&packet_id).cloned() {
                         Some(OutboundInflightState::Qos2AwaitPubRec { .. }) => {
                             // [MQTT-4.3.3-4] QoS2 sender sends PUBREL with the same Packet Identifier after PUBREC (Reason Code < 0x80).
                             if matches!(
@@ -808,11 +865,12 @@ impl<Time> Client<Time> {
                             ) {
                                 self.enqueue_pubrel_or_fail_protocol(packet_id)?;
 
-                                self.on_flight_sent
+                                self.state
+                                    .on_flight_sent
                                     .insert(packet_id, OutboundInflightState::Qos2AwaitPubComp);
                             } else {
-                                let _ = self.on_flight_sent.remove(&packet_id);
-                                self.read_queue.push_back(
+                                let _ = self.state.on_flight_sent.remove(&packet_id);
+                                self.scratchpad.read_queue.push_back(
                                     UserWriteOut::PublishDroppedDueToBrokerRejectedPubRec(
                                         packet_id,
                                         reason_code,
@@ -837,11 +895,12 @@ impl<Time> Client<Time> {
                     let packet_id = pubcomp.packet_id;
                     let reason_code = pubcomp.reason_code;
 
-                    match self.on_flight_sent.get(&packet_id) {
+                    match self.state.on_flight_sent.get(&packet_id) {
                         Some(OutboundInflightState::Qos2AwaitPubComp) => {
                             // [MQTT-4.3.3-5] QoS2 sender treats PUBREL as unacknowledged until matching PUBCOMP is received.
-                            let _ = self.on_flight_sent.remove(&packet_id);
-                            self.read_queue
+                            let _ = self.state.on_flight_sent.remove(&packet_id);
+                            self.scratchpad
+                                .read_queue
                                 .push_back(UserWriteOut::PublishCompleted(packet_id, reason_code));
 
                             Ok(())
@@ -855,7 +914,12 @@ impl<Time> Client<Time> {
                 ControlPacket::PingResp(_) => Ok(()),
                 ControlPacket::SubAck(suback) => {
                     // [MQTT-3.8.4-1] SUBACK MUST correspond to an outstanding SUBSCRIBE Packet Identifier.
-                    if self.pending_subscribe.remove(&suback.packet_id).is_none() {
+                    if self
+                        .state
+                        .pending_subscribe
+                        .remove(&suback.packet_id)
+                        .is_none()
+                    {
                         self.fail_protocol_and_disconnect(DisconnectReasonCode::ProtocolError)?;
                         return Err(Error::ProtocolError);
                     }
@@ -864,6 +928,7 @@ impl<Time> Client<Time> {
                 ControlPacket::UnsubAck(unsuback) => {
                     // [MQTT-3.10.4-1] UNSUBACK MUST correspond to an outstanding UNSUBSCRIBE Packet Identifier.
                     if self
+                        .state
                         .pending_unsubscribe
                         .remove(&unsuback.packet_id)
                         .is_none()
@@ -874,12 +939,16 @@ impl<Time> Client<Time> {
                     Ok(())
                 }
                 ControlPacket::Disconnect(_) => {
-                    self.state = ClientState::Disconnected;
+                    self.scratchpad.lifecycle_state = ClientLifecycleState::Disconnected;
                     self.reset_keepalive();
                     self.reset_negotiated_limits();
                     self.maybe_reset_session_state();
-                    self.read_queue.push_back(UserWriteOut::Disconnected);
-                    self.action_queue.push_back(DriverEventOut::CloseSocket);
+                    self.scratchpad
+                        .read_queue
+                        .push_back(UserWriteOut::Disconnected);
+                    self.scratchpad
+                        .action_queue
+                        .push_back(DriverEventOut::CloseSocket);
                     Ok(())
                 }
                 _ => {
@@ -887,7 +956,7 @@ impl<Time> Client<Time> {
                     Err(Error::ProtocolError)
                 }
             },
-            ClientState::Start | ClientState::Disconnected => {
+            ClientLifecycleState::Start | ClientLifecycleState::Disconnected => {
                 self.fail_protocol_and_disconnect(DisconnectReasonCode::ProtocolError)?;
                 Err(Error::ProtocolError)
             }
@@ -959,10 +1028,10 @@ where
 
     #[tracing::instrument(skip_all)]
     fn handle_read(&mut self, msg: Bytes) -> Result<(), Self::Error> {
-        let packet_bytes = if self.read_buffer.is_empty() {
+        let packet_bytes = if self.scratchpad.read_buffer.is_empty() {
             msg
         } else {
-            let mut combined = core::mem::take(&mut self.read_buffer);
+            let mut combined = core::mem::take(&mut self.scratchpad.read_buffer);
             combined.extend_from_slice(&msg);
             combined.freeze()
         };
@@ -978,9 +1047,9 @@ where
             {
                 Ok(packet) => {
                     slice = input.into_inner();
-                    self.keep_alive.saw_network_activity = true;
+                    self.scratchpad.keep_alive_saw_network_activity = true;
                     if matches!(packet, ControlPacket::PingResp(_)) {
-                        self.keep_alive.ping_outstanding = false;
+                        self.scratchpad.keep_alive_ping_outstanding = false;
                     }
                     self.handle_read_control_packet(packet)?;
                 }
@@ -996,7 +1065,7 @@ where
             }
         }
 
-        self.read_buffer = BytesMut::from(slice);
+        self.scratchpad.read_buffer = BytesMut::from(slice);
 
         Ok(())
     }
@@ -1005,24 +1074,30 @@ where
     fn handle_write(&mut self, msg: UserWriteIn) -> Result<(), Self::Error> {
         match msg {
             UserWriteIn::Connect(options) => {
-                if self.state == ClientState::Start || self.state == ClientState::Disconnected {
-                    self.pending_connect_options = options;
-                    if self.pending_connect_options.clean_start {
+                if self.scratchpad.lifecycle_state == ClientLifecycleState::Start
+                    || self.scratchpad.lifecycle_state == ClientLifecycleState::Disconnected
+                {
+                    self.scratchpad.pending_connect_options = options;
+                    if self.scratchpad.pending_connect_options.clean_start {
                         // [MQTT-3.1.2-4] Clean Start=1 starts a new Session.
-                        self.reset_session_state();
+                        self.state.clear();
                     }
-                    self.session_should_persist = self
+                    self.scratchpad.session_should_persist = self
+                        .scratchpad
                         .pending_connect_options
                         .session_expiry_interval
                         .unwrap_or(0)
                         > 0;
 
                     if !self
+                        .scratchpad
                         .action_queue
                         .iter()
                         .any(|event| matches!(event, DriverEventOut::OpenSocket))
                     {
-                        self.action_queue.push_back(DriverEventOut::OpenSocket);
+                        self.scratchpad
+                            .action_queue
+                            .push_back(DriverEventOut::OpenSocket);
                     }
                     Ok(())
                 } else {
@@ -1030,7 +1105,7 @@ where
                 }
             }
             UserWriteIn::PublishMessage(msg) => {
-                if self.state != ClientState::Connected {
+                if self.scratchpad.lifecycle_state != ClientLifecycleState::Connected {
                     return Err(Error::InvalidStateTransition);
                 }
 
@@ -1105,26 +1180,27 @@ where
                 if let (PublishKind::Repetible { packet_id, .. }, Some(inflight_state)) =
                     (kind, inflight_state)
                 {
-                    self.on_flight_sent.insert(packet_id, inflight_state);
+                    self.state.on_flight_sent.insert(packet_id, inflight_state);
                 }
 
                 Ok(())
             }
             UserWriteIn::AcknowledgeMessage(inbound_message_id) => {
                 let packet_id = inbound_message_id.get();
-                if self.state != ClientState::Connected {
+                if self.scratchpad.lifecycle_state != ClientLifecycleState::Connected {
                     return Err(Error::InvalidStateTransition);
                 }
 
-                match self.on_flight_received.get(&packet_id).copied() {
+                match self.state.on_flight_received.get(&packet_id).copied() {
                     Some(InboundInflightState::Qos1AwaitAppDecision) => {
                         self.enqueue_puback_or_fail_protocol(packet_id, PubAckReasonCode::Success)?;
-                        let _ = self.on_flight_received.remove(&packet_id);
+                        let _ = self.state.on_flight_received.remove(&packet_id);
                         Ok(())
                     }
                     Some(InboundInflightState::Qos2AwaitAppDecision) => {
                         self.enqueue_pubrec_or_fail_protocol(packet_id, PubRecReasonCode::Success)?;
-                        self.on_flight_received
+                        self.state
+                            .on_flight_received
                             .insert(packet_id, InboundInflightState::Qos2AwaitPubRel);
                         Ok(())
                     }
@@ -1135,23 +1211,24 @@ where
             }
             UserWriteIn::RejectMessage(inbound_message_id, reason) => {
                 let packet_id = inbound_message_id.get();
-                if self.state != ClientState::Connected {
+                if self.scratchpad.lifecycle_state != ClientLifecycleState::Connected {
                     return Err(Error::InvalidStateTransition);
                 }
 
-                match self.on_flight_received.get(&packet_id).copied() {
+                match self.state.on_flight_received.get(&packet_id).copied() {
                     Some(InboundInflightState::Qos1AwaitAppDecision) => {
                         self.enqueue_puback_or_fail_protocol(
                             packet_id,
                             Self::map_incoming_reject_reason_to_puback(reason),
                         )?;
-                        let _ = self.on_flight_received.remove(&packet_id);
+                        let _ = self.state.on_flight_received.remove(&packet_id);
                         Ok(())
                     }
                     Some(InboundInflightState::Qos2AwaitAppDecision) => {
                         let reason_code = Self::map_incoming_reject_reason_to_pubrec(reason);
                         self.enqueue_pubrec_or_fail_protocol(packet_id, reason_code)?;
-                        self.on_flight_received
+                        self.state
+                            .on_flight_received
                             .insert(packet_id, InboundInflightState::Qos2Rejected(reason_code));
                         Ok(())
                     }
@@ -1161,12 +1238,14 @@ where
                 }
             }
             UserWriteIn::Subscribe(options) => {
-                if self.state != ClientState::Connected {
+                if self.scratchpad.lifecycle_state != ClientLifecycleState::Connected {
                     return Err(Error::InvalidStateTransition);
                 }
 
                 if options.subscription_identifier.is_some()
-                    && !self.negotiated_limits.subscription_identifiers_available
+                    && !self
+                        .scratchpad
+                        .negotiated_subscription_identifiers_available
                 {
                     return Err(Error::ProtocolError);
                 }
@@ -1179,12 +1258,14 @@ where
                         let has_wildcard =
                             topic_filter_str.contains('+') || topic_filter_str.contains('#');
 
-                        if has_wildcard && !self.negotiated_limits.wildcard_subscription_available {
+                        if has_wildcard
+                            && !self.scratchpad.negotiated_wildcard_subscription_available
+                        {
                             return Err(Error::ProtocolError);
                         }
 
                         if is_shared {
-                            if !self.negotiated_limits.shared_subscription_available {
+                            if !self.scratchpad.negotiated_shared_subscription_available {
                                 return Err(Error::ProtocolError);
                             }
 
@@ -1210,12 +1291,12 @@ where
                         user_properties: options.user_properties,
                     },
                 }))?;
-                self.pending_subscribe.insert(packet_id, ());
+                self.state.pending_subscribe.insert(packet_id, ());
 
                 Ok(())
             }
             UserWriteIn::Unsubscribe(options) => {
-                if self.state != ClientState::Connected {
+                if self.scratchpad.lifecycle_state != ClientLifecycleState::Connected {
                     return Err(Error::InvalidStateTransition);
                 }
                 let packet_id = self.next_packet_id_checked()?;
@@ -1228,29 +1309,33 @@ where
                     filter: options.filter,
                     extra_filters: options.extra_filters,
                 }))?;
-                self.pending_unsubscribe.insert(packet_id, ());
+                self.state.pending_unsubscribe.insert(packet_id, ());
 
                 Ok(())
             }
-            UserWriteIn::Disconnect => match self.state {
-                ClientState::Connected | ClientState::Connecting => {
+            UserWriteIn::Disconnect => match self.scratchpad.lifecycle_state {
+                ClientLifecycleState::Connected | ClientLifecycleState::Connecting => {
                     let _ = self.enqueue_packet(ControlPacket::Disconnect(Disconnect {
                         reason_code: DisconnectReasonCode::NormalDisconnection,
                         properties: DisconnectProperties::default(),
                     }));
-                    self.action_queue.push_back(DriverEventOut::CloseSocket);
-                    self.state = ClientState::Disconnected;
-                    self.read_buffer.clear();
+                    self.scratchpad
+                        .action_queue
+                        .push_back(DriverEventOut::CloseSocket);
+                    self.scratchpad.lifecycle_state = ClientLifecycleState::Disconnected;
+                    self.scratchpad.read_buffer.clear();
                     self.reset_keepalive();
                     self.reset_negotiated_limits();
                     self.maybe_reset_session_state();
-                    self.read_queue.push_back(UserWriteOut::Disconnected);
+                    self.scratchpad
+                        .read_queue
+                        .push_back(UserWriteOut::Disconnected);
                     Ok(())
                 }
-                ClientState::Disconnected => Ok(()),
-                ClientState::Start => {
-                    self.state = ClientState::Disconnected;
-                    self.read_buffer.clear();
+                ClientLifecycleState::Disconnected => Ok(()),
+                ClientLifecycleState::Start => {
+                    self.scratchpad.lifecycle_state = ClientLifecycleState::Disconnected;
+                    self.scratchpad.read_buffer.clear();
                     self.reset_keepalive();
                     self.reset_negotiated_limits();
                     self.maybe_reset_session_state();
@@ -1264,40 +1349,48 @@ where
     fn handle_event(&mut self, evt: DriverEventIn) -> Result<(), Self::Error> {
         match evt {
             DriverEventIn::SocketConnected => {
-                if self.state != ClientState::Start && self.state != ClientState::Disconnected {
+                if self.scratchpad.lifecycle_state != ClientLifecycleState::Start
+                    && self.scratchpad.lifecycle_state != ClientLifecycleState::Disconnected
+                {
                     return Err(Error::InvalidStateTransition);
                 }
 
                 self.reset_negotiated_limits();
-                let connect_packet = self.build_connect_packet(&self.pending_connect_options)?;
+                let connect_packet =
+                    self.build_connect_packet(&self.scratchpad.pending_connect_options)?;
                 self.enqueue_packet(ControlPacket::Connect(connect_packet))?;
-                self.state = ClientState::Connecting;
-                self.connecting_phase = ConnectingPhase::AwaitConnAck;
-                self.keep_alive.saw_network_activity = false;
-                self.keep_alive.ping_outstanding = false;
+                self.scratchpad.lifecycle_state = ClientLifecycleState::Connecting;
+                self.scratchpad.connecting_phase = ConnectingPhase::AwaitConnAck;
+                self.scratchpad.keep_alive_saw_network_activity = false;
+                self.scratchpad.keep_alive_ping_outstanding = false;
                 Ok(())
             }
             DriverEventIn::SocketClosed => {
-                let was_disconnected = self.state == ClientState::Disconnected;
-                self.state = ClientState::Disconnected;
-                self.read_buffer.clear();
+                let was_disconnected =
+                    self.scratchpad.lifecycle_state == ClientLifecycleState::Disconnected;
+                self.scratchpad.lifecycle_state = ClientLifecycleState::Disconnected;
+                self.scratchpad.read_buffer.clear();
                 self.reset_keepalive();
                 self.reset_negotiated_limits();
                 self.maybe_reset_session_state();
 
                 if !was_disconnected {
-                    self.read_queue.push_back(UserWriteOut::Disconnected);
+                    self.scratchpad
+                        .read_queue
+                        .push_back(UserWriteOut::Disconnected);
                 }
 
                 Ok(())
             }
             DriverEventIn::SocketError => {
-                self.state = ClientState::Disconnected;
-                self.read_buffer.clear();
+                self.scratchpad.lifecycle_state = ClientLifecycleState::Disconnected;
+                self.scratchpad.read_buffer.clear();
                 self.reset_keepalive();
                 self.reset_negotiated_limits();
                 self.maybe_reset_session_state();
-                self.action_queue.push_back(DriverEventOut::CloseSocket);
+                self.scratchpad
+                    .action_queue
+                    .push_back(DriverEventOut::CloseSocket);
                 Err(Error::ProtocolError)
             }
         }
@@ -1305,57 +1398,61 @@ where
 
     #[tracing::instrument(skip_all)]
     fn handle_timeout(&mut self, now: Self::Time) -> Result<(), Self::Error> {
-        if self.state != ClientState::Connected {
+        if self.scratchpad.lifecycle_state != ClientLifecycleState::Connected {
             return Ok(());
         }
 
-        if self.keep_alive.interval_secs.is_none() {
-            self.next_timeout = None;
+        if self.scratchpad.keep_alive_interval_secs.is_none() {
+            self.scratchpad.next_timeout = None;
             return Ok(());
         }
 
-        if self.keep_alive.ping_outstanding {
+        if self.scratchpad.keep_alive_ping_outstanding {
             // [MQTT-3.1.2-24] [MQTT-4.13.1-1] Keep Alive timeout closes the network connection.
             self.fail_protocol_and_disconnect(DisconnectReasonCode::KeepAliveTimeout)?;
             return Err(Error::ProtocolError);
         }
 
-        if self.keep_alive.saw_network_activity {
+        if self.scratchpad.keep_alive_saw_network_activity {
             // [MQTT-3.1.2-22] Any control packet traffic resets keep-alive idle detection.
-            self.keep_alive.saw_network_activity = false;
-            self.next_timeout = Some(now);
+            self.scratchpad.keep_alive_saw_network_activity = false;
+            self.scratchpad.next_timeout = Some(now);
             return Ok(());
         }
 
         // [MQTT-3.1.2-22] [MQTT-3.12.4-1] Send PINGREQ when Keep Alive elapses without traffic.
         self.enqueue_packet(ControlPacket::PingReq(PingReq {}))?;
-        self.keep_alive.ping_outstanding = true;
-        self.next_timeout = Some(now);
+        self.scratchpad.keep_alive_ping_outstanding = true;
+        self.scratchpad.next_timeout = Some(now);
 
         Ok(())
     }
 
     #[tracing::instrument(skip_all)]
     fn close(&mut self) -> Result<(), Self::Error> {
-        match self.state {
-            ClientState::Connected | ClientState::Connecting => {
+        match self.scratchpad.lifecycle_state {
+            ClientLifecycleState::Connected | ClientLifecycleState::Connecting => {
                 let _ = self.enqueue_packet(ControlPacket::Disconnect(Disconnect {
                     reason_code: DisconnectReasonCode::NormalDisconnection,
                     properties: DisconnectProperties::default(),
                 }));
-                self.action_queue.push_back(DriverEventOut::CloseSocket);
-                self.state = ClientState::Disconnected;
-                self.read_buffer.clear();
+                self.scratchpad
+                    .action_queue
+                    .push_back(DriverEventOut::CloseSocket);
+                self.scratchpad.lifecycle_state = ClientLifecycleState::Disconnected;
+                self.scratchpad.read_buffer.clear();
                 self.reset_keepalive();
                 self.reset_negotiated_limits();
                 self.maybe_reset_session_state();
-                self.read_queue.push_back(UserWriteOut::Disconnected);
+                self.scratchpad
+                    .read_queue
+                    .push_back(UserWriteOut::Disconnected);
                 Ok(())
             }
-            ClientState::Disconnected => Ok(()),
-            ClientState::Start => {
-                self.state = ClientState::Disconnected;
-                self.read_buffer.clear();
+            ClientLifecycleState::Disconnected => Ok(()),
+            ClientLifecycleState::Start => {
+                self.scratchpad.lifecycle_state = ClientLifecycleState::Disconnected;
+                self.scratchpad.read_buffer.clear();
                 self.reset_keepalive();
                 self.reset_negotiated_limits();
                 self.maybe_reset_session_state();
@@ -1365,19 +1462,19 @@ where
     }
 
     fn poll_read(&mut self) -> Option<Self::Rout> {
-        self.read_queue.pop_front()
+        self.scratchpad.read_queue.pop_front()
     }
 
     fn poll_write(&mut self) -> Option<Self::Wout> {
-        self.write_queue.pop_front()
+        self.scratchpad.write_queue.pop_front()
     }
 
     fn poll_event(&mut self) -> Option<Self::Eout> {
-        self.action_queue.pop_front()
+        self.scratchpad.action_queue.pop_front()
     }
 
     fn poll_timeout(&mut self) -> Option<Self::Time> {
-        self.next_timeout
+        self.scratchpad.next_timeout
     }
 }
 
@@ -1495,7 +1592,7 @@ mod tests {
     #[test]
     fn socket_connected_error_does_not_poison_state() {
         let mut client = Client::<u64>::default();
-        client.pending_connect_options = ConnectionOptions {
+        client.scratchpad.pending_connect_options = ConnectionOptions {
             will: Some(crate::types::Will {
                 message_expiry_interval: Some(Duration::from_secs(u64::from(u32::MAX) + 1)),
                 ..crate::types::Will::default()
@@ -1507,7 +1604,10 @@ mod tests {
             client.handle_event(DriverEventIn::SocketConnected),
             Err(Error::ProtocolError)
         );
-        assert_eq!(client.state, ClientState::Start);
+        assert_eq!(
+            client.scratchpad.lifecycle_state,
+            ClientLifecycleState::Start
+        );
         assert_eq!(client.poll_write(), None);
     }
 
@@ -1516,10 +1616,10 @@ mod tests {
         let mut client = Client::<u64>::default();
         let packet_id = NonZero::new(1).expect("non-zero packet id");
 
-        client.state = ClientState::Connected;
-        client.negotiated_limits.maximum_packet_size =
+        client.scratchpad.lifecycle_state = ClientLifecycleState::Connected;
+        client.scratchpad.negotiated_maximum_packet_size =
             NonZero::new(1).expect("non-zero packet size limit").into();
-        client.on_flight_sent.insert(
+        client.state.on_flight_sent.insert(
             packet_id,
             OutboundInflightState::Qos2AwaitPubRec {
                 publish: Publish {
@@ -1546,11 +1646,14 @@ mod tests {
             Err(Error::ProtocolError)
         );
 
-        assert_eq!(client.state, ClientState::Disconnected);
+        assert_eq!(
+            client.scratchpad.lifecycle_state,
+            ClientLifecycleState::Disconnected
+        );
         assert!(matches!(
             client.poll_event(),
             Some(DriverEventOut::CloseSocket)
         ));
-        assert!(client.on_flight_sent.is_empty());
+        assert!(client.state.on_flight_sent.is_empty());
     }
 }
