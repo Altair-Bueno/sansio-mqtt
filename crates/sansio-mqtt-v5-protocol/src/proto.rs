@@ -3,6 +3,7 @@ use core::time::Duration;
 
 use crate::limits;
 use crate::queues;
+use crate::session_ops;
 use crate::types::*;
 use alloc::collections::btree_map::BTreeMap;
 use alloc::collections::vec_deque::VecDeque;
@@ -25,9 +26,6 @@ use sansio_mqtt_v5_types::PingReq;
 use sansio_mqtt_v5_types::PubAckReasonCode;
 use sansio_mqtt_v5_types::PubCompReasonCode;
 use sansio_mqtt_v5_types::PubRecReasonCode;
-use sansio_mqtt_v5_types::PubRel;
-use sansio_mqtt_v5_types::PubRelProperties;
-use sansio_mqtt_v5_types::PubRelReasonCode;
 use sansio_mqtt_v5_types::Publish;
 use sansio_mqtt_v5_types::PublishKind;
 use sansio_mqtt_v5_types::PublishProperties;
@@ -81,7 +79,7 @@ pub struct ClientSession {
     pub(crate) pending_subscribe: BTreeMap<NonZero<u16>, ()>,
     pub(crate) pending_unsubscribe: BTreeMap<NonZero<u16>, ()>,
     pub(crate) inbound_topic_aliases: BTreeMap<NonZero<u16>, Topic>,
-    next_packet_id: u16,
+    pub(crate) next_packet_id: u16,
 }
 
 impl ClientSession {
@@ -317,129 +315,6 @@ impl<Time> Client<Time> {
         }
     }
 
-    fn next_packet_id(&mut self) -> NonZero<u16> {
-        let packet_id = self.session.next_packet_id;
-        self.session.next_packet_id = if packet_id == u16::MAX {
-            1
-        } else {
-            packet_id + 1
-        };
-
-        NonZero::new(packet_id).expect("packet identifier is always non-zero")
-    }
-
-    fn next_outbound_publish_packet_id(&mut self) -> Result<NonZero<u16>, Error> {
-        for _ in 0..u16::MAX {
-            let packet_id = self.next_packet_id();
-            if !self.session.on_flight_sent.contains_key(&packet_id)
-                && !self.session.pending_subscribe.contains_key(&packet_id)
-                && !self.session.pending_unsubscribe.contains_key(&packet_id)
-            {
-                return Ok(packet_id);
-            }
-        }
-
-        Err(Error::ReceiveMaximumExceeded)
-    }
-
-    fn reset_inflight_transactions(&mut self) {
-        self.session.on_flight_sent.clear();
-        self.session.on_flight_received.clear();
-    }
-
-    fn clear_pending_subscriptions(&mut self) {
-        self.session.pending_subscribe.clear();
-        self.session.pending_unsubscribe.clear();
-    }
-
-    fn reset_session_state(&mut self) {
-        self.reset_inflight_transactions();
-        self.clear_pending_subscriptions();
-    }
-
-    fn maybe_reset_session_state(&mut self) {
-        // [MQTT-3.1.2-4] Clean Start controls whether prior session state is discarded.
-        if !self.scratchpad.session_should_persist {
-            self.reset_session_state();
-        }
-    }
-
-    fn reset_keepalive(&mut self) {
-        // [MQTT-3.1.2-22] [MQTT-3.1.2-23] Keep Alive tracking resets on connection lifecycle boundaries.
-        self.scratchpad.keep_alive_interval_secs = None;
-        self.scratchpad.keep_alive_saw_network_activity = false;
-        self.scratchpad.keep_alive_ping_outstanding = false;
-        self.scratchpad.next_timeout = None;
-    }
-
-    fn next_packet_id_checked(&mut self) -> Result<NonZero<u16>, Error> {
-        // [MQTT-2.2.1-2] Packet Identifier MUST be unused while an exchange is in-flight.
-        for _ in 0..u16::MAX {
-            let packet_id = self.next_packet_id();
-            if !self.session.on_flight_sent.contains_key(&packet_id)
-                && !self.session.pending_subscribe.contains_key(&packet_id)
-                && !self.session.pending_unsubscribe.contains_key(&packet_id)
-            {
-                return Ok(packet_id);
-            }
-        }
-
-        Err(Error::ReceiveMaximumExceeded)
-    }
-
-    fn replay_outbound_inflight_with_dup(&mut self) -> Result<(), Error> {
-        // [MQTT-4.4.0-1] [MQTT-4.4.0-2] On session resume, retransmit unacknowledged QoS1/QoS2 PUBLISH with DUP=1.
-        for (packet_id, state) in self.session.on_flight_sent.clone() {
-            let publish = match state {
-                OutboundInflightState::Qos1AwaitPubAck { mut publish }
-                | OutboundInflightState::Qos2AwaitPubRec { mut publish } => {
-                    if let PublishKind::Repetible { dup, .. } = &mut publish.kind {
-                        *dup = true;
-                    }
-                    publish
-                }
-                OutboundInflightState::Qos2AwaitPubComp => {
-                    queues::enqueue_packet(
-                        &mut self.scratchpad,
-                        &ControlPacket::PubRel(PubRel {
-                            packet_id,
-                            reason_code: PubRelReasonCode::Success,
-                            properties: PubRelProperties::default(),
-                        }),
-                    )?;
-                    continue;
-                }
-            };
-
-            queues::enqueue_packet(
-                &mut self.scratchpad,
-                &ControlPacket::Publish(publish.clone()),
-            )?;
-
-            match self.session.on_flight_sent.get_mut(&packet_id) {
-                Some(OutboundInflightState::Qos1AwaitPubAck {
-                    publish: stored_publish,
-                })
-                | Some(OutboundInflightState::Qos2AwaitPubRec {
-                    publish: stored_publish,
-                }) => {
-                    *stored_publish = publish;
-                }
-                _ => {}
-            }
-        }
-
-        Ok(())
-    }
-
-    fn emit_publish_dropped_for_all_inflight(&mut self) {
-        for packet_id in self.session.on_flight_sent.keys().copied() {
-            self.scratchpad.read_queue.push_back(
-                UserWriteOut::PublishDroppedDueToSessionNotResumed(packet_id),
-            );
-        }
-    }
-
     fn handle_read_control_packet(&mut self, packet: ControlPacket) -> Result<(), Error> {
         match self.scratchpad.lifecycle_state {
             ClientLifecycleState::Connecting => match packet {
@@ -501,7 +376,12 @@ impl<Time> Client<Time> {
                                     return Err(Error::ProtocolError);
                                 }
                                 // [MQTT-4.4.0-1] [MQTT-4.4.0-2] Session Present=1 resumes in-flight QoS transactions and replay path.
-                                if self.replay_outbound_inflight_with_dup().is_err() {
+                                if session_ops::replay_outbound_inflight_with_dup(
+                                    &mut self.session,
+                                    &mut self.scratchpad,
+                                )
+                                .is_err()
+                                {
                                     queues::fail_protocol_and_disconnect(
                                         &self.settings,
                                         &mut self.session,
@@ -518,8 +398,11 @@ impl<Time> Client<Time> {
                                     .read_queue
                                     .push_back(UserWriteOut::Connected);
                                 connected_emitted = true;
-                                self.emit_publish_dropped_for_all_inflight();
-                                self.reset_session_state();
+                                session_ops::emit_publish_dropped_for_all_inflight(
+                                    &self.session,
+                                    &mut self.scratchpad,
+                                );
+                                session_ops::reset_session_state(&mut self.session);
                             }
                             _ => unreachable!("successful CONNACK kind already matched"),
                         }
@@ -881,13 +764,13 @@ impl<Time> Client<Time> {
                 }
                 ControlPacket::Disconnect(_) => {
                     self.scratchpad.lifecycle_state = ClientLifecycleState::Disconnected;
-                    self.reset_keepalive();
+                    session_ops::reset_keepalive(&mut self.scratchpad);
                     limits::reset_negotiated_limits(
                         &self.settings,
                         &mut self.session,
                         &mut self.scratchpad,
                     );
-                    self.maybe_reset_session_state();
+                    session_ops::maybe_reset_session_state(&mut self.session, &self.scratchpad);
                     self.scratchpad
                         .read_queue
                         .push_back(UserWriteOut::Disconnected);
@@ -1100,12 +983,12 @@ where
                 let kind = match msg.qos {
                     Qos::AtMostOnce => PublishKind::FireAndForget,
                     Qos::AtLeastOnce => PublishKind::Repetible {
-                        packet_id: self.next_outbound_publish_packet_id()?,
+                        packet_id: session_ops::next_outbound_publish_packet_id(&mut self.session)?,
                         qos: GuaranteedQoS::AtLeastOnce,
                         dup: false,
                     },
                     Qos::ExactlyOnce => PublishKind::Repetible {
-                        packet_id: self.next_outbound_publish_packet_id()?,
+                        packet_id: session_ops::next_outbound_publish_packet_id(&mut self.session)?,
                         qos: GuaranteedQoS::ExactlyOnce,
                         dup: false,
                     },
@@ -1265,7 +1148,7 @@ where
                     .collect::<Result<Vec<_>, Error>>()?;
                 let mut subscriptions = subscriptions.into_iter();
                 let subscription = subscriptions.next().ok_or(Error::ProtocolError)?;
-                let packet_id = self.next_packet_id_checked()?;
+                let packet_id = session_ops::next_packet_id_checked(&mut self.session)?;
 
                 queues::enqueue_packet(
                     &mut self.scratchpad,
@@ -1287,7 +1170,7 @@ where
                 if self.scratchpad.lifecycle_state != ClientLifecycleState::Connected {
                     return Err(Error::InvalidStateTransition);
                 }
-                let packet_id = self.next_packet_id_checked()?;
+                let packet_id = session_ops::next_packet_id_checked(&mut self.session)?;
 
                 queues::enqueue_packet(
                     &mut self.scratchpad,
@@ -1318,13 +1201,13 @@ where
                         .push_back(DriverEventOut::CloseSocket);
                     self.scratchpad.lifecycle_state = ClientLifecycleState::Disconnected;
                     self.scratchpad.read_buffer.clear();
-                    self.reset_keepalive();
+                    session_ops::reset_keepalive(&mut self.scratchpad);
                     limits::reset_negotiated_limits(
                         &self.settings,
                         &mut self.session,
                         &mut self.scratchpad,
                     );
-                    self.maybe_reset_session_state();
+                    session_ops::maybe_reset_session_state(&mut self.session, &self.scratchpad);
                     self.scratchpad
                         .read_queue
                         .push_back(UserWriteOut::Disconnected);
@@ -1334,13 +1217,13 @@ where
                 ClientLifecycleState::Start => {
                     self.scratchpad.lifecycle_state = ClientLifecycleState::Disconnected;
                     self.scratchpad.read_buffer.clear();
-                    self.reset_keepalive();
+                    session_ops::reset_keepalive(&mut self.scratchpad);
                     limits::reset_negotiated_limits(
                         &self.settings,
                         &mut self.session,
                         &mut self.scratchpad,
                     );
-                    self.maybe_reset_session_state();
+                    session_ops::maybe_reset_session_state(&mut self.session, &self.scratchpad);
                     Ok(())
                 }
             },
@@ -1379,13 +1262,13 @@ where
                     self.scratchpad.lifecycle_state == ClientLifecycleState::Disconnected;
                 self.scratchpad.lifecycle_state = ClientLifecycleState::Disconnected;
                 self.scratchpad.read_buffer.clear();
-                self.reset_keepalive();
+                session_ops::reset_keepalive(&mut self.scratchpad);
                 limits::reset_negotiated_limits(
                     &self.settings,
                     &mut self.session,
                     &mut self.scratchpad,
                 );
-                self.maybe_reset_session_state();
+                session_ops::maybe_reset_session_state(&mut self.session, &self.scratchpad);
 
                 if !was_disconnected {
                     self.scratchpad
@@ -1398,13 +1281,13 @@ where
             DriverEventIn::SocketError => {
                 self.scratchpad.lifecycle_state = ClientLifecycleState::Disconnected;
                 self.scratchpad.read_buffer.clear();
-                self.reset_keepalive();
+                session_ops::reset_keepalive(&mut self.scratchpad);
                 limits::reset_negotiated_limits(
                     &self.settings,
                     &mut self.session,
                     &mut self.scratchpad,
                 );
-                self.maybe_reset_session_state();
+                session_ops::maybe_reset_session_state(&mut self.session, &self.scratchpad);
                 self.scratchpad
                     .action_queue
                     .push_back(DriverEventOut::CloseSocket);
@@ -1466,13 +1349,13 @@ where
                     .push_back(DriverEventOut::CloseSocket);
                 self.scratchpad.lifecycle_state = ClientLifecycleState::Disconnected;
                 self.scratchpad.read_buffer.clear();
-                self.reset_keepalive();
+                session_ops::reset_keepalive(&mut self.scratchpad);
                 limits::reset_negotiated_limits(
                     &self.settings,
                     &mut self.session,
                     &mut self.scratchpad,
                 );
-                self.maybe_reset_session_state();
+                session_ops::maybe_reset_session_state(&mut self.session, &self.scratchpad);
                 self.scratchpad
                     .read_queue
                     .push_back(UserWriteOut::Disconnected);
@@ -1482,13 +1365,13 @@ where
             ClientLifecycleState::Start => {
                 self.scratchpad.lifecycle_state = ClientLifecycleState::Disconnected;
                 self.scratchpad.read_buffer.clear();
-                self.reset_keepalive();
+                session_ops::reset_keepalive(&mut self.scratchpad);
                 limits::reset_negotiated_limits(
                     &self.settings,
                     &mut self.session,
                     &mut self.scratchpad,
                 );
-                self.maybe_reset_session_state();
+                session_ops::maybe_reset_session_state(&mut self.session, &self.scratchpad);
                 Ok(())
             }
         }

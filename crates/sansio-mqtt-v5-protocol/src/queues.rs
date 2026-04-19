@@ -54,20 +54,10 @@ pub(crate) fn fail_protocol_and_disconnect<Time: 'static>(
         .push_back(DriverEventOut::CloseSocket);
     scratchpad.lifecycle_state = ClientLifecycleState::Disconnected; // removed in Task 12
     scratchpad.read_buffer.clear();
-    // inline keepalive reset (session_ops::reset_keepalive not yet extracted)
-    scratchpad.keep_alive_interval_secs = None;
-    scratchpad.keep_alive_saw_network_activity = false;
-    scratchpad.keep_alive_ping_outstanding = false;
-    scratchpad.next_timeout = None;
+    crate::session_ops::reset_keepalive(scratchpad);
     // reset negotiated limits (also clears inbound topic aliases)
     crate::limits::reset_negotiated_limits(settings, session, scratchpad);
-    // inline maybe_reset_session_state (session_ops not yet extracted)
-    if !scratchpad.session_should_persist {
-        session.on_flight_sent.clear();
-        session.on_flight_received.clear();
-        session.pending_subscribe.clear();
-        session.pending_unsubscribe.clear();
-    }
+    crate::session_ops::maybe_reset_session_state(session, scratchpad);
     Ok(())
 }
 
