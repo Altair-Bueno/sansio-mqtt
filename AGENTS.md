@@ -28,7 +28,8 @@
 ## Build and Tooling
 - Build system: Cargo.
 - Tests: for behavior changes follow the TDD checklist item; for non-behavior changes they are optional.
-- Prefer editor LSP for Rust; if LSP is not configured, prompt the user to enable it.
+- **rust-analyzer is REQUIRED**: at session start, verify rust-analyzer is available by running `rust-analyzer --version`. If the command fails, STOP all work and ask the user whether you should install it by running `rustup component add rust-analyzer`. Do NOT proceed with any code changes until rust-analyzer is confirmed available.
+- Use the rust-analyzer LSP for all Rust intelligence (diagnostics, type info, go-to-definition, etc.).
 
 ## Architecture and Crates
 - Workspace layout: `crates/*`.
