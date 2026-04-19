@@ -48,12 +48,12 @@ impl ParserSettings {
     #[inline]
     pub const fn new() -> Self {
         Self {
-            max_bytes_string: 5 * 1024,              // 5 KiB
-            max_bytes_binary_data: 5 * 1024,         // 5 KiB
-            max_remaining_bytes: 1024 * 1024,        // 1 MiB
-            max_subscriptions_len: 32,               // 32 subscriptions
-            max_user_properties_len: 32,             // 32 properties
-            max_subscription_identifiers_len: 32,    // 32 identifiers
+            max_bytes_string: 5 * 1024,           // 5 KiB
+            max_bytes_binary_data: 5 * 1024,      // 5 KiB
+            max_remaining_bytes: 1024 * 1024,     // 1 MiB
+            max_subscriptions_len: 32,            // 32 subscriptions
+            max_user_properties_len: 32,          // 32 properties
+            max_subscription_identifiers_len: 32, // 32 identifiers
         }
     }
 
