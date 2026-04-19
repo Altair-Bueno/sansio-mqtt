@@ -212,6 +212,30 @@ impl<Time> Default for Client<Time> {
 }
 
 impl<Time> Client<Time> {
+    fn min_option_nonzero_u16(
+        a: Option<NonZero<u16>>,
+        b: Option<NonZero<u16>>,
+    ) -> Option<NonZero<u16>> {
+        match (a, b) {
+            (Some(a), Some(b)) => Some(if a.get() <= b.get() { a } else { b }),
+            (Some(a), None) => Some(a),
+            (None, Some(b)) => Some(b),
+            (None, None) => None,
+        }
+    }
+
+    fn min_option_nonzero_u32(
+        a: Option<NonZero<u32>>,
+        b: Option<NonZero<u32>>,
+    ) -> Option<NonZero<u32>> {
+        match (a, b) {
+            (Some(a), Some(b)) => Some(if a.get() <= b.get() { a } else { b }),
+            (Some(a), None) => Some(a),
+            (None, Some(b)) => Some(b),
+            (None, None) => None,
+        }
+    }
+
     pub fn with_settings_and_state(settings: ClientSettings, state: ClientState) -> Self {
         let mut client = Self {
             settings,
@@ -286,14 +310,34 @@ impl<Time> Client<Time> {
             will,
             user_name: options.user_name.clone(),
             password: options.password.clone(),
-            keep_alive: options.keep_alive,
+            keep_alive: options.keep_alive.or(self.settings.default_keep_alive),
             properties: ConnectProperties {
                 session_expiry_interval: options.session_expiry_interval,
-                receive_maximum: options.receive_maximum,
-                maximum_packet_size: options.maximum_packet_size,
-                topic_alias_maximum: options.topic_alias_maximum,
-                request_response_information: options.request_response_information,
-                request_problem_information: options.request_problem_information,
+                receive_maximum: Self::min_option_nonzero_u16(
+                    options.receive_maximum,
+                    self.settings.max_incoming_receive_maximum,
+                ),
+                maximum_packet_size: Self::min_option_nonzero_u32(
+                    options.maximum_packet_size,
+                    self.settings.max_incoming_packet_size,
+                ),
+                topic_alias_maximum: Some(
+                    options
+                        .topic_alias_maximum
+                        .or(self.settings.max_incoming_topic_alias_maximum)
+                        .unwrap_or(0)
+                        .min(
+                            self.settings
+                                .max_incoming_topic_alias_maximum
+                                .unwrap_or(u16::MAX),
+                        ),
+                ),
+                request_response_information: options
+                    .request_response_information
+                    .or(self.settings.default_request_response_information),
+                request_problem_information: options
+                    .request_problem_information
+                    .or(self.settings.default_request_problem_information),
                 authentication: options.authentication.clone(),
                 user_properties: options.user_properties.clone(),
             },
@@ -311,30 +355,6 @@ impl<Time> Client<Time> {
     }
 
     fn recompute_effective_limits(&mut self) {
-        fn min_option_nonzero_u16(
-            a: Option<NonZero<u16>>,
-            b: Option<NonZero<u16>>,
-        ) -> Option<NonZero<u16>> {
-            match (a, b) {
-                (Some(a), Some(b)) => Some(if a.get() <= b.get() { a } else { b }),
-                (Some(a), None) => Some(a),
-                (None, Some(b)) => Some(b),
-                (None, None) => None,
-            }
-        }
-
-        fn min_option_nonzero_u32(
-            a: Option<NonZero<u32>>,
-            b: Option<NonZero<u32>>,
-        ) -> Option<NonZero<u32>> {
-            match (a, b) {
-                (Some(a), Some(b)) => Some(if a.get() <= b.get() { a } else { b }),
-                (Some(a), None) => Some(a),
-                (None, Some(b)) => Some(b),
-                (None, None) => None,
-            }
-        }
-
         fn min_option_maximum_qos(
             a: Option<MaximumQoS>,
             b: Option<MaximumQoS>,
@@ -360,13 +380,13 @@ impl<Time> Client<Time> {
         self.scratchpad.effective_client_max_user_properties_len =
             self.settings.max_user_properties_len;
 
-        self.scratchpad.effective_client_receive_maximum = min_option_nonzero_u16(
+        self.scratchpad.effective_client_receive_maximum = Self::min_option_nonzero_u16(
             self.settings.max_incoming_receive_maximum,
             self.scratchpad.pending_connect_options.receive_maximum,
         )
         .unwrap_or(NonZero::new(u16::MAX).expect("u16::MAX is always non-zero"));
 
-        self.scratchpad.effective_client_maximum_packet_size = min_option_nonzero_u32(
+        self.scratchpad.effective_client_maximum_packet_size = Self::min_option_nonzero_u32(
             self.settings.max_incoming_packet_size,
             self.scratchpad.pending_connect_options.maximum_packet_size,
         );
