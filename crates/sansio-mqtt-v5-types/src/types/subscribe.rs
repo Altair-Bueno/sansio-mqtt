@@ -56,7 +56,7 @@ pub struct Subscription {
     pub qos: Qos,
     /// No Local option: if true, Application Messages MUST NOT be
     /// forwarded back to the Client that sent them
-    /// ([MQTT-3.8.3-3]).
+    /// ([§3.8.3.1](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901169)).
     pub no_local: bool,
     /// Retain As Published option
     /// ([§3.8.3.1](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901169)).

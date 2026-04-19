@@ -1,7 +1,7 @@
 use super::*;
 impl PubAckHeaderFlags {
     /// Parses the 4-bit Fixed Header flags for `PUBACK`
-    /// ([§3.4.1](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901121),
+    /// ([§3.4.1](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901122),
     /// [MQTT-3.4.1-1]).
     #[inline]
     pub fn parser<Input, Error>(input: &mut (Input, usize)) -> Result<Self, Error>

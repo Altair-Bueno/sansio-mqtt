@@ -9,8 +9,7 @@ use super::*;
 /// ([§3.13](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901200)).
 ///
 /// Sent by the Server in response to a [`PingReq`]; has no variable
-/// header and no payload. Conformance: `[MQTT-3.13.0-1]`,
-/// `[MQTT-3.13.4-1]`.
+/// header and no payload. Conformance: `[MQTT-3.13.0-1]`.
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct PingResp {}
 

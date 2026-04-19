@@ -1,7 +1,7 @@
 use super::*;
 impl UnsubAckHeaderFlags {
     /// Parses the 4-bit Fixed Header flags for `UNSUBACK`
-    /// ([§3.11.1](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901187),
+    /// ([§3.11.1](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901188),
     /// [MQTT-3.11.1-1]).
     #[inline]
     pub fn parser<Input, Error>(input: &mut (Input, usize)) -> Result<Self, Error>

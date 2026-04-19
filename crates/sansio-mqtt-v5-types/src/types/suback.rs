@@ -19,7 +19,7 @@ pub struct SubAck {
     /// ([§3.9.2.1](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901174)).
     pub properties: SubAckProperties,
     /// Reason Codes, one per Topic Filter in the original
-    /// `SUBSCRIBE` ([§3.9.3](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901174),
+    /// `SUBSCRIBE` ([§3.9.3](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901178),
     /// [MQTT-3.9.3-1], [MQTT-3.9.3-2]).
     pub reason_codes: Vec<SubAckReasonCode>,
 }

@@ -12,7 +12,7 @@ impl ReservedHeaderFlags {
         combinator::trace(type_name::<Self>(), bits::pattern(0u8, 4usize).value(Self))
             .context(StrContext::Label(type_name::<Self>()))
             .context(StrContext::Expected(StrContextValue::Description(
-                "RESEVED Header Flags",
+                "RESERVED Header Flags",
             )))
             .parse_next(input)
     }

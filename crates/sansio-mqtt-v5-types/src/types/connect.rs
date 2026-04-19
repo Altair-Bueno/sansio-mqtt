@@ -163,7 +163,6 @@ pub struct ConnectProperties {
     /// [MQTT-3.1.2-20], [MQTT-3.1.2-21]).
     pub authentication: Option<AuthenticationKind>,
     /// User Properties
-    /// ([§3.1.2.11.8](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901054),
-    /// [MQTT-3.1.2-19]).
+    /// ([§3.1.2.11.8](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901054)).
     pub user_properties: Vec<(Utf8String, Utf8String)>,
 }
