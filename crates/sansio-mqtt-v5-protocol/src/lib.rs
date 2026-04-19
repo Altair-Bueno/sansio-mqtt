@@ -2,6 +2,7 @@
 #![forbid(unsafe_code)]
 extern crate alloc;
 
+mod limits;
 mod proto;
 mod types;
 
