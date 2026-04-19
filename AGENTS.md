@@ -22,7 +22,7 @@
 - no_std-first: use `alloc` only when required.
 - Required formatting: `cargo fmt`.
 - Required linting: `cargo clippy`.
-- Documentation: update when API behavior or constraints change.
+- Documentation: update when API behavior or constraints change. Follow https://rust-lang.github.io/rfcs/1574-more-api-documentation-conventions.html
 - Change atomicity: keep changes commit-ready as a single coherent unit.
 
 ## Build and Tooling
