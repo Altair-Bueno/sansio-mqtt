@@ -198,6 +198,23 @@ fn config_and_error_are_instantiable() {
 }
 
 #[test]
+fn client_settings_default_includes_permissive_negotiation_policy() {
+    let settings = ClientSettings::default();
+
+    assert!(settings.max_incoming_receive_maximum.is_none());
+    assert!(settings.max_incoming_packet_size.is_none());
+    assert!(settings.max_incoming_topic_alias_maximum.is_none());
+    assert!(settings.max_outgoing_qos.is_none());
+    assert!(settings.allow_retain);
+    assert!(settings.allow_wildcard_subscriptions);
+    assert!(settings.allow_shared_subscriptions);
+    assert!(settings.allow_subscription_identifiers);
+    assert!(settings.default_request_response_information.is_none());
+    assert!(settings.default_request_problem_information.is_none());
+    assert!(settings.default_keep_alive.is_none());
+}
+
+#[test]
 fn socket_connected_emits_connect_bytes() {
     let mut client = Client::<u64>::default();
 

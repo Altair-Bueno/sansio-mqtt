@@ -14,6 +14,7 @@ pub use sansio_mqtt_v5_types::Utf8String;
 use alloc::vec::Vec;
 use core::num::NonZero;
 use core::time::Duration;
+use sansio_mqtt_v5_types::MaximumQoS;
 use sansio_mqtt_v5_types::ParserSettings;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -23,6 +24,17 @@ pub struct ClientSettings {
     pub max_remaining_bytes: u64,
     pub max_subscriptions_len: u32,
     pub max_user_properties_len: usize,
+    pub max_incoming_receive_maximum: Option<NonZero<u16>>,
+    pub max_incoming_packet_size: Option<NonZero<u32>>,
+    pub max_incoming_topic_alias_maximum: Option<u16>,
+    pub max_outgoing_qos: Option<MaximumQoS>,
+    pub allow_retain: bool,
+    pub allow_wildcard_subscriptions: bool,
+    pub allow_shared_subscriptions: bool,
+    pub allow_subscription_identifiers: bool,
+    pub default_request_response_information: Option<bool>,
+    pub default_request_problem_information: Option<bool>,
+    pub default_keep_alive: Option<NonZero<u16>>,
 }
 
 impl Default for ClientSettings {
@@ -35,6 +47,17 @@ impl Default for ClientSettings {
             max_remaining_bytes: settings.max_remaining_bytes,
             max_subscriptions_len: settings.max_subscriptions_len,
             max_user_properties_len: settings.max_user_properties_len,
+            max_incoming_receive_maximum: None,
+            max_incoming_packet_size: None,
+            max_incoming_topic_alias_maximum: None,
+            max_outgoing_qos: None,
+            allow_retain: true,
+            allow_wildcard_subscriptions: true,
+            allow_shared_subscriptions: true,
+            allow_subscription_identifiers: true,
+            default_request_response_information: None,
+            default_request_problem_information: None,
+            default_keep_alive: None,
         }
     }
 }
