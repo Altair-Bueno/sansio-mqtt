@@ -21,9 +21,6 @@ use super::*;
 #[derive(Debug, PartialEq, Eq, Clone, EnumDiscriminants)]
 #[strum_discriminants(derive(Hash, EnumIter, Display))]
 #[strum_discriminants(name(PropertyType))]
-#[strum_discriminants(
-    doc = "Identifier-only discriminant for [`Property`] ([§2.2.2.2](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901029))."
-)]
 pub enum Property {
     /// `0x01` Payload Format Indicator
     /// ([§3.3.2.3.2](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901111)).
