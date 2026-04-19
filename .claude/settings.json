@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "env": {
+    "ENABLE_LSP_TOOL": "1"
+  },
+  "permissions": {
+    "allow": [
+      "Bash(cargo *)",
+      "Bash(grep *)",
+      "Bash(rust-analyzer *)",
+      "Bash(rustup *)",
+      "Bash(rustc *)",
+      "Bash(git *)",
+      "Read($CARGO_HOME/)",
+      "Read(~/$HOME/.cargo/)",
+      "WebFetch",
+      "WebSearch"
+    ]
+  },
+  "enabledPlugins": {
+    "superpowers@claude-plugins-official": true,
+    "rust-analyzer-lsp@claude-plugins-official": true,
+    "claude-md-management@claude-plugins-official": true,
+    "context7@claude-plugins-official": true
+  },
+  "defaultMode": "acceptEdits"
+}
