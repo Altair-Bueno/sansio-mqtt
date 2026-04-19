@@ -1,6 +1,11 @@
 use super::*;
 
 impl ControlPacket {
+    /// Returns a parser for any MQTT v5.0 Control Packet
+    /// ([§2](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901019)).
+    ///
+    /// Dispatches on the Fixed Header's Control Packet type to the
+    /// appropriate variant parser.
     #[inline]
     pub fn parser<'input, 'settings, ByteInput, ByteError, BitError>(
         parser_settings: &'settings ParserSettings,
