@@ -175,7 +175,7 @@ async fn will_message_delivered() {
         ..ConnectOptions::default()
     };
 
-    let (client_will, mut el_will) = connect(will_opts).await.expect("connect will sender");
+    let (_client_will, mut el_will) = connect(will_opts).await.expect("connect will sender");
     assert!(
         matches!(
             el_will.poll().await.expect("will sender connected"),
@@ -196,5 +196,4 @@ async fn will_message_delivered() {
         matches!(event, Event::Message(_)),
         "expected Message (will), got {event:?}"
     );
-
 }
