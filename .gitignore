@@ -1,5 +1,5 @@
 /target
-.worktrees
+*worktrees
 .vscode
 .zed
 Cargo.lock
