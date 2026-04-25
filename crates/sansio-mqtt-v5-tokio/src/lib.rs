@@ -1,3 +1,5 @@
+#![forbid(unsafe_code)]
+
 mod client;
 mod connect;
 mod error;
