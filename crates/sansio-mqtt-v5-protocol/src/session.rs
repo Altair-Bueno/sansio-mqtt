@@ -18,6 +18,15 @@ pub(crate) enum InboundInflightState {
     Qos2Rejected(PubRecReasonCode),
 }
 
+/// Persistent per-connection MQTT session state.
+///
+/// # Message ordering
+///
+/// [MQTT-4.6.0-2] Per-topic ordering is preserved implicitly by the single-threaded
+/// FSM: messages on the same topic are processed in the order they arrive from the
+/// network. Cross-topic ordering is intentionally not guaranteed and is not required
+/// by the spec; the `on_flight_sent` map preserves per-stream QoS ordering but makes
+/// no promises across distinct topics.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ClientSession {
     pub(crate) on_flight_sent: BTreeMap<NonZero<u16>, OutboundInflightState>,

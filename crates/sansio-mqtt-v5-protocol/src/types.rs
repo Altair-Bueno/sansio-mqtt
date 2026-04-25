@@ -39,8 +39,11 @@ impl InstantAdd for ::tokio::time::Instant {
 }
 
 // Reexport types from the sansio-mqtt-v5-types crate for usability
+pub use sansio_mqtt_v5_types::Auth as AuthPacket;
+pub use sansio_mqtt_v5_types::AuthReasonCode;
 pub use sansio_mqtt_v5_types::AuthenticationKind;
 pub use sansio_mqtt_v5_types::BinaryData;
+pub use sansio_mqtt_v5_types::DisconnectReasonCode;
 pub use sansio_mqtt_v5_types::FormatIndicator;
 pub use sansio_mqtt_v5_types::Payload;
 pub use sansio_mqtt_v5_types::PubAckReasonCode;
@@ -118,6 +121,10 @@ pub enum Error {
     ReceiveMaximumExceeded,
     #[error("encode failure")]
     EncodeFailure,
+    /// [MQTT-3.1.4-5] The connection-establishment timeout elapsed before CONNACK was
+    /// received (or before CONNECT was sent in the Start state). The socket has been closed.
+    #[error("connect timeout")]
+    ConnectTimeout,
 }
 
 #[derive(Debug, Clone, PartialEq, Default)]
@@ -224,7 +231,17 @@ pub enum UserWriteOut {
     PublishDroppedDueToSessionNotResumed(NonZero<u16>),
     PublishDroppedDueToBrokerRejectedPubRec(NonZero<u16>, PubRecReasonCode),
     Connected,
-    Disconnected,
+    /// The connection is now disconnected.
+    ///
+    /// [MQTT-4.13.0-1] When the payload carries `Some(reason_code)`, the disconnect was
+    /// initiated by the server via a DISCONNECT packet with that reason code. When
+    /// `None`, the disconnect was client-initiated or the socket was closed without an
+    /// explicit DISCONNECT from the server.
+    Disconnected(Option<DisconnectReasonCode>),
+    /// [MQTT-4.12.0-2] The server has sent an AUTH packet initiating or continuing
+    /// re-authentication during an established session. The application must respond
+    /// by sending a corresponding AUTH or DISCONNECT.
+    Auth(AuthPacket),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

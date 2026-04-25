@@ -114,7 +114,9 @@ impl<Time: InstantAdd> StateHandler<Time> for Start {
             }
             DriverEventIn::SocketClosed => {
                 // Socket closed unexpectedly in Start state; emit Disconnected and transition.
-                scratchpad.read_queue.push_back(UserWriteOut::Disconnected);
+                scratchpad
+                    .read_queue
+                    .push_back(UserWriteOut::Disconnected(None));
                 (ClientState::Disconnected(Disconnected), Ok(()))
             }
             DriverEventIn::SocketError => {
@@ -134,10 +136,18 @@ impl<Time: InstantAdd> StateHandler<Time> for Start {
         self,
         _settings: &ClientSettings,
         _session: &mut ClientSession,
-        _scratchpad: &mut ClientScratchpad<Time>,
+        scratchpad: &mut ClientScratchpad<Time>,
         _now: Time,
     ) -> (ClientState, Result<(), Error>) {
-        (ClientState::Start(self), Ok(()))
+        // [MQTT-3.1.4-5] A timeout in the Start state means no connection was established
+        // within the caller-imposed deadline. Close the socket and signal the error.
+        scratchpad
+            .action_queue
+            .push_back(DriverEventOut::CloseSocket);
+        (
+            ClientState::Disconnected(Disconnected),
+            Err(Error::ConnectTimeout),
+        )
     }
 
     fn close(

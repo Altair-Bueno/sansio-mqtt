@@ -116,6 +116,9 @@ pub(crate) fn reset_negotiated_limits<Time>(
     scratchpad.negotiated_wildcard_subscription_available = true;
     scratchpad.negotiated_shared_subscription_available = true;
     scratchpad.negotiated_subscription_identifiers_available = true;
+    // [MQTT-3.8.2-1] Topic Aliases are scoped to a single Network Connection and MUST NOT
+    // be carried over to a new connection. Clear them here so every reconnection starts
+    // with a fresh, empty alias mapping.
     session.inbound_topic_aliases.clear();
     recompute_effective_limits(settings, scratchpad);
 }

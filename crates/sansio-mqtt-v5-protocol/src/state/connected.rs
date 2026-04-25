@@ -515,15 +515,28 @@ impl<Time: InstantAdd> StateHandler<Time> for Connected {
                 }
                 (ClientState::Connected(self), Ok(()))
             }
-            ControlPacket::Disconnect(_) => {
+            ControlPacket::Disconnect(disconnect) => {
+                // [MQTT-4.13.0-1] Forward the server's DISCONNECT reason code to the application
+                // so it can distinguish normal server disconnects from error conditions.
+                let reason_code = disconnect.reason_code;
                 session_ops::reset_keepalive(scratchpad);
                 limits::reset_negotiated_limits(settings, session, scratchpad);
                 session_ops::maybe_reset_session_state(session, scratchpad);
-                scratchpad.read_queue.push_back(UserWriteOut::Disconnected);
+                scratchpad
+                    .read_queue
+                    .push_back(UserWriteOut::Disconnected(Some(reason_code)));
                 scratchpad
                     .action_queue
                     .push_back(DriverEventOut::CloseSocket);
                 (ClientState::Disconnected(Disconnected), Ok(()))
+            }
+            ControlPacket::Auth(auth) => {
+                // [MQTT-4.12.0-2] The server MAY send AUTH at any time after the initial
+                // CONNECT to initiate re-authentication. Forward it to the application;
+                // the application is responsible for responding with AUTH or DISCONNECT.
+                // [MQTT-4.12.0-4] The client MUST respond to an AUTH packet from the server.
+                scratchpad.read_queue.push_back(UserWriteOut::Auth(auth));
+                (ClientState::Connected(self), Ok(()))
             }
             _ => {
                 let _ = queues::fail_protocol_and_disconnect(
@@ -778,7 +791,9 @@ impl<Time: InstantAdd> StateHandler<Time> for Connected {
                 session_ops::reset_keepalive(scratchpad);
                 limits::reset_negotiated_limits(settings, session, scratchpad);
                 session_ops::maybe_reset_session_state(session, scratchpad);
-                scratchpad.read_queue.push_back(UserWriteOut::Disconnected);
+                scratchpad
+                    .read_queue
+                    .push_back(UserWriteOut::Disconnected(None));
                 (ClientState::Disconnected(Disconnected), Ok(()))
             }
         }
@@ -801,7 +816,9 @@ impl<Time: InstantAdd> StateHandler<Time> for Connected {
                 session_ops::reset_keepalive(scratchpad);
                 limits::reset_negotiated_limits(settings, session, scratchpad);
                 session_ops::maybe_reset_session_state(session, scratchpad);
-                scratchpad.read_queue.push_back(UserWriteOut::Disconnected);
+                scratchpad
+                    .read_queue
+                    .push_back(UserWriteOut::Disconnected(None));
                 (ClientState::Disconnected(Disconnected), Ok(()))
             }
             DriverEventIn::SocketError => {
@@ -834,6 +851,8 @@ impl<Time: InstantAdd> StateHandler<Time> for Connected {
 
         if scratchpad.keep_alive_ping_outstanding {
             // [MQTT-3.1.2-24] [MQTT-4.13.1-1] Keep Alive timeout closes the network connection.
+            // The timer was set to interval/2 after sending PINGREQ, so we have now waited
+            // a total of 1.5× the keep-alive interval since the last packet was received.
             let _ = queues::fail_protocol_and_disconnect(
                 settings,
                 session,
@@ -857,10 +876,19 @@ impl<Time: InstantAdd> StateHandler<Time> for Connected {
         }
 
         // [MQTT-3.1.2-22] [MQTT-3.12.4-1] Send PINGREQ when Keep Alive elapses without traffic.
+        // [MQTT-3.1.2-24] After sending PINGREQ, set the next deadline to interval/2 from now
+        // so that the total wait from the last packet is 1.5× the keep-alive interval:
+        //   t=0:            last packet / timer start
+        //   t=interval:     no traffic → send PINGREQ, set deadline to t + interval/2
+        //   t=1.5×interval: no PINGRESP → close connection
         match queues::enqueue_packet(scratchpad, &ControlPacket::PingReq(PingReq {})) {
             Ok(()) => {
                 scratchpad.keep_alive_ping_outstanding = true;
-                scratchpad.next_timeout = Some(next_deadline);
+                // Use interval/2 (rounding up via integer division rounding) for the
+                // half-interval deadline. A minimum of 1 second is enforced so the deadline
+                // always advances even for a keep-alive of 1 second.
+                let half_interval = (interval_secs.get() / 2).max(1);
+                scratchpad.next_timeout = Some(now.add_secs(half_interval));
                 (ClientState::Connected(self), Ok(()))
             }
             Err(e) => (ClientState::Connected(self), Err(e)),
@@ -887,7 +915,9 @@ impl<Time: InstantAdd> StateHandler<Time> for Connected {
         session_ops::reset_keepalive(scratchpad);
         limits::reset_negotiated_limits(settings, session, scratchpad);
         session_ops::maybe_reset_session_state(session, scratchpad);
-        scratchpad.read_queue.push_back(UserWriteOut::Disconnected);
+        scratchpad
+            .read_queue
+            .push_back(UserWriteOut::Disconnected(None));
         (ClientState::Disconnected(Disconnected), Ok(()))
     }
 }
