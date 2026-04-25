@@ -117,6 +117,8 @@ jobs:
             target/
           key: ${{ runner.os }}-cargo-coverage-${{ hashFiles('**/Cargo.lock') }}
       - name: Collect coverage data
+        env:
+          RUSTUP_TOOLCHAIN: nightly
         run: |
           cargo llvm-cov --no-report nextest
           cargo llvm-cov --no-report --doc
