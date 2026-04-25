@@ -23,7 +23,10 @@
 - Spec gate: MUST read the MQTT v5.0 spec before implementing anything:
   https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html
 - TDD: for behavior changes, add/adjust tests before implementation when
-  feasible; run relevant tests after.
+  feasible; run relevant tests after. Prefer integration tests in `tests/`
+  over inline `#[cfg(test)]` unit tests; unit tests for private functions are
+  optional. All behavioral changes MUST have at least one test that would fail
+  before the change and pass after.
 - Type safety: encode invariants in types; avoid runtime checks when types can
   enforce.
 - Prefer `#![forbid(unsafe_code)]` by default. `unsafe` is allowed only when:
@@ -31,6 +34,10 @@
     skips invariant validation).
   - Calling a `Type::*_unchecked` public function instead of the validated
     constructor, to make unsafe type construction easy to track.
+  - Create `*_unchecked` variants only when callers have already validated invariants
+    or when the validated constructor has measurable overhead in a hot path. Every
+    `unsafe` block MUST include a `// SAFETY:` comment stating the invariant the
+    caller is required to uphold, not merely what the code does.
 - no_std-first: use `alloc` only when required.
 - Required formatting: `cargo fmt`.
 - Required linting: `cargo clippy`.
@@ -67,7 +74,15 @@
 
 ## Error Handling and Invalid States
 
-- Prefer types that make invalid states unrepresentable.
+- Prefer types that make invalid states unrepresentable. Examples from this
+  codebase: newtype wrappers with validated constructors (`Topic`, `Utf8String`
+  in `sansio-mqtt-v5-types`), `NonZero<u16>` for packet identifiers, and the
+  typestate pattern in the protocol state machine (`Start` → `Connecting` →
+  `Connected`).
+- Use `thiserror` for all error types (it is a workspace dependency). Derive
+  `Display` and `Error` via `#[derive(thiserror::Error)]`. Error messages MUST
+  include enough context to identify which MQTT packet or operation triggered
+  the error.
 
 ## Contribution Workflow
 
