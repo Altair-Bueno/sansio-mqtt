@@ -8,6 +8,7 @@
       "Bash",
       "Read($CARGO_HOME/)",
       "Read(~/$HOME/.cargo/)",
+      "Write",
       "WebFetch",
       "WebSearch"
     ]
