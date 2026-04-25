@@ -1,12 +1,22 @@
 # MQTT v5 Types Non-Exhaustive Hardening Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use
+> superpowers:subagent-driven-development (recommended) or
+> superpowers:executing-plans to implement this plan task-by-task. Steps use
+> checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add `#[non_exhaustive]` to the public `sansio-mqtt-v5-types` API surface to reduce breaking changes when new fields/variants are introduced by future spec revisions.
+**Goal:** Add `#[non_exhaustive]` to the public `sansio-mqtt-v5-types` API
+surface to reduce breaking changes when new fields/variants are introduced by
+future spec revisions.
 
-**Architecture:** Perform an allowlist/denylist-driven API hardening pass over all public structs/enums in `sansio-mqtt-v5-types`, then fix internal tests/usages that rely on exhaustive construction/matching. Keep exclusions explicit in this plan (authoritative scope), and verify compatibility by running protocol/tokio/workspace tests.
+**Architecture:** Perform an allowlist/denylist-driven API hardening pass over
+all public structs/enums in `sansio-mqtt-v5-types`, then fix internal
+tests/usages that rely on exhaustive construction/matching. Keep exclusions
+explicit in this plan (authoritative scope), and verify compatibility by running
+protocol/tokio/workspace tests.
 
-**Tech Stack:** Rust (`no_std` + `alloc`), Cargo test/fmt/clippy, MQTT v5 packet type model in `crates/sansio-mqtt-v5-types`.
+**Tech Stack:** Rust (`no_std` + `alloc`), Cargo test/fmt/clippy, MQTT v5 packet
+type model in `crates/sansio-mqtt-v5-types`.
 
 ---
 
@@ -15,6 +25,7 @@
 ### Inclusions: Add `#[non_exhaustive]`
 
 #### `crates/sansio-mqtt-v5-types/src/types/`
+
 - `ControlPacket`
 - `Connect`
 - `ConnectHeaderFlags`
@@ -87,6 +98,7 @@
 - `GuaranteedQoS`
 
 #### Other public API files
+
 - `ParserSettings` (`crates/sansio-mqtt-v5-types/src/parser/mod.rs`)
 
 ### Exclusions: Do **NOT** add `#[non_exhaustive]`
@@ -95,9 +107,12 @@
   - `EncodeError`
   - `PropertiesError`
   - `PayloadError`, `BinaryDataError`, `Utf8StringError`, `TopicError`
-  - `InvalidPropertyTypeError`, `DuplicatedPropertyError`, `UnsupportedPropertyError`
+  - `InvalidPropertyTypeError`, `DuplicatedPropertyError`,
+    `UnsupportedPropertyError`
   - `TooManyUserPropertiesError`, `MissingAuthenticationMethodError`
-  - `InvalidControlPacketTypeError`, `InvalidReasonCode`, `InvalidRetainHandlingError`, `UnknownFormatIndicatorError`, `InvalidQosError`
+  - `InvalidControlPacketTypeError`, `InvalidReasonCode`,
+    `InvalidRetainHandlingError`, `UnknownFormatIndicatorError`,
+    `InvalidQosError`
 - `Utf8String`
 - `Topic`
 - `Payload`
@@ -106,17 +121,24 @@
 
 ### Guardrail
 
-If a public struct/enum is found that is in neither list, STOP and add it explicitly to either inclusion or exclusion list before implementation.
+If a public struct/enum is found that is in neither list, STOP and add it
+explicitly to either inclusion or exclusion list before implementation.
 
 ### Task 1: Add `#[non_exhaustive]` to inclusion list types
 
 **Files:**
+
 - Modify: `crates/sansio-mqtt-v5-types/src/types/*.rs`
 - Modify: `crates/sansio-mqtt-v5-types/src/parser/mod.rs`
 
-- [ ] **Step 1: Write a failing scope test to enforce inclusion/exclusion counts**
+- [ ] **Step 1: Write a failing scope test to enforce inclusion/exclusion
+      counts**
 
-Add a test module in `crates/sansio-mqtt-v5-types/src/lib.rs` (or dedicated test file) that fails until all inclusions are marked. Use `core::mem::size_of`/compile checks as needed, or simpler: add a rustdoc compile test snippet verifying external exhaustive matches fail for one representative included enum and one included struct.
+Add a test module in `crates/sansio-mqtt-v5-types/src/lib.rs` (or dedicated test
+file) that fails until all inclusions are marked. Use
+`core::mem::size_of`/compile checks as needed, or simpler: add a rustdoc compile
+test snippet verifying external exhaustive matches fail for one representative
+included enum and one included struct.
 
 Representative compile-fail doc tests:
 
@@ -158,7 +180,8 @@ cargo test -p sansio-mqtt-v5-types --doc
 
 Expected: FAIL before annotations are applied.
 
-- [ ] **Step 3: Apply `#[non_exhaustive]` to all inclusion-list public structs/enums**
+- [ ] **Step 3: Apply `#[non_exhaustive]` to all inclusion-list public
+      structs/enums**
 
 For each included item, add attribute immediately above type declaration:
 
@@ -194,11 +217,16 @@ git commit -m "refactor(v5-types): mark public packet and reason types non-exhau
 ### Task 2: Fix internal exhaustive matches/construction affected by non-exhaustive
 
 **Files:**
-- Modify: `crates/sansio-mqtt-v5-types/src/**/*.rs` (tests/docs/examples as needed)
-- Modify: `crates/sansio-mqtt-v5-protocol/tests/client_protocol.rs` (if direct construction affected)
-- Modify: `crates/sansio-mqtt-v5-tokio/tests/*.rs` (if direct construction affected)
 
-- [ ] **Step 1: Write/enable failing compile path in tests that use exhaustive construction**
+- Modify: `crates/sansio-mqtt-v5-types/src/**/*.rs` (tests/docs/examples as
+  needed)
+- Modify: `crates/sansio-mqtt-v5-protocol/tests/client_protocol.rs` (if direct
+  construction affected)
+- Modify: `crates/sansio-mqtt-v5-tokio/tests/*.rs` (if direct construction
+  affected)
+
+- [ ] **Step 1: Write/enable failing compile path in tests that use exhaustive
+      construction**
 
 Run targeted compile checks first to surface breakages:
 
@@ -206,7 +234,8 @@ Run targeted compile checks first to surface breakages:
 cargo test -p sansio-mqtt-v5-types
 ```
 
-Expected: FAIL on exhaustive struct literals/matches where outside defining module.
+Expected: FAIL on exhaustive struct literals/matches where outside defining
+module.
 
 - [ ] **Step 2: Fix callsites with stable patterns**
 
@@ -256,6 +285,7 @@ git commit -m "fix(v5-types): adapt internal matches and constructions for non-e
 ### Task 3: Verify exclusion list remained untouched
 
 **Files:**
+
 - Modify: none expected (verification only)
 
 - [ ] **Step 1: Run grep checks for excluded types**
@@ -282,6 +312,7 @@ git commit -m "fix(v5-types): keep non-exhaustive exclusions intact"
 ### Task 4: Full verification and cleanup
 
 **Files:**
+
 - Modify: only if final fixes are required
 
 - [ ] **Step 1: Run full verification suite**

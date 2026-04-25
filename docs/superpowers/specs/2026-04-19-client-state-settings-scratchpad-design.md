@@ -1,19 +1,21 @@
 # Client State/Settings/Scratchpad Flattening Design
 
-Date: 2026-04-19
-Scope: `crates/sansio-mqtt-v5-protocol/src/proto.rs` client internals and constructors
+Date: 2026-04-19 Scope: `crates/sansio-mqtt-v5-protocol/src/proto.rs` client
+internals and constructors
 
 ## Goal
 
-Refactor `sansio_mqtt_v5_protocol::Client` into three explicit components to support
-disk persistence and resumability after disconnection and shutdown:
+Refactor `sansio_mqtt_v5_protocol::Client` into three explicit components to
+support disk persistence and resumability after disconnection and shutdown:
 
 - `ClientState`: persistent, resumable protocol state
 - `ClientSettings`: external inputs provided by application
 - `ClientScratchpad`: transient runtime-only state
 
 Hard constraint:
-- Existing grouping structs like `NegotiatedLimits` and `KeepAliveState` are removed.
+
+- Existing grouping structs like `NegotiatedLimits` and `KeepAliveState` are
+  removed.
 - Their fields are flattened directly into one of the three target structs.
 
 ## Non-Goals
@@ -34,8 +36,9 @@ Hard constraint:
 
 No additional state container structs are introduced for grouped fields.
 
-Small enums used by the state machine (for example connection phase enums) may remain enums,
-but not aggregate structs that group fields previously held in `Client`.
+Small enums used by the state machine (for example connection phase enums) may
+remain enums, but not aggregate structs that group fields previously held in
+`Client`.
 
 ## 2) Field ownership and flattening
 
@@ -51,8 +54,10 @@ Fields moved into `ClientState`:
 - `next_packet_id: u16`
 
 Rationale:
-- These fields represent protocol session continuity and must survive reconnect/shutdown
-  to support replay, pending ACK handling, and packet-id continuity.
+
+- These fields represent protocol session continuity and must survive
+  reconnect/shutdown to support replay, pending ACK handling, and packet-id
+  continuity.
 
 ### 2.2 `ClientSettings` (external, app-provided)
 
@@ -60,19 +65,23 @@ Rationale:
 as currently defined in `types.rs`.
 
 Rationale:
+
 - These are externally supplied inputs, not protocol-evolving runtime state.
 
 ### 2.3 `ClientScratchpad` (transient runtime)
 
-All non-persistent runtime and negotiated values become flattened fields on `ClientScratchpad<Time>`:
+All non-persistent runtime and negotiated values become flattened fields on
+`ClientScratchpad<Time>`:
 
 - State machine / phases:
-  - `lifecycle_state: ClientLifecycleState` (renamed from internal `ClientState` enum)
+  - `lifecycle_state: ClientLifecycleState` (renamed from internal `ClientState`
+    enum)
   - `connecting_phase: ConnectingPhase`
 - Connection options and runtime persistence policy:
   - `pending_connect_options: ConnectionOptions`
   - `session_should_persist: bool`
-- Negotiated broker limits/capabilities (flattened replacement for `NegotiatedLimits`):
+- Negotiated broker limits/capabilities (flattened replacement for
+  `NegotiatedLimits`):
   - `negotiated_receive_maximum: NonZero<u16>`
   - `negotiated_maximum_packet_size: Option<NonZero<u32>>`
   - `negotiated_topic_alias_maximum: u16`
@@ -94,6 +103,7 @@ All non-persistent runtime and negotiated values become flattened fields on `Cli
   - `next_timeout: Option<Time>`
 
 Rationale:
+
 - These values are per-connection/per-runtime scratch state and must start blank
   for every newly constructed client instance.
 
@@ -126,27 +136,32 @@ This change does not mandate storage timing or backend.
 ### 4.1 Clean Start
 
 Confirmed requirement:
+
 - `clean_start = true` MUST drop stored protocol state.
 
 Rule:
-- During `UserWriteIn::Connect(options)` handling, if `options.clean_start` is true,
-  call `self.state.reset()` (or equivalent clear method) before continuing.
+
+- During `UserWriteIn::Connect(options)` handling, if `options.clean_start` is
+  true, call `self.state.reset()` (or equivalent clear method) before
+  continuing.
 
 This aligns with [MQTT-3.1.2-4].
 
 ### 4.2 Session-expiry-driven persistence
 
-`session_should_persist` remains runtime-derived from connect options in scratchpad.
+`session_should_persist` remains runtime-derived from connect options in
+scratchpad.
 
 On disconnect/error/close transitions:
+
 - If `session_should_persist` is false: clear `ClientState`.
 - If `session_should_persist` is true: keep `ClientState` intact.
 
 ### 4.3 Scratchpad reset behavior
 
 `ClientScratchpad` is always initialized from `Default` on client construction.
-Lifecycle reset helpers update scratchpad fields only and must not erase `ClientState`
-unless session rules require it.
+Lifecycle reset helpers update scratchpad fields only and must not erase
+`ClientState` unless session rules require it.
 
 ## 5) Internal API updates
 
@@ -167,9 +182,10 @@ Helper reset methods are retained but rewritten to mutate component fields:
 ## 6) Compatibility and migration notes
 
 - Public protocol behavior remains unchanged.
-- Internal naming conflict is resolved by renaming the existing lifecycle enum from
-  `ClientState` to `ClientLifecycleState`.
-- Existing tests that directly reference internal fields are updated to new locations.
+- Internal naming conflict is resolved by renaming the existing lifecycle enum
+  from `ClientState` to `ClientLifecycleState`.
+- Existing tests that directly reference internal fields are updated to new
+  locations.
 
 ## 7) Verification strategy
 

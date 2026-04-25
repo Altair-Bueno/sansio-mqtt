@@ -1,12 +1,23 @@
 # v5-Protocol `StateHandler` Trait Refactor Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use
+> superpowers:subagent-driven-development (recommended) or
+> superpowers:executing-plans to implement this plan task-by-task. Steps use
+> checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Break `proto.rs` (1815 lines) into focused modules using a `StateHandler<Time>` trait — one struct per MQTT lifecycle state — while keeping all existing tests and spec compliance intact.
+**Goal:** Break `proto.rs` (1815 lines) into focused modules using a
+`StateHandler<Time>` trait — one struct per MQTT lifecycle state — while keeping
+all existing tests and spec compliance intact.
 
-**Architecture:** Incremental extraction: pull helpers into sibling modules (`limits`, `queues`, `session_ops`, `scratchpad`, `session`) while `proto.rs` remains the live dispatcher; then introduce `state/` (FSM enum + trait + four state structs); finally cut `Client`'s `Protocol` impl over to a `dispatch()` helper and delete `proto.rs`. Every intermediate commit keeps `cargo test --workspace` green.
+**Architecture:** Incremental extraction: pull helpers into sibling modules
+(`limits`, `queues`, `session_ops`, `scratchpad`, `session`) while `proto.rs`
+remains the live dispatcher; then introduce `state/` (FSM enum + trait + four
+state structs); finally cut `Client`'s `Protocol` impl over to a `dispatch()`
+helper and delete `proto.rs`. Every intermediate commit keeps
+`cargo test --workspace` green.
 
-**Tech Stack:** Rust 2021 nightly, `sansio_mqtt_v5_types`, `winnow`, `bytes`, `encode`, `tracing` — no new dependencies.
+**Tech Stack:** Rust 2021 nightly, `sansio_mqtt_v5_types`, `winnow`, `bytes`,
+`encode`, `tracing` — no new dependencies.
 
 ---
 
@@ -14,27 +25,31 @@
 
 - `#![forbid(unsafe_code)]` preserved in `lib.rs`.
 - `no_std` preserved; no `std::` imports outside `cfg(test)`.
-- `Client<Time>` and `sansio::Protocol for Client<Time>` exported with unchanged method signatures.
-- All `[MQTT-x.x.x-y]` spec citations preserved at every call site through all tasks.
-- `cargo fmt --check` + `cargo clippy --workspace --all-targets -- -D warnings` + `cargo test --workspace` green after every task.
+- `Client<Time>` and `sansio::Protocol for Client<Time>` exported with unchanged
+  method signatures.
+- All `[MQTT-x.x.x-y]` spec citations preserved at every call site through all
+  tasks.
+- `cargo fmt --check` +
+  `cargo clippy --workspace --all-targets -- -D warnings` +
+  `cargo test --workspace` green after every task.
 
 ## Files Map
 
-| Path | Action | Notes |
-|---|---|---|
-| `src/proto.rs` | Delete in Task 13 | Replaced by modules below |
-| `src/lib.rs` | Modify across tasks | Re-exports updated |
-| `src/client.rs` | Create in Task 13 | `Client<Time>`, constructors, `dispatch`, `Protocol` impl |
-| `src/scratchpad.rs` | Create in Task 6 | `ClientScratchpad<Time>` + `ClientLifecycleState` + `Default` |
-| `src/session.rs` | Create in Task 7 | `ClientSession`, `OutboundInflightState`, `InboundInflightState` |
-| `src/limits.rs` | Create in Task 3 | limit computation + outbound validation free functions |
-| `src/queues.rs` | Create in Task 4 | encode/enqueue helpers + `fail_protocol_and_disconnect` |
-| `src/session_ops.rs` | Create in Task 5 | packet-id alloc, replay, inflight reset, keepalive reset |
-| `src/state/mod.rs` | Create in Task 8 | `enum ClientState`, `trait StateHandler<Time>`, dispatch impl |
-| `src/state/start.rs` | Create in Task 9 | `struct Start` + `impl StateHandler<Time>` |
-| `src/state/disconnected.rs` | Create in Task 9 | `struct Disconnected` + `impl StateHandler<Time>` |
-| `src/state/connecting.rs` | Create in Task 10 | `struct Connecting { pending_connect_options }` + impl |
-| `src/state/connected.rs` | Create in Task 11 | `struct Connected` + impl (bulk of packet dispatch) |
+| Path                        | Action              | Notes                                                            |
+| --------------------------- | ------------------- | ---------------------------------------------------------------- |
+| `src/proto.rs`              | Delete in Task 13   | Replaced by modules below                                        |
+| `src/lib.rs`                | Modify across tasks | Re-exports updated                                               |
+| `src/client.rs`             | Create in Task 13   | `Client<Time>`, constructors, `dispatch`, `Protocol` impl        |
+| `src/scratchpad.rs`         | Create in Task 6    | `ClientScratchpad<Time>` + `ClientLifecycleState` + `Default`    |
+| `src/session.rs`            | Create in Task 7    | `ClientSession`, `OutboundInflightState`, `InboundInflightState` |
+| `src/limits.rs`             | Create in Task 3    | limit computation + outbound validation free functions           |
+| `src/queues.rs`             | Create in Task 4    | encode/enqueue helpers + `fail_protocol_and_disconnect`          |
+| `src/session_ops.rs`        | Create in Task 5    | packet-id alloc, replay, inflight reset, keepalive reset         |
+| `src/state/mod.rs`          | Create in Task 8    | `enum ClientState`, `trait StateHandler<Time>`, dispatch impl    |
+| `src/state/start.rs`        | Create in Task 9    | `struct Start` + `impl StateHandler<Time>`                       |
+| `src/state/disconnected.rs` | Create in Task 9    | `struct Disconnected` + `impl StateHandler<Time>`                |
+| `src/state/connecting.rs`   | Create in Task 10   | `struct Connecting { pending_connect_options }` + impl           |
+| `src/state/connected.rs`    | Create in Task 11   | `struct Connected` + impl (bulk of packet dispatch)              |
 
 ---
 
@@ -44,8 +59,8 @@
 
 - [ ] **Step 1: Confirm rust-analyzer is available**
 
-Run: `rust-analyzer --version`
-Expected: a version string. If missing, run `rustup component add rust-analyzer` and confirm before continuing.
+Run: `rust-analyzer --version` Expected: a version string. If missing, run
+`rustup component add rust-analyzer` and confirm before continuing.
 
 - [ ] **Step 2: Confirm clean baseline**
 
@@ -54,6 +69,7 @@ cargo fmt --check
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
 ```
+
 All must pass. If any fail, stop and report before touching code.
 
 ---
@@ -61,11 +77,14 @@ All must pass. If any fail, stop and report before touching code.
 ### Task 2: Rename `ClientState` → `ClientSession`
 
 **Files:**
+
 - Modify: `crates/sansio-mqtt-v5-protocol/src/proto.rs`
 - Modify: `crates/sansio-mqtt-v5-protocol/src/lib.rs`
 - Modify: `crates/sansio-mqtt-v5-protocol/tests/client_protocol.rs`
 
-Rename the persistent struct and constructor, and rename the `state` field on `Client` to `session`. This frees the name `ClientState` for the FSM enum introduced in Task 8.
+Rename the persistent struct and constructor, and rename the `state` field on
+`Client` to `session`. This frees the name `ClientState` for the FSM enum
+introduced in Task 8.
 
 - [ ] **Step 1: Rename struct, impls, and field in `proto.rs`**
 
@@ -83,6 +102,7 @@ Self::with_settings_and_state(    →  Self::with_settings_and_session(
 ```
 
 Also rename the local parameter inside `with_settings_and_session`:
+
 ```rust
 // before
 pub fn with_settings_and_state(settings: ClientSettings, state: ClientState) -> Self {
@@ -93,7 +113,8 @@ pub fn with_settings_and_session(settings: ClientSettings, session: ClientSessio
     let mut client = Self { settings, session, scratchpad: ClientScratchpad::default() };
 ```
 
-Rename every `self.state.` access that targets the session fields to `self.session.`:
+Rename every `self.state.` access that targets the session fields to
+`self.session.`:
 
 ```
 self.state.on_flight_sent        →  self.session.on_flight_sent
@@ -125,6 +146,7 @@ Client::<u64>::with_settings_and_state(  →  Client::<u64>::with_settings_and_s
 ```bash
 cargo test --workspace
 ```
+
 Expected: PASS.
 
 - [ ] **Step 5: Commit**
@@ -141,11 +163,14 @@ git commit -m "refactor(v5-protocol): rename ClientState → ClientSession, stat
 ### Task 3: Extract `limits.rs`
 
 **Files:**
+
 - Create: `crates/sansio-mqtt-v5-protocol/src/limits.rs`
 - Modify: `crates/sansio-mqtt-v5-protocol/src/proto.rs`
 - Modify: `crates/sansio-mqtt-v5-protocol/src/lib.rs`
 
-Move all limit computation and outbound validation methods to free functions. These are called by `enqueue_packet` (extracted in Task 4) and inline in `proto.rs`.
+Move all limit computation and outbound validation methods to free functions.
+These are called by `enqueue_packet` (extracted in Task 4) and inline in
+`proto.rs`.
 
 - [ ] **Step 1: Create `src/limits.rs`**
 
@@ -398,16 +423,18 @@ Self::min_option_nonzero_u32(a, b)
 ```
 
 Delete the moved methods from the `impl<Time> Client<Time>` block in `proto.rs`:
-`min_option_nonzero_u16`, `min_option_nonzero_u32`, `recompute_effective_limits`,
-`reset_negotiated_limits`, `ensure_outbound_receive_maximum_capacity`,
-`validate_outbound_topic_alias`, `validate_outbound_packet_size`,
-`validate_outbound_publish_capabilities`, `apply_inbound_publish_topic_alias`.
+`min_option_nonzero_u16`, `min_option_nonzero_u32`,
+`recompute_effective_limits`, `reset_negotiated_limits`,
+`ensure_outbound_receive_maximum_capacity`, `validate_outbound_topic_alias`,
+`validate_outbound_packet_size`, `validate_outbound_publish_capabilities`,
+`apply_inbound_publish_topic_alias`.
 
 - [ ] **Step 4: Run tests**
 
 ```bash
 cargo test --workspace
 ```
+
 Expected: PASS.
 
 - [ ] **Step 5: Commit**
@@ -424,11 +451,14 @@ git commit -m "refactor(v5-protocol): extract limits and validation helpers into
 ### Task 4: Extract `queues.rs`
 
 **Files:**
+
 - Create: `crates/sansio-mqtt-v5-protocol/src/queues.rs`
 - Modify: `crates/sansio-mqtt-v5-protocol/src/proto.rs`
 - Modify: `crates/sansio-mqtt-v5-protocol/src/lib.rs`
 
-`fail_protocol_and_disconnect` inlines the keepalive/session reset bodies during this task to avoid a circular dependency with `session_ops` (not yet extracted). These are cleaned up in Task 12 after `session_ops` exists.
+`fail_protocol_and_disconnect` inlines the keepalive/session reset bodies during
+this task to avoid a circular dependency with `session_ops` (not yet extracted).
+These are cleaned up in Task 12 after `session_ops` exists.
 
 - [ ] **Step 1: Create `src/queues.rs`**
 
@@ -621,6 +651,7 @@ Delete the moved methods from `proto.rs`.
 ```bash
 cargo test --workspace
 ```
+
 Expected: PASS.
 
 - [ ] **Step 5: Commit**
@@ -637,6 +668,7 @@ git commit -m "refactor(v5-protocol): extract queue and encode helpers into queu
 ### Task 5: Extract `session_ops.rs`
 
 **Files:**
+
 - Create: `crates/sansio-mqtt-v5-protocol/src/session_ops.rs`
 - Modify: `crates/sansio-mqtt-v5-protocol/src/proto.rs`
 - Modify: `crates/sansio-mqtt-v5-protocol/src/lib.rs`
@@ -791,7 +823,8 @@ self.replay_outbound_inflight_with_dup()        →  session_ops::replay_outboun
 
 Delete the moved methods from `proto.rs`.
 
-Also update `queues::fail_protocol_and_disconnect` in `queues.rs` to call the extracted helpers instead of inlining them:
+Also update `queues::fail_protocol_and_disconnect` in `queues.rs` to call the
+extracted helpers instead of inlining them:
 
 ```rust
 // in queues.rs — replace the inline keepalive reset and maybe_reset_session_state bodies with:
@@ -807,6 +840,7 @@ Remove the duplicated inline code from `fail_protocol_and_disconnect`.
 ```bash
 cargo test --workspace
 ```
+
 Expected: PASS.
 
 - [ ] **Step 5: Commit**
@@ -824,6 +858,7 @@ git commit -m "refactor(v5-protocol): extract session operation helpers into ses
 ### Task 6: Extract `scratchpad.rs`
 
 **Files:**
+
 - Create: `crates/sansio-mqtt-v5-protocol/src/scratchpad.rs`
 - Modify: `crates/sansio-mqtt-v5-protocol/src/proto.rs`
 - Modify: `crates/sansio-mqtt-v5-protocol/src/lib.rs`
@@ -833,7 +868,10 @@ git commit -m "refactor(v5-protocol): extract session operation helpers into ses
 
 - [ ] **Step 1: Create `src/scratchpad.rs`**
 
-Cut `ClientLifecycleState`, `ConnectingPhase`, and `ClientScratchpad<Time>` verbatim from `proto.rs` into `scratchpad.rs`. Add the necessary imports (those currently at the top of `proto.rs` that these types depend on). Make `ClientLifecycleState` and `ConnectingPhase` `pub(crate)`.
+Cut `ClientLifecycleState`, `ConnectingPhase`, and `ClientScratchpad<Time>`
+verbatim from `proto.rs` into `scratchpad.rs`. Add the necessary imports (those
+currently at the top of `proto.rs` that these types depend on). Make
+`ClientLifecycleState` and `ConnectingPhase` `pub(crate)`.
 
 ```rust
 // scratchpad.rs — structs and enums cut from proto.rs
@@ -879,36 +917,47 @@ where
 - [ ] **Step 2: Update imports in `limits.rs`, `queues.rs`, `session_ops.rs`**
 
 In each of these files, replace:
+
 ```rust
 use crate::proto::ClientScratchpad;
 ```
+
 with:
+
 ```rust
 use crate::scratchpad::ClientScratchpad;
 ```
 
 Also in `queues.rs`, replace:
+
 ```rust
 use crate::proto::ClientLifecycleState;
 ```
+
 with:
+
 ```rust
 use crate::scratchpad::ClientLifecycleState;
 ```
 
 - [ ] **Step 3: Add module declaration to `lib.rs`**
 
-Add `mod scratchpad;` and update any re-exports if `ClientScratchpad` is public-facing.
+Add `mod scratchpad;` and update any re-exports if `ClientScratchpad` is
+public-facing.
 
 - [ ] **Step 4: Update `proto.rs`**
 
-Remove the `ClientLifecycleState`, `ConnectingPhase`, and `ClientScratchpad<Time>` definitions from `proto.rs`. Add `use crate::scratchpad::{ClientLifecycleState, ConnectingPhase, ClientScratchpad};` at the top of `proto.rs`.
+Remove the `ClientLifecycleState`, `ConnectingPhase`, and
+`ClientScratchpad<Time>` definitions from `proto.rs`. Add
+`use crate::scratchpad::{ClientLifecycleState, ConnectingPhase, ClientScratchpad};`
+at the top of `proto.rs`.
 
 - [ ] **Step 5: Run tests**
 
 ```bash
 cargo test --workspace
 ```
+
 Expected: PASS.
 
 - [ ] **Step 6: Commit**
@@ -928,6 +977,7 @@ git commit -m "refactor(v5-protocol): extract ClientScratchpad into scratchpad m
 ### Task 7: Extract `session.rs`
 
 **Files:**
+
 - Create: `crates/sansio-mqtt-v5-protocol/src/session.rs`
 - Modify: `crates/sansio-mqtt-v5-protocol/src/proto.rs`
 - Modify: `crates/sansio-mqtt-v5-protocol/src/lib.rs`
@@ -937,7 +987,8 @@ git commit -m "refactor(v5-protocol): extract ClientScratchpad into scratchpad m
 
 - [ ] **Step 1: Create `src/session.rs`**
 
-Cut `OutboundInflightState`, `InboundInflightState`, `ClientSession`, and its impls verbatim from `proto.rs` into `session.rs`:
+Cut `OutboundInflightState`, `InboundInflightState`, `ClientSession`, and its
+impls verbatim from `proto.rs` into `session.rs`:
 
 ```rust
 // session.rs
@@ -994,31 +1045,39 @@ impl Default for ClientSession {
 - [ ] **Step 2: Update imports in all modules**
 
 In `limits.rs`, `queues.rs`, `session_ops.rs`, replace:
+
 ```rust
 use crate::proto::ClientSession;
 ```
+
 with:
+
 ```rust
 use crate::session::ClientSession;
 ```
 
 Also in `session_ops.rs`, replace:
+
 ```rust
 use crate::proto::OutboundInflightState;
 ```
+
 with:
+
 ```rust
 use crate::session::OutboundInflightState;
 ```
 
 - [ ] **Step 3: Update `lib.rs`**
 
-Add `mod session;` and change `pub use proto::ClientSession;` to `pub use session::ClientSession;`.
+Add `mod session;` and change `pub use proto::ClientSession;` to
+`pub use session::ClientSession;`.
 
 - [ ] **Step 4: Update `proto.rs`**
 
-Remove `OutboundInflightState`, `InboundInflightState`, `ClientSession` and their impls.
-Add at the top:
+Remove `OutboundInflightState`, `InboundInflightState`, `ClientSession` and
+their impls. Add at the top:
+
 ```rust
 use crate::session::{ClientSession, InboundInflightState, OutboundInflightState};
 ```
@@ -1028,6 +1087,7 @@ use crate::session::{ClientSession, InboundInflightState, OutboundInflightState}
 ```bash
 cargo test --workspace
 ```
+
 Expected: PASS.
 
 - [ ] **Step 6: Commit**
@@ -1047,10 +1107,13 @@ git commit -m "refactor(v5-protocol): extract ClientSession and inflight enums i
 ### Task 8: Create `state/mod.rs` — FSM enum and trait
 
 **Files:**
+
 - Create: `crates/sansio-mqtt-v5-protocol/src/state/mod.rs`
 - Modify: `crates/sansio-mqtt-v5-protocol/src/lib.rs`
 
-At this point `proto.rs` is still the live dispatcher. The `state/` module is built alongside it. The trait impls (Tasks 9–11) are not wired up to `Client` until Task 12.
+At this point `proto.rs` is still the live dispatcher. The `state/` module is
+built alongside it. The trait impls (Tasks 9–11) are not wired up to `Client`
+until Task 12.
 
 - [ ] **Step 1: Create `src/state/mod.rs`**
 
@@ -1211,13 +1274,15 @@ impl<Time: Copy + Ord + 'static> StateHandler<Time> for ClientState {
 
 - [ ] **Step 2: Add module declaration to `lib.rs`**
 
-Add `mod state;` to `src/lib.rs`. Do NOT re-export `ClientState` yet — it is `pub(crate)` and only used internally until Task 12.
+Add `mod state;` to `src/lib.rs`. Do NOT re-export `ClientState` yet — it is
+`pub(crate)` and only used internally until Task 12.
 
 - [ ] **Step 3: Run tests**
 
 ```bash
 cargo test --workspace
 ```
+
 Expected: PASS (new module compiles but is unreachable; no behaviour change).
 
 - [ ] **Step 4: Commit**
@@ -1233,10 +1298,12 @@ git commit -m "refactor(v5-protocol): introduce ClientState FSM enum and StateHa
 ### Task 9: Implement `state/start.rs` + `state/disconnected.rs`
 
 **Files:**
+
 - Create: `crates/sansio-mqtt-v5-protocol/src/state/start.rs`
 - Create: `crates/sansio-mqtt-v5-protocol/src/state/disconnected.rs`
 
-These two states share nearly identical behaviour — both accept `Connect` and reject everything else.
+These two states share nearly identical behaviour — both accept `Connect` and
+reject everything else.
 
 - [ ] **Step 1: Create `src/state/start.rs`**
 
@@ -1350,7 +1417,8 @@ impl<Time: Copy + Ord + 'static> StateHandler<Time> for Start {
 
 - [ ] **Step 2: Create `src/state/disconnected.rs`**
 
-`Disconnected` is identical to `Start` except `close()` is idempotent and `handle_event` also errors:
+`Disconnected` is identical to `Start` except `close()` is idempotent and
+`handle_event` also errors:
 
 ```rust
 use sansio_mqtt_v5_types::ControlPacket;
@@ -1421,13 +1489,15 @@ impl<Time: Copy + Ord + 'static> StateHandler<Time> for Disconnected {
 }
 ```
 
-Make `handle_connect` in `start.rs` `pub(crate)` so `disconnected.rs` can call it.
+Make `handle_connect` in `start.rs` `pub(crate)` so `disconnected.rs` can call
+it.
 
 - [ ] **Step 3: Run tests**
 
 ```bash
 cargo test --workspace
 ```
+
 Expected: PASS (still unreachable; proto.rs is still live).
 
 - [ ] **Step 4: Commit**
@@ -1444,9 +1514,12 @@ git commit -m "refactor(v5-protocol): implement StateHandler for Start and Disco
 ### Task 10: Implement `state/connecting.rs`
 
 **Files:**
+
 - Create: `crates/sansio-mqtt-v5-protocol/src/state/connecting.rs`
 
-The CONNECT packet is built inline in `handle_event(SocketConnected)`. The three `build_connect_packet` unit tests in `proto.rs` become dead after the cutover in Task 12 — delete them then.
+The CONNECT packet is built inline in `handle_event(SocketConnected)`. The three
+`build_connect_packet` unit tests in `proto.rs` become dead after the cutover in
+Task 12 — delete them then.
 
 - [ ] **Step 1: Create `src/state/connecting.rs`**
 
@@ -1796,6 +1869,7 @@ impl<Time: Copy + Ord + 'static> StateHandler<Time> for Connecting {
 ```bash
 cargo test --workspace
 ```
+
 Expected: PASS.
 
 - [ ] **Step 3: Commit**
@@ -1811,13 +1885,19 @@ git commit -m "refactor(v5-protocol): implement StateHandler for Connecting stat
 ### Task 11: Implement `state/connected.rs`
 
 **Files:**
+
 - Create: `crates/sansio-mqtt-v5-protocol/src/state/connected.rs`
 
-This is the largest state handler. It mirrors the `ClientLifecycleState::Connected` arm of `handle_read_control_packet` (lines 879–1121 of `proto.rs`) and the `Connected`-guarded arms of `handle_write`, `handle_event`, `handle_timeout`, and `close`.
+This is the largest state handler. It mirrors the
+`ClientLifecycleState::Connected` arm of `handle_read_control_packet` (lines
+879–1121 of `proto.rs`) and the `Connected`-guarded arms of `handle_write`,
+`handle_event`, `handle_timeout`, and `close`.
 
 - [ ] **Step 1: Create `src/state/connected.rs`**
 
-Start with the helper functions cut from `proto.rs` — `map_inbound_publish_to_broker_message` and `map_incoming_reject_reason_*` — placed as free functions in this module:
+Start with the helper functions cut from `proto.rs` —
+`map_inbound_publish_to_broker_message` and `map_incoming_reject_reason_*` —
+placed as free functions in this module:
 
 ```rust
 use core::time::Duration;
@@ -1828,13 +1908,22 @@ use sansio_mqtt_v5_types::{
 use crate::types::{BrokerMessage, IncomingRejectReason, ...};
 ```
 
-Then implement `handle_control_packet` by copying the `ClientLifecycleState::Connected` match arm from `proto.rs` (lines 879–1121), replacing `self.session.` with `session.`, `self.scratchpad.` with `scratchpad.`, and every helper call with its free-function equivalent. Every `[MQTT-x.x.x-y]` citation must be preserved in place.
+Then implement `handle_control_packet` by copying the
+`ClientLifecycleState::Connected` match arm from `proto.rs` (lines 879–1121),
+replacing `self.session.` with `session.`, `self.scratchpad.` with
+`scratchpad.`, and every helper call with its free-function equivalent. Every
+`[MQTT-x.x.x-y]` citation must be preserved in place.
 
-The disconnect path returns `(ClientState::Disconnected(Disconnected), Ok(()))` or `Err(ProtocolError)` as applicable. Staying in the same state returns `(ClientState::Connected(self), result)`.
+The disconnect path returns `(ClientState::Disconnected(Disconnected), Ok(()))`
+or `Err(ProtocolError)` as applicable. Staying in the same state returns
+`(ClientState::Connected(self), result)`.
 
-For `handle_write`, copy the match arms from `handle_write` in `proto.rs` that are guarded by `lifecycle_state == Connected`. Add a `Connect(_)` arm that returns `Err(InvalidStateTransition)`.
+For `handle_write`, copy the match arms from `handle_write` in `proto.rs` that
+are guarded by `lifecycle_state == Connected`. Add a `Connect(_)` arm that
+returns `Err(InvalidStateTransition)`.
 
 For `handle_event`:
+
 ```rust
 fn handle_event(self, settings, session, scratchpad, evt) {
     match evt {
@@ -1846,7 +1935,10 @@ fn handle_event(self, settings, session, scratchpad, evt) {
 }
 ```
 
-For `handle_timeout`, copy the body from `handle_timeout` in the Protocol impl (lines 1556–1585), replacing `self.scratchpad.` → `scratchpad.` and helper calls with free-function equivalents:
+For `handle_timeout`, copy the body from `handle_timeout` in the Protocol impl
+(lines 1556–1585), replacing `self.scratchpad.` → `scratchpad.` and helper calls
+with free-function equivalents:
+
 ```rust
 fn handle_timeout(self, settings, session, scratchpad, now) {
     if scratchpad.keep_alive_interval_secs.is_none() {
@@ -1873,13 +1965,15 @@ fn handle_timeout(self, settings, session, scratchpad, now) {
 }
 ```
 
-For `close`, copy the `ClientLifecycleState::Connected | Connecting` arm from `close()` in the Protocol impl (lines 1590–1606).
+For `close`, copy the `ClientLifecycleState::Connected | Connecting` arm from
+`close()` in the Protocol impl (lines 1590–1606).
 
 - [ ] **Step 2: Run tests**
 
 ```bash
 cargo test --workspace
 ```
+
 Expected: PASS (still unreachable code; proto.rs handles all requests).
 
 - [ ] **Step 3: Commit**
@@ -1895,18 +1989,24 @@ git commit -m "refactor(v5-protocol): implement StateHandler for Connected state
 ### Task 12: Wire `Client` dispatch — the FSM cutover
 
 **Files:**
+
 - Modify: `crates/sansio-mqtt-v5-protocol/src/proto.rs`
 - Modify: `crates/sansio-mqtt-v5-protocol/src/scratchpad.rs`
 - Modify: `crates/sansio-mqtt-v5-protocol/src/queues.rs`
 
-This is the big switchover. After this commit proto.rs is a thin shell, and state/*.rs runs the show.
+This is the big switchover. After this commit proto.rs is a thin shell, and
+state/\*.rs runs the show.
 
-- [ ] **Step 1: Remove `lifecycle_state` and `connecting_phase` from `ClientScratchpad`**
+- [ ] **Step 1: Remove `lifecycle_state` and `connecting_phase` from
+      `ClientScratchpad`**
 
 In `scratchpad.rs`:
-1. Remove `lifecycle_state: ClientLifecycleState` and `connecting_phase: ConnectingPhase` fields from `ClientScratchpad<Time>`.
+
+1. Remove `lifecycle_state: ClientLifecycleState` and
+   `connecting_phase: ConnectingPhase` fields from `ClientScratchpad<Time>`.
 2. Remove their `Default` values.
-3. `ClientLifecycleState` and `ConnectingPhase` enums are now unused — delete them from `scratchpad.rs`.
+3. `ClientLifecycleState` and `ConnectingPhase` enums are now unused — delete
+   them from `scratchpad.rs`.
 
 - [ ] **Step 2: Add `state: ClientState` to `Client<Time>` in `proto.rs`**
 
@@ -1962,7 +2062,8 @@ impl<Time> Client<Time> {
 
 - [ ] **Step 3: Replace Protocol impl methods in `proto.rs`**
 
-Replace the full bodies of `handle_read`, `handle_write`, `handle_event`, `handle_timeout`, `close`, and the poll methods with thin delegates:
+Replace the full bodies of `handle_read`, `handle_write`, `handle_event`,
+`handle_timeout`, `close`, and the poll methods with thin delegates:
 
 ```rust
 impl<Time: Copy + Ord + 'static> Protocol<Bytes, UserWriteIn, DriverEventIn> for Client<Time> {
@@ -2054,7 +2155,8 @@ impl<Time: Copy + Ord + 'static> Protocol<Bytes, UserWriteIn, DriverEventIn> for
 
 - [ ] **Step 4: Update `queues::fail_protocol_and_disconnect`**
 
-Remove the `scratchpad.lifecycle_state = ...` line (the field no longer exists). Confirm it now calls the session_ops helpers (already done in Task 5):
+Remove the `scratchpad.lifecycle_state = ...` line (the field no longer exists).
+Confirm it now calls the session_ops helpers (already done in Task 5):
 
 ```rust
 pub(crate) fn fail_protocol_and_disconnect<Time: 'static>(
@@ -2082,22 +2184,33 @@ pub(crate) fn fail_protocol_and_disconnect<Time: 'static>(
 
 - [ ] **Step 5: Delete dead code from `proto.rs`**
 
-Remove `handle_read_control_packet`, `handle_write` (the old full impl), `handle_event` (old impl), `handle_timeout` (old impl), `close` (old impl), `map_inbound_publish_to_broker_message`, `map_incoming_reject_reason_to_puback`, `map_incoming_reject_reason_to_pubrec`, `parser_settings` (inline it in `handle_read` above), and the three `build_connect_packet` unit tests.
+Remove `handle_read_control_packet`, `handle_write` (the old full impl),
+`handle_event` (old impl), `handle_timeout` (old impl), `close` (old impl),
+`map_inbound_publish_to_broker_message`, `map_incoming_reject_reason_to_puback`,
+`map_incoming_reject_reason_to_pubrec`, `parser_settings` (inline it in
+`handle_read` above), and the three `build_connect_packet` unit tests.
 
-Keep the two remaining unit tests (`socket_connected_error_does_not_poison_state`, `pubrel_enqueue_failure_forces_protocol_close`) — move them to `#[cfg(test)] mod tests` inside `state/connected.rs`.
+Keep the two remaining unit tests
+(`socket_connected_error_does_not_poison_state`,
+`pubrel_enqueue_failure_forces_protocol_close`) — move them to
+`#[cfg(test)] mod tests` inside `state/connected.rs`.
 
 - [ ] **Step 6: Run full test suite**
 
 ```bash
 cargo test --workspace
 ```
-Expected: PASS. This is the proof that the FSM mirrors the old behaviour exactly. If any test fails, diagnose using the transition map in the design spec before continuing.
+
+Expected: PASS. This is the proof that the FSM mirrors the old behaviour
+exactly. If any test fails, diagnose using the transition map in the design spec
+before continuing.
 
 - [ ] **Step 7: Run lints**
 
 ```bash
 cargo clippy --workspace --all-targets -- -D warnings
 ```
+
 Fix any warnings before committing.
 
 - [ ] **Step 8: Commit**
@@ -2112,15 +2225,18 @@ git commit -m "refactor(v5-protocol): cut over Client to dispatch-based FSM, rem
 ### Task 13: Extract `client.rs` + delete `proto.rs`
 
 **Files:**
+
 - Create: `crates/sansio-mqtt-v5-protocol/src/client.rs`
 - Delete: `crates/sansio-mqtt-v5-protocol/src/proto.rs`
 - Modify: `crates/sansio-mqtt-v5-protocol/src/lib.rs`
 
-At this point `proto.rs` contains only `Client<Time>`, its constructors, `dispatch`, and the thin Protocol impl. Moving it to `client.rs` is mechanical.
+At this point `proto.rs` contains only `Client<Time>`, its constructors,
+`dispatch`, and the thin Protocol impl. Moving it to `client.rs` is mechanical.
 
 - [ ] **Step 1: Create `src/client.rs`**
 
-Cut everything remaining in `proto.rs` into `client.rs`. Update imports — the `use crate::proto::*` entries in other files become `use crate::client::*`.
+Cut everything remaining in `proto.rs` into `client.rs`. Update imports — the
+`use crate::proto::*` entries in other files become `use crate::client::*`.
 
 - [ ] **Step 2: Delete `proto.rs`**
 
@@ -2157,6 +2273,7 @@ pub use types::*;
 cargo test --workspace
 cargo build -p sansio-mqtt-v5-tokio
 ```
+
 Both must pass.
 
 - [ ] **Step 5: Commit**
@@ -2173,13 +2290,16 @@ git commit -m "refactor(v5-protocol): move Client into client.rs, delete proto.r
 ### Task 14: Final verification and cleanup
 
 **Files:**
-- Modify: `crates/sansio-mqtt-v5-protocol/src/*.rs` (formatting + lint fixes only)
+
+- Modify: `crates/sansio-mqtt-v5-protocol/src/*.rs` (formatting + lint fixes
+  only)
 
 - [ ] **Step 1: Full workspace test suite**
 
 ```bash
 cargo test --workspace
 ```
+
 Expected: PASS.
 
 - [ ] **Step 2: Format and lint**
@@ -2188,6 +2308,7 @@ Expected: PASS.
 cargo fmt
 cargo clippy --workspace --all-targets -- -D warnings
 ```
+
 Fix any issues.
 
 - [ ] **Step 3: Confirm `proto.rs` is gone**
@@ -2195,6 +2316,7 @@ Fix any issues.
 ```bash
 test ! -f crates/sansio-mqtt-v5-protocol/src/proto.rs && echo "OK"
 ```
+
 Expected: `OK`.
 
 - [ ] **Step 4: Confirm size caps**
@@ -2202,7 +2324,10 @@ Expected: `OK`.
 ```bash
 wc -l crates/sansio-mqtt-v5-protocol/src/**/*.rs
 ```
-Check against soft caps: `client.rs` ≤ 250 LOC, `state/*.rs` ≤ 400 LOC each, every other module ≤ 300 LOC. If `connected.rs` exceeds 400 LOC consider extracting the QoS handlers into helper functions within the same file.
+
+Check against soft caps: `client.rs` ≤ 250 LOC, `state/*.rs` ≤ 400 LOC each,
+every other module ≤ 300 LOC. If `connected.rs` exceeds 400 LOC consider
+extracting the QoS handlers into helper functions within the same file.
 
 - [ ] **Step 5: Confirm all spec citations are present**
 
@@ -2210,6 +2335,7 @@ Check against soft caps: `client.rs` ≤ 250 LOC, `state/*.rs` ≤ 400 LOC each,
 grep -r "\[MQTT-" crates/sansio-mqtt-v5-protocol/src/ | wc -l
 grep -r "\[MQTT-" crates/sansio-mqtt-v5-protocol/src/proto.rs 2>/dev/null | wc -l
 ```
+
 The first number must be non-zero. The second returns `0` (file is deleted).
 
 - [ ] **Step 6: Commit if any fmt/lint changes**
@@ -2218,4 +2344,5 @@ The first number must be non-zero. The second returns `0` (file is deleted).
 git add -A
 git commit -m "style(v5-protocol): fmt and clippy cleanup after FSM refactor"
 ```
+
 Skip if nothing changed.

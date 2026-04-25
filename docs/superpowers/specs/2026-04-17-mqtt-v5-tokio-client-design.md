@@ -2,9 +2,13 @@
 
 ## Goal
 
-Design and implement `crates/sansio-mqtt-v5-tokio` as an async Tokio-facing client API built on top of `sansio-mqtt-v5-protocol`, preserving the sansio protocol engine as the single source of MQTT state behavior.
+Design and implement `crates/sansio-mqtt-v5-tokio` as an async Tokio-facing
+client API built on top of `sansio-mqtt-v5-protocol`, preserving the sansio
+protocol engine as the single source of MQTT state behavior.
 
-The Tokio crate must provide a nicer API than manual protocol driving, while keeping explicit event-loop control (no hidden background task and no convenience managed mode).
+The Tokio crate must provide a nicer API than manual protocol driving, while
+keeping explicit event-loop control (no hidden background task and no
+convenience managed mode).
 
 ## Scope
 
@@ -30,11 +34,14 @@ The Tokio crate must provide a nicer API than manual protocol driving, while kee
 
 ## Design Principles
 
-- Keep sansio as authority: all protocol decisions remain in `sansio-mqtt-v5-protocol`.
+- Keep sansio as authority: all protocol decisions remain in
+  `sansio-mqtt-v5-protocol`.
 - Explicit progress model: user must drive the event loop.
-- Predictable concurrency: commands are async send operations; all protocol/socket state lives in one loop task/context.
+- Predictable concurrency: commands are async send operations; all
+  protocol/socket state lives in one loop task/context.
 - Backpressure by default: bounded command and event channels.
-- Clear separation between command-plane errors and connection/protocol failures.
+- Clear separation between command-plane errors and connection/protocol
+  failures.
 
 ## Public API
 
@@ -57,10 +64,12 @@ No `connect_managed` or similar helper is provided.
 
 - `addr: std::net::SocketAddr` or host/port tuple equivalent
 - `connection: sansio_mqtt_v5_protocol::ConnectionOptions`
-- `protocol_config: sansio_mqtt_v5_protocol::Config` (optional override; default if omitted)
+- `protocol_config: sansio_mqtt_v5_protocol::Config` (optional override; default
+  if omitted)
 - `command_channel_capacity: usize` (bounded, default small and non-zero)
 
-Rationale: keep protocol-native types visible rather than inventing duplicate data models.
+Rationale: keep protocol-native types visible rather than inventing duplicate
+data models.
 
 ## Client API
 
@@ -124,7 +133,8 @@ This is a direct, low-surprise mapping from `UserWriteOut`.
 2. `event_loop.rs`
    - `EventLoop` state machine orchestrator
    - Tokio `select!` over socket reads, command rx, and timeout
-   - drains protocol output queues (`poll_read`, `poll_write`, `poll_event`, `poll_timeout`)
+   - drains protocol output queues (`poll_read`, `poll_write`, `poll_event`,
+     `poll_timeout`)
 
 3. `connect.rs`
    - `connect()` function
@@ -147,7 +157,8 @@ This is a direct, low-surprise mapping from `UserWriteOut`.
 2. Build protocol client (with provided/default protocol config).
 3. Feed `UserWriteIn::Connect(connection_options)` into protocol.
 4. Drain initial protocol effects:
-   - handle `DriverEventOut::OpenSocket` expectation as already satisfied (socket already open)
+   - handle `DriverEventOut::OpenSocket` expectation as already satisfied
+     (socket already open)
    - feed `DriverEventIn::SocketConnected`
    - flush pending protocol writes to socket
 5. Return `(Client, EventLoop)`.
@@ -174,7 +185,8 @@ Loop iteration drives these phases:
 ### Shutdown
 
 - If user issues `disconnect`, loop processes graceful DISCONNECT sequence.
-- If command channel closes and no clones remain, the loop can continue to process socket-driven protocol events until disconnection.
+- If command channel closes and no clones remain, the loop can continue to
+  process socket-driven protocol events until disconnection.
 
 ## Error handling model
 
@@ -196,7 +208,8 @@ Loop iteration drives these phases:
 
 Error boundaries:
 
-- command methods return `ClientError` only (transport/protocol failure details are surfaced by loop termination)
+- command methods return `ClientError` only (transport/protocol failure details
+  are surfaced by loop termination)
 - loop failures are explicit and terminal in v1
 
 ## Reconnect policy
@@ -246,20 +259,25 @@ Future reconnect support can be added as opt-in strategy API.
   - spawn a task issuing publishes via cloned `client`
   - main task loops on `event_loop.poll().await?` and handles `Event`
 
-This example replaces manual protocol wiring from current prototype with the new API.
+This example replaces manual protocol wiring from current prototype with the new
+API.
 
 ## Compatibility and migration notes
 
-- Existing users of `sansio-mqtt-v5-protocol` keep full manual control unchanged.
-- Tokio crate provides ergonomic orchestration only; protocol API remains source-compatible.
-- Tokio crate should avoid wrapping protocol types unless necessary to preserve low cognitive overhead.
+- Existing users of `sansio-mqtt-v5-protocol` keep full manual control
+  unchanged.
+- Tokio crate provides ergonomic orchestration only; protocol API remains
+  source-compatible.
+- Tokio crate should avoid wrapping protocol types unless necessary to preserve
+  low cognitive overhead.
 
 ## Open decisions resolved by this spec
 
 - Use split model (`Client` + explicit `EventLoop`) only.
 - Do not provide managed/background convenience API in v1.
 - No reconnect automation in v1.
-- Keep protocol-native message/option types in public API to minimize translation layers.
+- Keep protocol-native message/option types in public API to minimize
+  translation layers.
 
 ## Implementation checklist
 

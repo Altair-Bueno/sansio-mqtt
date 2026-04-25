@@ -1,10 +1,18 @@
 # sansio-mqtt-v5-types Derive Normalization Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use
+> superpowers:subagent-driven-development (recommended) or
+> superpowers:executing-plans to implement this plan task-by-task. Steps use
+> checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Normalize derives in `sansio-mqtt-v5-types` with per-type decisions that maximize ergonomic utility while enforcing explicit constraints (no `Default` on control packets, no `Hash/Ord/PartialOrd` on empty marker types).
+**Goal:** Normalize derives in `sansio-mqtt-v5-types` with per-type decisions
+that maximize ergonomic utility while enforcing explicit constraints (no
+`Default` on control packets, no `Hash/Ord/PartialOrd` on empty marker types).
 
-**Architecture:** Execute derive normalization in two passes: first create a per-type derive decision matrix and enforce hard constraints, then apply derive updates module-by-module with targeted compile/test gates. Keep behavior unchanged and treat this as API-shape hygiene only.
+**Architecture:** Execute derive normalization in two passes: first create a
+per-type derive decision matrix and enforce hard constraints, then apply derive
+updates module-by-module with targeted compile/test gates. Keep behavior
+unchanged and treat this as API-shape hygiene only.
 
 **Tech Stack:** Rust (no_std + alloc), Cargo, clippy, workspace tests.
 
@@ -13,6 +21,7 @@
 ### Task 1: Build Per-Type Derive Decision Matrix and Lock Constraints
 
 **Files:**
+
 - Create: `docs/superpowers/checklists/2026-04-18-types-derive-matrix.md`
 - Modify: `crates/sansio-mqtt-v5-types/src/types/control_packet.rs`
 - Modify: `crates/sansio-mqtt-v5-types/src/types/basic.rs`
@@ -20,7 +29,9 @@
 
 - [ ] **Step 1: Write failing guard test for hard constraints**
 
-Add compile-time style guard tests to `crates/sansio-mqtt-v5-types/src/types/control_packet.rs` and `crates/sansio-mqtt-v5-types/src/types/basic.rs` under `#[cfg(test)]`:
+Add compile-time style guard tests to
+`crates/sansio-mqtt-v5-types/src/types/control_packet.rs` and
+`crates/sansio-mqtt-v5-types/src/types/basic.rs` under `#[cfg(test)]`:
 
 ```rust
 #[cfg(test)]
@@ -55,7 +66,8 @@ mod marker_trait_guards {
 }
 ```
 
-- [ ] **Step 2: Run targeted tests expecting initial mismatch/failure if current derives violate constraints**
+- [ ] **Step 2: Run targeted tests expecting initial mismatch/failure if current
+      derives violate constraints**
 
 Run:
 
@@ -63,26 +75,32 @@ Run:
 cargo test -p sansio-mqtt-v5-types derive_guards -- --nocapture
 ```
 
-Expected: If constraints are violated, compile/test should fail and indicate conflicting derive usage. If already aligned, proceed and document pass.
+Expected: If constraints are violated, compile/test should fail and indicate
+conflicting derive usage. If already aligned, proceed and document pass.
 
 - [ ] **Step 3: Create per-type derive matrix document**
 
-Create `docs/superpowers/checklists/2026-04-18-types-derive-matrix.md` with one line per type in `src/types/*.rs`:
+Create `docs/superpowers/checklists/2026-04-18-types-derive-matrix.md` with one
+line per type in `src/types/*.rs`:
 
 ```markdown
-| Type | Current Derives | Planned Derives | Rationale |
-|------|------------------|-----------------|-----------|
-| ControlPacket | ... | ... | No Default by rule |
-| PayloadError | ... | ... | Empty marker; no Hash/Ord/PartialOrd |
+| Type          | Current Derives | Planned Derives | Rationale                            |
+| ------------- | --------------- | --------------- | ------------------------------------ |
+| ControlPacket | ...             | ...             | No Default by rule                   |
+| PayloadError  | ...             | ...             | Empty marker; no Hash/Ord/PartialOrd |
 ```
 
-Include all types touched by the current branch changes first (`auth.rs`, `basic.rs`, `connack.rs`, `connect.rs`, `control_packet.rs`, `properties.rs`, `reason_code.rs`, `subscribe.rs`) and then complete remaining type files.
+Include all types touched by the current branch changes first (`auth.rs`,
+`basic.rs`, `connack.rs`, `connect.rs`, `control_packet.rs`, `properties.rs`,
+`reason_code.rs`, `subscribe.rs`) and then complete remaining type files.
 
 - [ ] **Step 4: Apply only hard-constraint derive fixes now**
 
 Make minimal code edits:
+
 - Ensure `ControlPacket` and control packet types do not derive `Default`.
-- Ensure empty marker/unit error types do not derive `Hash`, `Ord`, `PartialOrd`.
+- Ensure empty marker/unit error types do not derive `Hash`, `Ord`,
+  `PartialOrd`.
 
 Do not yet broaden ergonomic derives in this step.
 
@@ -106,6 +124,7 @@ git commit -m "chore(types): enforce derive constraints for packets and markers"
 ### Task 2: Apply Per-Type Ergonomic Derive Updates (Core Type Modules)
 
 **Files:**
+
 - Modify: `crates/sansio-mqtt-v5-types/src/types/basic.rs`
 - Modify: `crates/sansio-mqtt-v5-types/src/types/connect.rs`
 - Modify: `crates/sansio-mqtt-v5-types/src/types/connack.rs`
@@ -114,7 +133,8 @@ git commit -m "chore(types): enforce derive constraints for packets and markers"
 - Modify: `crates/sansio-mqtt-v5-types/src/types/reason_code.rs`
 - Modify: `crates/sansio-mqtt-v5-types/src/types/subscribe.rs`
 
-- [ ] **Step 1: Write failing compile gate tests for ergonomic derives expected on selected value types**
+- [ ] **Step 1: Write failing compile gate tests for ergonomic derives expected
+      on selected value types**
 
 Add tests in `crates/sansio-mqtt-v5-types/tests/property_compatibility.rs`:
 
@@ -134,7 +154,8 @@ fn value_types_support_hash_and_order_where_semantic() {
 }
 ```
 
-Add equivalent checks for one reason-code enum that should remain hashable/orderable only if matrix says yes.
+Add equivalent checks for one reason-code enum that should remain
+hashable/orderable only if matrix says yes.
 
 - [ ] **Step 2: Run targeted tests and capture failures**
 
@@ -149,8 +170,10 @@ Expected: FAIL where derives are missing according to matrix.
 - [ ] **Step 3: Apply derive updates module-by-module using matrix decisions**
 
 For each module listed above:
+
 - Update `#[derive(...)]` exactly per matrix.
-- Prefer adding `Eq/Hash/Copy/Ord/PartialOrd` only when semantically justified and accepted by constraints.
+- Prefer adding `Eq/Hash/Copy/Ord/PartialOrd` only when semantically justified
+  and accepted by constraints.
 - Leave behavior and fields unchanged.
 
 After each module edit, run:
@@ -168,7 +191,8 @@ cargo test -p sansio-mqtt-v5-types
 cargo clippy -p sansio-mqtt-v5-types --all-targets
 ```
 
-Expected: PASS (allowing only pre-existing warnings unrelated to derive policy, but record them).
+Expected: PASS (allowing only pre-existing warnings unrelated to derive policy,
+but record them).
 
 - [ ] **Step 5: Commit Task 2**
 
@@ -180,12 +204,16 @@ git commit -m "refactor(types): normalize derives for core value and packet type
 ### Task 3: Complete Remaining Type Modules and Cross-Crate Validation
 
 **Files:**
-- Modify: remaining `crates/sansio-mqtt-v5-types/src/types/*.rs` not covered in Task 2
+
+- Modify: remaining `crates/sansio-mqtt-v5-types/src/types/*.rs` not covered in
+  Task 2
 - Modify: `docs/superpowers/checklists/2026-04-18-types-derive-matrix.md`
 
-- [ ] **Step 1: Add/adjust one failing test for a remaining type derive expectation**
+- [ ] **Step 1: Add/adjust one failing test for a remaining type derive
+      expectation**
 
-In `crates/sansio-mqtt-v5-types/tests/mirror_encode_and_parse.rs`, add a tiny compile-use assertion for a type from remaining modules:
+In `crates/sansio-mqtt-v5-types/tests/mirror_encode_and_parse.rs`, add a tiny
+compile-use assertion for a type from remaining modules:
 
 ```rust
 #[test]
@@ -196,7 +224,8 @@ fn remaining_types_have_expected_clone_and_eq_shape() {
 }
 ```
 
-Adjust target type if `PingReq` shape differs; use any remaining module type from matrix.
+Adjust target type if `PingReq` shape differs; use any remaining module type
+from matrix.
 
 - [ ] **Step 2: Run targeted test expecting fail if derive missing**
 
@@ -210,7 +239,9 @@ Expected: FAIL if matrix-required derive is missing.
 
 - [ ] **Step 3: Apply derive updates to remaining type modules per matrix**
 
-Update all remaining `types/*.rs` derive lists to match matrix decisions. Keep edits strictly to derive macros unless one compile fix is required by trait bounds.
+Update all remaining `types/*.rs` derive lists to match matrix decisions. Keep
+edits strictly to derive macros unless one compile fix is required by trait
+bounds.
 
 Also update matrix status column to `Applied` for each type.
 
@@ -238,6 +269,7 @@ git commit -m "refactor(types): complete derive normalization across type module
 ### Task 4: Final Policy Consistency Pass and Developer Notes
 
 **Files:**
+
 - Modify: `docs/superpowers/checklists/2026-04-18-types-derive-matrix.md`
 
 - [ ] **Step 1: Add final summary section to matrix doc**
@@ -282,9 +314,12 @@ git commit -m "docs(types): record final derive normalization decisions"
 ## Spec Coverage Check
 
 - Per-type review approach: covered by Task 1 matrix + module-by-module tasks.
-- Ergonomic utility bias: covered by Task 2 and Task 3 targeted derive additions.
-- Constraint “no Default on control packets”: enforced in Task 1 and verified in Task 4.
-- Constraint “no Hash/Ord/PartialOrd on empty types”: enforced in Task 1 and verified in Task 4.
+- Ergonomic utility bias: covered by Task 2 and Task 3 targeted derive
+  additions.
+- Constraint “no Default on control packets”: enforced in Task 1 and verified in
+  Task 4.
+- Constraint “no Hash/Ord/PartialOrd on empty types”: enforced in Task 1 and
+  verified in Task 4.
 
 ## Placeholder Scan
 
@@ -294,5 +329,7 @@ git commit -m "docs(types): record final derive normalization decisions"
 
 ## Type Consistency Check
 
-- Uses consistent naming (`ControlPacket`, marker error types, derive matrix terminology).
-- Constraints and verification commands align with spec and current codebase layout.
+- Uses consistent naming (`ControlPacket`, marker error types, derive matrix
+  terminology).
+- Constraints and verification commands align with spec and current codebase
+  layout.

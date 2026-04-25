@@ -1,13 +1,14 @@
 # Inbound Manual Acknowledge/Reject API Design
 
-Date: 2026-04-19
-Scope: `crates/sansio-mqtt-v5-protocol` (+ `sansio-mqtt-v5-tokio` event bridge)
+Date: 2026-04-19 Scope: `crates/sansio-mqtt-v5-protocol` (+
+`sansio-mqtt-v5-tokio` event bridge)
 
 ## Goal
 
 Allow applications to manually decide inbound message acknowledgment outcomes.
 
 Specifically:
+
 - Deliver inbound messages with an optional packet id reference.
 - Add explicit application commands to acknowledge or reject inbound messages.
 - Keep current reconnect/disconnect policy behavior (no new timeout semantics).
@@ -17,27 +18,33 @@ Specifically:
 ### `UserWriteOut`
 
 Current:
+
 - `ReceivedMessage(BrokerMessage)`
 
 New:
+
 - `ReceivedMessage(Option<NonZero<u16>>, BrokerMessage)`
 
 Rules:
+
 - QoS0 inbound publish => `None`
 - QoS1/QoS2 inbound publish => `Some(packet_id)`
 
 ### `UserWriteIn`
 
 Add:
+
 - `AcknowledgeMessage(NonZero<u16>)`
 - `RejectMessage(NonZero<u16>, IncomingRejectReason)`
 
 ### New protocol type
 
 Add in `types.rs`:
+
 - `IncomingRejectReason`
 
 Intent:
+
 - Strongly typed rejection semantics for inbound processing.
 - Prevent raw-byte reason misuse.
 
@@ -54,8 +61,11 @@ Intent:
 - Track packet id in inbound pending map as `AwaitingAppDecision`.
 
 On app command:
-- `AcknowledgeMessage(packet_id)` => send `PUBACK(Success)`, clear pending entry.
-- `RejectMessage(packet_id, reason)` => send `PUBACK(mapped failure reason)`, clear pending entry.
+
+- `AcknowledgeMessage(packet_id)` => send `PUBACK(Success)`, clear pending
+  entry.
+- `RejectMessage(packet_id, reason)` => send `PUBACK(mapped failure reason)`,
+  clear pending entry.
 
 ### QoS2 inbound publish
 
@@ -63,10 +73,14 @@ On app command:
 - Track packet id in inbound pending map as `AwaitingAppDecision`.
 
 On app command:
-- `AcknowledgeMessage(packet_id)` => send `PUBREC(Success)`, transition pending state to `AwaitingPubRel`.
-- `RejectMessage(packet_id, reason)` => send `PUBREC(mapped failure reason)`, clear pending entry.
+
+- `AcknowledgeMessage(packet_id)` => send `PUBREC(Success)`, transition pending
+  state to `AwaitingPubRel`.
+- `RejectMessage(packet_id, reason)` => send `PUBREC(mapped failure reason)`,
+  clear pending entry.
 
 On inbound `PUBREL(packet_id)`:
+
 - If state is `AwaitingPubRel` => send `PUBCOMP(Success)`, clear pending entry.
 - If not found => existing packet-not-found behavior remains.
 
@@ -74,12 +88,17 @@ On inbound `PUBREL(packet_id)`:
 
 No new timeout behavior is introduced.
 
-Pending inbound decisions follow existing cleanup rules already used for disconnect/session paths. This design does not add time-based auto-ack/auto-reject.
+Pending inbound decisions follow existing cleanup rules already used for
+disconnect/session paths. This design does not add time-based
+auto-ack/auto-reject.
 
 ## Error Handling
 
-- `AcknowledgeMessage` or `RejectMessage` with unknown/non-pending packet id => protocol error path (consistent with existing strict unknown-id handling style).
-- Invalid reason mapping for packet class (QoS1 vs QoS2) must be unrepresentable via `IncomingRejectReason` modeling.
+- `AcknowledgeMessage` or `RejectMessage` with unknown/non-pending packet id =>
+  protocol error path (consistent with existing strict unknown-id handling
+  style).
+- Invalid reason mapping for packet class (QoS1 vs QoS2) must be unrepresentable
+  via `IncomingRejectReason` modeling.
 
 ## `IncomingRejectReason` Mapping Strategy
 
@@ -88,7 +107,9 @@ Use a typed enum that can be deterministically mapped to wire reason codes:
 - QoS1 path maps to `PubAckReasonCode`
 - QoS2 path maps to `PubRecReasonCode`
 
-Initial supported semantic reasons should be the practical failure reasons we want to expose now (for example: not authorized, implementation specific error, unspecified error), with future extension possible.
+Initial supported semantic reasons should be the practical failure reasons we
+want to expose now (for example: not authorized, implementation specific error,
+unspecified error), with future extension possible.
 
 ## Affected Areas
 

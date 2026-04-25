@@ -1,14 +1,29 @@
 # PUBLISH Multiple Subscription Identifiers — Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use
+> superpowers:subagent-driven-development (recommended) or
+> superpowers:executing-plans to implement this plan task-by-task. Steps use
+> checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Make `PublishProperties` and `BrokerMessage` carry zero-or-more `Subscription Identifier` values per [MQTT-3.3.2.3.8], replacing the current `Option<NonZero<u64>>` with `Vec<NonZero<u64>>`. SUBSCRIBE stays `Option<NonZero<u64>>` per [MQTT-3.8.2.1.2].
+**Goal:** Make `PublishProperties` and `BrokerMessage` carry zero-or-more
+`Subscription Identifier` values per [MQTT-3.3.2.3.8], replacing the current
+`Option<NonZero<u64>>` with `Vec<NonZero<u64>>`. SUBSCRIBE stays
+`Option<NonZero<u64>>` per [MQTT-3.8.2.1.2].
 
-**Architecture:** Type-level change in two crates. Add a DoS bound (`max_subscription_identifiers_len`) to `ParserSettings` with a matching `TooManySubscriptionIdentifiersError`, mirroring the existing `max_user_properties_len` / `TooManyUserPropertiesError` pair. Parser appends rather than rejects duplicates. Encoder iterates using the existing `encode::combinators::Iter` combinator. The wire-level change cascades into `BrokerMessage` in the protocol crate and into one inbound-PUBLISH mapping site in `proto.rs`.
+**Architecture:** Type-level change in two crates. Add a DoS bound
+(`max_subscription_identifiers_len`) to `ParserSettings` with a matching
+`TooManySubscriptionIdentifiersError`, mirroring the existing
+`max_user_properties_len` / `TooManyUserPropertiesError` pair. Parser appends
+rather than rejects duplicates. Encoder iterates using the existing
+`encode::combinators::Iter` combinator. The wire-level change cascades into
+`BrokerMessage` in the protocol crate and into one inbound-PUBLISH mapping site
+in `proto.rs`.
 
-**Tech Stack:** Rust (no_std + alloc), Cargo workspace, `winnow` parser combinators, `thiserror`, `rstest` tests.
+**Tech Stack:** Rust (no_std + alloc), Cargo workspace, `winnow` parser
+combinators, `thiserror`, `rstest` tests.
 
-**Spec reference:** `docs/superpowers/specs/2026-04-19-publish-subscription-identifiers-multi-design.md`.
+**Spec reference:**
+`docs/superpowers/specs/2026-04-19-publish-subscription-identifiers-multi-design.md`.
 
 ---
 
@@ -16,23 +31,31 @@
 
 - [ ] **Step 0: Ensure a clean baseline**
 
-Run: `cd /Users/compux72/Developer/sansio-mqtt && cargo build --workspace && cargo test --workspace`
+Run:
+`cd /Users/compux72/Developer/sansio-mqtt && cargo build --workspace && cargo test --workspace`
 
-Expected: all green. If not, stop and report — this plan assumes a clean starting state.
+Expected: all green. If not, stop and report — this plan assumes a clean
+starting state.
 
-Also check `git status` shows a clean tree (only the new plan file untracked is OK).
+Also check `git status` shows a clean tree (only the new plan file untracked is
+OK).
 
 ---
 
 ### Task 1: Parser setting `max_subscription_identifiers_len`
 
 **Files:**
+
 - Modify: `crates/sansio-mqtt-v5-types/src/parser/mod.rs`
-- Modify: `crates/sansio-mqtt-v5-types/tests/property_compatibility.rs` (the `settings_default` and `settings_unlimited` tests)
+- Modify: `crates/sansio-mqtt-v5-types/tests/property_compatibility.rs` (the
+  `settings_default` and `settings_unlimited` tests)
 
-- [ ] **Step 1.1: Extend `settings_default` and `settings_unlimited` tests to assert the new field**
+- [ ] **Step 1.1: Extend `settings_default` and `settings_unlimited` tests to
+      assert the new field**
 
-Open `crates/sansio-mqtt-v5-types/tests/property_compatibility.rs`. Replace the bodies of `settings_default` (around line 722) and `settings_unlimited` (around line 732) so they assert the new field:
+Open `crates/sansio-mqtt-v5-types/tests/property_compatibility.rs`. Replace the
+bodies of `settings_default` (around line 722) and `settings_unlimited` (around
+line 732) so they assert the new field:
 
 ```rust
 #[test]
@@ -60,13 +83,16 @@ fn settings_unlimited() {
 
 - [ ] **Step 1.2: Run the failing tests**
 
-Run: `cargo test -p sansio-mqtt-v5-types --test property_compatibility settings_ -- --nocapture`
+Run:
+`cargo test -p sansio-mqtt-v5-types --test property_compatibility settings_ -- --nocapture`
 
-Expected: compilation failure — `no field 'max_subscription_identifiers_len' on type 'ParserSettings'`.
+Expected: compilation failure —
+`no field 'max_subscription_identifiers_len' on type 'ParserSettings'`.
 
 - [ ] **Step 1.3: Add the new field to `ParserSettings`**
 
-Open `crates/sansio-mqtt-v5-types/src/parser/mod.rs`. Replace the `ParserSettings` struct and the two constructors with:
+Open `crates/sansio-mqtt-v5-types/src/parser/mod.rs`. Replace the
+`ParserSettings` struct and the two constructors with:
 
 ```rust
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -108,7 +134,8 @@ impl ParserSettings {
 
 - [ ] **Step 1.4: Run the tests to confirm they pass**
 
-Run: `cargo test -p sansio-mqtt-v5-types --test property_compatibility settings_`
+Run:
+`cargo test -p sansio-mqtt-v5-types --test property_compatibility settings_`
 
 Expected: both `settings_default` and `settings_unlimited` PASS.
 
@@ -116,7 +143,10 @@ Expected: both `settings_default` and `settings_unlimited` PASS.
 
 Run: `cargo test -p sansio-mqtt-v5-types`
 
-Expected: all existing tests still pass. If the protocol crate has a constructor that uses struct-update syntax or builder chains relying on known fields, some tests might need tweaking in later tasks — but the types crate alone should pass.
+Expected: all existing tests still pass. If the protocol crate has a constructor
+that uses struct-update syntax or builder chains relying on known fields, some
+tests might need tweaking in later tasks — but the types crate alone should
+pass.
 
 - [ ] **Step 1.6: Commit**
 
@@ -133,11 +163,15 @@ Mirrors max_user_properties_len. Default 32, unlimited = usize::MAX."
 ### Task 2: `TooManySubscriptionIdentifiersError` type
 
 **Files:**
+
 - Modify: `crates/sansio-mqtt-v5-types/src/types/properties.rs`
 
 - [ ] **Step 2.1: Extend the marker-trait regression test**
 
-Open `crates/sansio-mqtt-v5-types/src/types/properties.rs`. In the `marker_trait_guards` module, inside `marker_errors_are_not_ordered_or_hashed`, add three asserts for the new error, and add the three `impl MustNot...` lines above. The whole module should read:
+Open `crates/sansio-mqtt-v5-types/src/types/properties.rs`. In the
+`marker_trait_guards` module, inside `marker_errors_are_not_ordered_or_hashed`,
+add three asserts for the new error, and add the three `impl MustNot...` lines
+above. The whole module should read:
 
 ```rust
 #[cfg(test)]
@@ -190,11 +224,13 @@ mod marker_trait_guards {
 
 Run: `cargo build -p sansio-mqtt-v5-types --tests`
 
-Expected: compile error `cannot find type 'TooManySubscriptionIdentifiersError' in this scope`.
+Expected: compile error
+`cannot find type 'TooManySubscriptionIdentifiersError' in this scope`.
 
 - [ ] **Step 2.3: Add the error type and the `PropertiesError` variant**
 
-In the same file, add the new error immediately after `TooManyUserPropertiesError` (around line 86):
+In the same file, add the new error immediately after
+`TooManyUserPropertiesError` (around line 86):
 
 ```rust
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Error)]
@@ -203,7 +239,8 @@ In the same file, add the new error immediately after `TooManyUserPropertiesErro
 pub struct TooManySubscriptionIdentifiersError;
 ```
 
-Then extend the `PropertiesError` enum (currently lines 97–107) with a new variant:
+Then extend the `PropertiesError` enum (currently lines 97–107) with a new
+variant:
 
 ```rust
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Error)]
@@ -223,7 +260,8 @@ pub enum PropertiesError {
 
 - [ ] **Step 2.4: Run the test to verify it passes**
 
-Run: `cargo test -p sansio-mqtt-v5-types marker_errors_are_not_ordered_or_hashed`
+Run:
+`cargo test -p sansio-mqtt-v5-types marker_errors_are_not_ordered_or_hashed`
 
 Expected: PASS.
 
@@ -238,9 +276,13 @@ git commit -m "feat(types): add TooManySubscriptionIdentifiersError variant"
 
 ### Task 3: Convert `PublishProperties.subscription_identifier` to `Vec`
 
-This is a single coherent type-system change: the wire type, parser, encoder, and three test files must all move together before the types crate compiles again. Treat Steps 3.1–3.6 as one atomic unit of work that concludes in a single commit.
+This is a single coherent type-system change: the wire type, parser, encoder,
+and three test files must all move together before the types crate compiles
+again. Treat Steps 3.1–3.6 as one atomic unit of work that concludes in a single
+commit.
 
 **Files:**
+
 - Modify: `crates/sansio-mqtt-v5-types/src/types/publish.rs`
 - Modify: `crates/sansio-mqtt-v5-types/src/parser/publish.rs`
 - Modify: `crates/sansio-mqtt-v5-types/src/encoder/publish.rs`
@@ -265,7 +307,8 @@ to:
 
 - [ ] **Step 3.2: Update the parser to push instead of reject duplicates**
 
-Open `crates/sansio-mqtt-v5-types/src/parser/publish.rs`. Replace the entire `Property::SubscriptionIdentifier(value)` arm (currently lines 165–174) with:
+Open `crates/sansio-mqtt-v5-types/src/parser/publish.rs`. Replace the entire
+`Property::SubscriptionIdentifier(value)` arm (currently lines 165–174) with:
 
 ```rust
                                 Property::SubscriptionIdentifier(value) => {
@@ -280,11 +323,14 @@ Open `crates/sansio-mqtt-v5-types/src/parser/publish.rs`. Replace the entire `Pr
                                 }
 ```
 
-Note: `property_type` is bound earlier in the match scope; it's unused in this arm (same pattern as the `UserProperty` arm).
+Note: `property_type` is bound earlier in the match scope; it's unused in this
+arm (same pattern as the `UserProperty` arm).
 
 - [ ] **Step 3.3: Update the encoder to iterate the Vec**
 
-Open `crates/sansio-mqtt-v5-types/src/encoder/publish.rs`. Replace lines 20–22 (the current `Option`-based mapping) and the tuple position at line 38 so the whole `encode` implementation reads:
+Open `crates/sansio-mqtt-v5-types/src/encoder/publish.rs`. Replace lines 20–22
+(the current `Option`-based mapping) and the tuple position at line 38 so the
+whole `encode` implementation reads:
 
 ```rust
     fn encode(&self, encoder: &mut E) -> Result<(), Self::Error> {
@@ -325,11 +371,15 @@ Open `crates/sansio-mqtt-v5-types/src/encoder/publish.rs`. Replace lines 20–22
     }
 ```
 
-(The only substantive changes are the new `subscription_identifiers` binding and the tuple element name — ordering within the tuple is preserved so on-the-wire property order is unchanged when a single identifier is present.)
+(The only substantive changes are the new `subscription_identifiers` binding and
+the tuple element name — ordering within the tuple is preserved so on-the-wire
+property order is unchanged when a single identifier is present.)
 
 - [ ] **Step 3.4: Update the "all valid properties" roundtrip test**
 
-Open `crates/sansio-mqtt-v5-types/tests/property_compatibility.rs`. In `publish_with_all_valid_properties_roundtrip` (around line 313), replace line 329:
+Open `crates/sansio-mqtt-v5-types/tests/property_compatibility.rs`. In
+`publish_with_all_valid_properties_roundtrip` (around line 313), replace line
+329:
 
 ```rust
             subscription_identifier: NonZero::new(42),
@@ -343,19 +393,35 @@ with:
 
 The SUBSCRIBE counterpart (line 352) stays unchanged.
 
-- [ ] **Step 3.5: Invert the previously-invalid repeated-identifiers test and add multi-identifier roundtrip coverage**
+- [ ] **Step 3.5: Invert the previously-invalid repeated-identifiers test and
+      add multi-identifier roundtrip coverage**
 
 Open `crates/sansio-mqtt-v5-types/tests/mirror_encode_and_parse.rs`.
 
-**(a)** Delete the entire `assert_that_parsing_an_invalid_field_on_publish_fails` function, including the `#[rstest::rstest]` attribute and the single `#[case::to_repeated_subscription_identifiers_property(…)]` — currently lines 223–244. The byte sequence is spec-legal and must no longer be asserted to fail; that case is re-added as a success case in step (c). The function had only this one case, so deleting the whole thing avoids a dead parameterized function with zero invocations. (If at the time of editing another `#[case::…]` has been added to this function, preserve the function and only remove the `to_repeated_subscription_identifiers_property` case attribute.)
+**(a)** Delete the entire
+`assert_that_parsing_an_invalid_field_on_publish_fails` function, including the
+`#[rstest::rstest]` attribute and the single
+`#[case::to_repeated_subscription_identifiers_property(…)]` — currently lines
+223–244. The byte sequence is spec-legal and must no longer be asserted to fail;
+that case is re-added as a success case in step (c). The function had only this
+one case, so deleting the whole thing avoids a dead parameterized function with
+zero invocations. (If at the time of editing another `#[case::…]` has been added
+to this function, preserve the function and only remove the
+`to_repeated_subscription_identifiers_property` case attribute.)
 
-**(b)** Update the existing `subscription_identifier: NonZero::new(120)` line (around line 849) inside `assert_that_different_packets_can_be_decoded_and_encoded` to:
+**(b)** Update the existing `subscription_identifier: NonZero::new(120)` line
+(around line 849) inside
+`assert_that_different_packets_can_be_decoded_and_encoded` to:
 
 ```rust
             subscription_identifiers: vec![NonZero::new(120).unwrap()],
 ```
 
-**(c)** Add a new `#[case::…]` to `assert_that_different_packets_can_be_decoded_and_encoded` exercising two identifiers. Paste the following immediately before the `fn assert_that_different_packets_can_be_decoded_and_encoded(…)` function signature (and directly after the existing last `#[case::…]` block):
+**(c)** Add a new `#[case::…]` to
+`assert_that_different_packets_can_be_decoded_and_encoded` exercising two
+identifiers. Paste the following immediately before the
+`fn assert_that_different_packets_can_be_decoded_and_encoded(…)` function
+signature (and directly after the existing last `#[case::…]` block):
 
 ```rust
 #[case::publish_with_multiple_subscription_identifiers(
@@ -396,13 +462,17 @@ Open `crates/sansio-mqtt-v5-types/tests/mirror_encode_and_parse.rs`.
 )]
 ```
 
-This exercises both parse-multi and encode-multi, preserving the order given in the `Vec`.
+This exercises both parse-multi and encode-multi, preserving the order given in
+the `Vec`.
 
 - [ ] **Step 3.6: Build and run the types-crate test suite**
 
-Run: `cargo build -p sansio-mqtt-v5-types --tests && cargo test -p sansio-mqtt-v5-types`
+Run:
+`cargo build -p sansio-mqtt-v5-types --tests && cargo test -p sansio-mqtt-v5-types`
 
-Expected: all green, including the new multi-identifier case and the already-updated roundtrip tests. If any test fails, stop and diagnose — do not proceed.
+Expected: all green, including the new multi-identifier case and the
+already-updated roundtrip tests. If any test fails, stop and diagnose — do not
+proceed.
 
 - [ ] **Step 3.7: Commit**
 
@@ -425,11 +495,14 @@ encoder emits one property per Vec entry."
 ### Task 4: Parser bound enforcement test
 
 **Files:**
+
 - Modify: `crates/sansio-mqtt-v5-types/tests/property_compatibility.rs`
 
 - [ ] **Step 4.1: Add two new tests**
 
-Open `crates/sansio-mqtt-v5-types/tests/property_compatibility.rs`. Append the following two tests at the end of the file (after `settings_unlimited` is a good location):
+Open `crates/sansio-mqtt-v5-types/tests/property_compatibility.rs`. Append the
+following two tests at the end of the file (after `settings_unlimited` is a good
+location):
 
 ```rust
 #[test]
@@ -480,11 +553,14 @@ fn publish_parser_accepts_many_subscription_identifiers_under_unlimited_settings
 }
 ```
 
-Ensure `ControlPacket`, `ParserSettings`, `ContextError`, and `Parser` are already imported at the top of the file (they are — see the existing test fixture uses them).
+Ensure `ControlPacket`, `ParserSettings`, `ContextError`, and `Parser` are
+already imported at the top of the file (they are — see the existing test
+fixture uses them).
 
 - [ ] **Step 4.2: Run the new tests**
 
-Run: `cargo test -p sansio-mqtt-v5-types --test property_compatibility publish_parser_`
+Run:
+`cargo test -p sansio-mqtt-v5-types --test property_compatibility publish_parser_`
 
 Expected: both tests PASS.
 
@@ -505,9 +581,12 @@ git commit -m "test(parser): bound enforcement for subscription identifiers"
 
 ### Task 5: Propagate `Vec` shape through `BrokerMessage`
 
-Another atomic type-system change: the protocol crate won't compile until the `BrokerMessage` field, the `proto.rs` mapping, the `tokio` example, and the protocol test all move together.
+Another atomic type-system change: the protocol crate won't compile until the
+`BrokerMessage` field, the `proto.rs` mapping, the `tokio` example, and the
+protocol test all move together.
 
 **Files:**
+
 - Modify: `crates/sansio-mqtt-v5-protocol/src/types.rs`
 - Modify: `crates/sansio-mqtt-v5-protocol/src/proto.rs`
 - Modify: `crates/sansio-mqtt-v5-protocol/tests/client_protocol.rs`
@@ -529,7 +608,8 @@ with:
     pub subscription_identifiers: Vec<NonZero<u64>>,
 ```
 
-**Leave `SubscribeOptions.subscription_identifier` at line 162 unchanged** — SUBSCRIBE is 0..1 per [MQTT-3.8.2.1.2].
+**Leave `SubscribeOptions.subscription_identifier` at line 162 unchanged** —
+SUBSCRIBE is 0..1 per [MQTT-3.8.2.1.2].
 
 - [ ] **Step 5.2: Update the `BrokerMessage` construction site in `proto.rs`**
 
@@ -545,21 +625,27 @@ with:
             subscription_identifiers: properties.subscription_identifiers,
 ```
 
-(Nothing else in the `From<Publish> → BrokerMessage` mapping needs to change — the field now just moves a `Vec`.)
+(Nothing else in the `From<Publish> → BrokerMessage` mapping needs to change —
+the field now just moves a `Vec`.)
 
 - [ ] **Step 5.3: Outbound PUBLISH construction also needs the renamed field**
 
-In the same `proto.rs`, around line 1283, there is a `PublishProperties { … subscription_identifier: None, … }` literal for the outbound side. Replace that line with:
+In the same `proto.rs`, around line 1283, there is a
+`PublishProperties { … subscription_identifier: None, … }` literal for the
+outbound side. Replace that line with:
 
 ```rust
                     subscription_identifiers: Vec::new(),
 ```
 
-The client does not populate subscription identifiers on outbound PUBLISH (they're server-assigned), so the empty `Vec` preserves current behavior.
+The client does not populate subscription identifiers on outbound PUBLISH
+(they're server-assigned), so the empty `Vec` preserves current behavior.
 
-- [ ] **Step 5.4: Update the single `BrokerMessage` assert in the protocol test**
+- [ ] **Step 5.4: Update the single `BrokerMessage` assert in the protocol
+      test**
 
-Open `crates/sansio-mqtt-v5-protocol/tests/client_protocol.rs`. At line 580, replace:
+Open `crates/sansio-mqtt-v5-protocol/tests/client_protocol.rs`. At line 580,
+replace:
 
 ```rust
             assert_eq!(message.subscription_identifier, None);
@@ -571,11 +657,15 @@ with:
             assert!(message.subscription_identifiers.is_empty());
 ```
 
-All other `subscription_identifier` occurrences in this file are on `SubscribeOptions` and must stay unchanged.
+All other `subscription_identifier` occurrences in this file are on
+`SubscribeOptions` and must stay unchanged.
 
 - [ ] **Step 5.5: Add a regression test for multi-identifier inbound PUBLISH**
 
-In the same test file, immediately after `inbound_publish_qos0_is_forwarded_to_user_queue` (the function containing the assertion changed in Step 5.4; its body ends around line 586), append this new test:
+In the same test file, immediately after
+`inbound_publish_qos0_is_forwarded_to_user_queue` (the function containing the
+assertion changed in Step 5.4; its body ends around line 586), append this new
+test:
 
 ```rust
 #[test]
@@ -625,21 +715,32 @@ fn inbound_publish_multiple_subscription_identifiers_surface_to_user() {
 }
 ```
 
-`NonZero`, `Topic`, `Payload`, `PublishProperties`, `Publish`, `PublishKind`, `ControlPacket`, `ConnAck`, `ConnAckKind`, `ConnAckProperties`, `ConnackReasonCode`, `Client`, `DriverEventIn`, `UserWriteOut`, and `encode_packet` are all already imported at the top of `client_protocol.rs` (verify against lines 1–18 of that file).
+`NonZero`, `Topic`, `Payload`, `PublishProperties`, `Publish`, `PublishKind`,
+`ControlPacket`, `ConnAck`, `ConnAckKind`, `ConnAckProperties`,
+`ConnackReasonCode`, `Client`, `DriverEventIn`, `UserWriteOut`, and
+`encode_packet` are all already imported at the top of `client_protocol.rs`
+(verify against lines 1–18 of that file).
 
 - [ ] **Step 5.6: Update the tokio example**
 
-Open `crates/sansio-mqtt-v5-tokio/examples/cli.rs`. The occurrence at line 63 is inside a `SubscribeOptions { … }` literal — **do not change it** (SUBSCRIBE stays `Option`).
+Open `crates/sansio-mqtt-v5-tokio/examples/cli.rs`. The occurrence at line 63 is
+inside a `SubscribeOptions { … }` literal — **do not change it** (SUBSCRIBE
+stays `Option`).
 
-Search the file for any other `subscription_identifier:` occurrence that references a `BrokerMessage` construction. (Run `grep -n subscription_identifier crates/sansio-mqtt-v5-tokio/examples/cli.rs` to verify.) If none exist, skip this step.
+Search the file for any other `subscription_identifier:` occurrence that
+references a `BrokerMessage` construction. (Run
+`grep -n subscription_identifier crates/sansio-mqtt-v5-tokio/examples/cli.rs` to
+verify.) If none exist, skip this step.
 
 - [ ] **Step 5.7: Build and run the full workspace**
 
 Run: `cargo build --workspace --tests && cargo test --workspace`
 
-Expected: all green, including the new `inbound_publish_multiple_subscription_identifiers_surface_to_user` test.
+Expected: all green, including the new
+`inbound_publish_multiple_subscription_identifiers_surface_to_user` test.
 
-If any protocol or tokio test fails, diagnose before proceeding — the most likely cause is a missed `SubscribeOptions`/`BrokerMessage` distinction.
+If any protocol or tokio test fails, diagnose before proceeding — the most
+likely cause is a missed `SubscribeOptions`/`BrokerMessage` distinction.
 
 - [ ] **Step 5.8: Commit**
 
@@ -664,13 +765,16 @@ driver. SubscribeOptions remains Option (SUBSCRIBE is 0..1)."
 
 Run: `cargo fmt --all -- --check`
 
-Expected: no diffs. If there are diffs, run `cargo fmt --all` and commit them as a separate `chore(fmt)` commit.
+Expected: no diffs. If there are diffs, run `cargo fmt --all` and commit them as
+a separate `chore(fmt)` commit.
 
 - [ ] **Step 6.2: Clippy**
 
 Run: `cargo clippy --workspace --all-targets -- -D warnings`
 
-Expected: no warnings. If any clippy warning surfaces on code touched by this plan, fix it inline and add to the nearest relevant commit (amend or a small follow-up commit).
+Expected: no warnings. If any clippy warning surfaces on code touched by this
+plan, fix it inline and add to the nearest relevant commit (amend or a small
+follow-up commit).
 
 - [ ] **Step 6.3: Full test suite**
 
@@ -680,7 +784,8 @@ Expected: all green.
 
 - [ ] **Step 6.4: Sanity-scan downstream for missed sites**
 
-Run this grep to confirm there are no lingering `subscription_identifier` references pointing at `PublishProperties` or `BrokerMessage`:
+Run this grep to confirm there are no lingering `subscription_identifier`
+references pointing at `PublishProperties` or `BrokerMessage`:
 
 ```bash
 grep -rn 'subscription_identifier\b' crates/ --include='*.rs'
@@ -688,17 +793,29 @@ grep -rn 'subscription_identifier\b' crates/ --include='*.rs'
 
 Review each hit. The **only** remaining singular-form occurrences should be:
 
-- `SubscribeProperties.subscription_identifier` in `crates/sansio-mqtt-v5-types/src/types/subscribe.rs`
-- `SubscribeOptions.subscription_identifier` in `crates/sansio-mqtt-v5-protocol/src/types.rs`
-- All `SubscribeOptions { … subscription_identifier: … }` literals in `crates/sansio-mqtt-v5-protocol/tests/client_protocol.rs` and `crates/sansio-mqtt-v5-tokio/examples/cli.rs`
-- Parser/encoder code for `Property::SubscriptionIdentifier` (that enum variant is singular and stays)
-- `allow_subscription_identifiers` in `crates/sansio-mqtt-v5-protocol/src/{types,proto}.rs` and related protocol-layer field names like `effective_subscription_identifiers_available` / `negotiated_subscription_identifiers_available` / `subscription_identifiers_available` — unrelated CONNACK-negotiation state
+- `SubscribeProperties.subscription_identifier` in
+  `crates/sansio-mqtt-v5-types/src/types/subscribe.rs`
+- `SubscribeOptions.subscription_identifier` in
+  `crates/sansio-mqtt-v5-protocol/src/types.rs`
+- All `SubscribeOptions { … subscription_identifier: … }` literals in
+  `crates/sansio-mqtt-v5-protocol/tests/client_protocol.rs` and
+  `crates/sansio-mqtt-v5-tokio/examples/cli.rs`
+- Parser/encoder code for `Property::SubscriptionIdentifier` (that enum variant
+  is singular and stays)
+- `allow_subscription_identifiers` in
+  `crates/sansio-mqtt-v5-protocol/src/{types,proto}.rs` and related
+  protocol-layer field names like `effective_subscription_identifiers_available`
+  / `negotiated_subscription_identifiers_available` /
+  `subscription_identifiers_available` — unrelated CONNACK-negotiation state
 
-If any other `subscription_identifier` (singular) remains in PUBLISH / BrokerMessage code paths, fix it before closing this task.
+If any other `subscription_identifier` (singular) remains in PUBLISH /
+BrokerMessage code paths, fix it before closing this task.
 
 - [ ] **Step 6.5: No commit needed if all checks passed**
 
-If Step 6.1 produced formatting diffs, they were already committed in Step 6.1. Otherwise there is nothing new to commit. If any clippy fix was required, commit it with:
+If Step 6.1 produced formatting diffs, they were already committed in Step 6.1.
+Otherwise there is nothing new to commit. If any clippy fix was required, commit
+it with:
 
 ```bash
 git commit -am "chore: clippy fixes for subscription identifiers change"
@@ -709,23 +826,38 @@ git commit -am "chore: clippy fixes for subscription identifiers change"
 ## Self-Review (performed by plan author)
 
 **1. Spec coverage:**
+
 - Wire type change in `PublishProperties` → Task 3.
-- Parser append + bound → Task 1 (setting), Task 2 (error), Task 3 (parser arm), Task 4 (bound test).
+- Parser append + bound → Task 1 (setting), Task 2 (error), Task 3 (parser arm),
+  Task 4 (bound test).
 - Encoder iterate → Task 3.3.
-- `ParserSettings.max_subscription_identifiers_len` with 32 default / usize::MAX unlimited → Task 1.
+- `ParserSettings.max_subscription_identifiers_len` with 32 default / usize::MAX
+  unlimited → Task 1.
 - `BrokerMessage` field change + `proto.rs` propagation → Task 5.
 - `SubscribeOptions` unchanged → called out in Task 5.1 and 5.6.
 - Invert `to_repeated_subscription_identifiers_property` → Task 3.5 (a).
-- Empty/single/multi roundtrip → Task 3 covers single (preserved in `publish_with_all_valid_properties_roundtrip`), multi (new `publish_with_multiple_subscription_identifiers` case). Empty Vec path is exercised implicitly by every other `PublishProperties::default()` roundtrip test in both `property_compatibility.rs` and `mirror_encode_and_parse.rs` (they all construct `subscription_identifiers` via `Default` = empty `Vec`). An explicit assertion would be redundant.
+- Empty/single/multi roundtrip → Task 3 covers single (preserved in
+  `publish_with_all_valid_properties_roundtrip`), multi (new
+  `publish_with_multiple_subscription_identifiers` case). Empty Vec path is
+  exercised implicitly by every other `PublishProperties::default()` roundtrip
+  test in both `property_compatibility.rs` and `mirror_encode_and_parse.rs`
+  (they all construct `subscription_identifiers` via `Default` = empty `Vec`).
+  An explicit assertion would be redundant.
 - Bound enforcement both ways → Task 4.1 (rejection + unlimited acceptance).
 - Protocol-layer regression for multi-identifier PUBLISH → Task 5.5.
 - `cargo fmt`/`cargo clippy`/full test run → Task 6.
-- Rustdoc update citing [MQTT-3.3.2.3.8] → Task 3.1 (doc comment on the new field) + Task 5.1 (doc comment on `BrokerMessage`).
+- Rustdoc update citing [MQTT-3.3.2.3.8] → Task 3.1 (doc comment on the new
+  field) + Task 5.1 (doc comment on `BrokerMessage`).
 
-**2. Placeholder scan:** no TBD/TODO/"similar to". All code blocks contain the exact text the editor should write.
+**2. Placeholder scan:** no TBD/TODO/"similar to". All code blocks contain the
+exact text the editor should write.
 
 **3. Type consistency:**
-- `subscription_identifiers: Vec<NonZero<u64>>` used consistently in `PublishProperties` and `BrokerMessage`.
-- `subscription_identifier: Option<NonZero<u64>>` (singular) retained consistently in `SubscribeProperties` and `SubscribeOptions`.
+
+- `subscription_identifiers: Vec<NonZero<u64>>` used consistently in
+  `PublishProperties` and `BrokerMessage`.
+- `subscription_identifier: Option<NonZero<u64>>` (singular) retained
+  consistently in `SubscribeProperties` and `SubscribeOptions`.
 - `Property::SubscriptionIdentifier(NonZero<u64>)` enum variant is untouched.
-- `TooManySubscriptionIdentifiersError` and `max_subscription_identifiers_len` names match spec and are used consistently in parser, test, and error enum.
+- `TooManySubscriptionIdentifiersError` and `max_subscription_identifiers_len`
+  names match spec and are used consistently in parser, test, and error enum.

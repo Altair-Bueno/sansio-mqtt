@@ -1,33 +1,46 @@
 # MQTT v5 Compliance Closure Execution Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use
+> superpowers:subagent-driven-development (recommended) or
+> superpowers:executing-plans to implement this plan task-by-task. Steps use
+> checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Close all remaining checklist items required to claim practical MQTT v5 client protocol compliance for `sansio-mqtt-v5-protocol`.
+**Goal:** Close all remaining checklist items required to claim practical MQTT
+v5 client protocol compliance for `sansio-mqtt-v5-protocol`.
 
-**Architecture:** Keep the existing sansio state machine, but fill protocol gaps with narrowly scoped extensions: explicit session-presence validation, complete reconnect replay semantics, topic-alias tables for inbound resolution, CONNECT property support, and capability guards on outbound operations. Use strict TDD and preserve existing queue-driven protocol API.
+**Architecture:** Keep the existing sansio state machine, but fill protocol gaps
+with narrowly scoped extensions: explicit session-presence validation, complete
+reconnect replay semantics, topic-alias tables for inbound resolution, CONNECT
+property support, and capability guards on outbound operations. Use strict TDD
+and preserve existing queue-driven protocol API.
 
-**Tech Stack:** Rust (`no_std` + `alloc`), `sansio`, `bytes`, `winnow`, `sansio-mqtt-v5-types`, `thiserror`, `tracing`.
+**Tech Stack:** Rust (`no_std` + `alloc`), `sansio`, `bytes`, `winnow`,
+`sansio-mqtt-v5-types`, `thiserror`, `tracing`.
 
 ---
 
 ## File Structure and Responsibilities
 
 - Modify: `crates/sansio-mqtt-v5-protocol/src/types.rs`
-  - Add missing configuration/option fields and user-facing outcome events required by compliance closure.
+  - Add missing configuration/option fields and user-facing outcome events
+    required by compliance closure.
 - Modify: `crates/sansio-mqtt-v5-protocol/src/proto.rs`
   - Implement missing state-machine and validation semantics.
 - Modify: `crates/sansio-mqtt-v5-protocol/tests/client_protocol.rs`
   - Add conformance regression tests for each missing requirement.
-- Modify: `docs/superpowers/checklists/2026-04-17-mqtt-v5-client-compliance-closure.md`
+- Modify:
+  `docs/superpowers/checklists/2026-04-17-mqtt-v5-client-compliance-closure.md`
   - Mark completed items and keep status aligned with code.
 
 ## Task 1: Session Present and Session-State Semantics
 
 **Files:**
+
 - Modify: `crates/sansio-mqtt-v5-protocol/src/proto.rs`
 - Modify: `crates/sansio-mqtt-v5-protocol/tests/client_protocol.rs`
 
-- [ ] **Step 1: Write failing tests for session-present mismatch and state-discard rules**
+- [ ] **Step 1: Write failing tests for session-present mismatch and
+      state-discard rules**
 
 ```rust
 #[test]
@@ -46,11 +59,13 @@ fn non_resumed_connack_discards_all_local_session_state() {
 
 - [ ] **Step 2: Run tests to verify failure**
 
-Run: `cargo test -p sansio-mqtt-v5-protocol connack_session_present_without_local_session_is_protocol_error non_resumed_connack_discards_all_local_session_state -- --nocapture`
+Run:
+`cargo test -p sansio-mqtt-v5-protocol connack_session_present_without_local_session_is_protocol_error non_resumed_connack_discards_all_local_session_state -- --nocapture`
 
 Expected: FAIL.
 
-- [ ] **Step 3: Implement Session Present enforcement and full discard behavior**
+- [ ] **Step 3: Implement Session Present enforcement and full discard
+      behavior**
 
 ```rust
 // proto.rs (shape)
@@ -68,13 +83,15 @@ fn has_local_session_state(&self) -> bool {
 
 - [ ] **Step 4: Re-run targeted tests**
 
-Run: `cargo test -p sansio-mqtt-v5-protocol connack_session_present_without_local_session_is_protocol_error non_resumed_connack_discards_all_local_session_state`
+Run:
+`cargo test -p sansio-mqtt-v5-protocol connack_session_present_without_local_session_is_protocol_error non_resumed_connack_discards_all_local_session_state`
 
 Expected: PASS.
 
 ## Task 2: Reconnect Replay Completeness (Include PUBREL)
 
 **Files:**
+
 - Modify: `crates/sansio-mqtt-v5-protocol/src/proto.rs`
 - Modify: `crates/sansio-mqtt-v5-protocol/tests/client_protocol.rs`
 
@@ -91,7 +108,8 @@ fn resumed_session_replays_unacknowledged_pubrel() {
 
 - [ ] **Step 2: Run test to verify failure**
 
-Run: `cargo test -p sansio-mqtt-v5-protocol resumed_session_replays_unacknowledged_pubrel -- --nocapture`
+Run:
+`cargo test -p sansio-mqtt-v5-protocol resumed_session_replays_unacknowledged_pubrel -- --nocapture`
 
 Expected: FAIL.
 
@@ -107,13 +125,15 @@ match state {
 
 - [ ] **Step 4: Re-run targeted test**
 
-Run: `cargo test -p sansio-mqtt-v5-protocol resumed_session_replays_unacknowledged_pubrel`
+Run:
+`cargo test -p sansio-mqtt-v5-protocol resumed_session_replays_unacknowledged_pubrel`
 
 Expected: PASS.
 
 ## Task 3: Keep Alive Edge Cases (Server Keep Alive = 0 and Timing Contract)
 
 **Files:**
+
 - Modify: `crates/sansio-mqtt-v5-protocol/src/proto.rs`
 - Modify: `crates/sansio-mqtt-v5-protocol/tests/client_protocol.rs`
 
@@ -129,11 +149,13 @@ fn connack_server_keep_alive_zero_disables_keepalive_without_panic() {
 
 - [ ] **Step 2: Run test to verify failure**
 
-Run: `cargo test -p sansio-mqtt-v5-protocol connack_server_keep_alive_zero_disables_keepalive_without_panic -- --nocapture`
+Run:
+`cargo test -p sansio-mqtt-v5-protocol connack_server_keep_alive_zero_disables_keepalive_without_panic -- --nocapture`
 
 Expected: FAIL (panic or incorrect behavior).
 
-- [ ] **Step 3: Implement zero-safe keepalive assignment and timing contract cleanup**
+- [ ] **Step 3: Implement zero-safe keepalive assignment and timing contract
+      cleanup**
 
 ```rust
 // Instead of NonZero::expect for server_keep_alive:
@@ -146,15 +168,18 @@ self.keep_alive.interval_secs = self
 
 - [ ] **Step 4: Re-run targeted test**
 
-Run: `cargo test -p sansio-mqtt-v5-protocol connack_server_keep_alive_zero_disables_keepalive_without_panic`
+Run:
+`cargo test -p sansio-mqtt-v5-protocol connack_server_keep_alive_zero_disables_keepalive_without_panic`
 
 Expected: PASS.
 
 ## Task 4: Topic Alias Compliance (Inbound)
 
 **Files:**
+
 - Modify: `crates/sansio-mqtt-v5-protocol/src/proto.rs`
-- Modify: `crates/sansio-mqtt-v5-protocol/src/types.rs` (if additional internal helper types are exposed)
+- Modify: `crates/sansio-mqtt-v5-protocol/src/types.rs` (if additional internal
+  helper types are exposed)
 - Modify: `crates/sansio-mqtt-v5-protocol/tests/client_protocol.rs`
 
 - [ ] **Step 1: Add failing inbound topic-alias tests**
@@ -179,7 +204,8 @@ fn inbound_publish_alias_exceeds_client_alias_max_is_protocol_error() {
 
 - [ ] **Step 2: Run tests to verify failure**
 
-Run: `cargo test -p sansio-mqtt-v5-protocol inbound_publish_registers_topic_alias_then_resolves_alias_only_publish inbound_publish_alias_only_unknown_alias_is_protocol_error inbound_publish_alias_exceeds_client_alias_max_is_protocol_error -- --nocapture`
+Run:
+`cargo test -p sansio-mqtt-v5-protocol inbound_publish_registers_topic_alias_then_resolves_alias_only_publish inbound_publish_alias_only_unknown_alias_is_protocol_error inbound_publish_alias_exceeds_client_alias_max_is_protocol_error -- --nocapture`
 
 Expected: FAIL.
 
@@ -195,18 +221,21 @@ Expected: FAIL.
 
 - [ ] **Step 4: Re-run alias tests**
 
-Run: `cargo test -p sansio-mqtt-v5-protocol inbound_publish_registers_topic_alias_then_resolves_alias_only_publish inbound_publish_alias_only_unknown_alias_is_protocol_error inbound_publish_alias_exceeds_client_alias_max_is_protocol_error`
+Run:
+`cargo test -p sansio-mqtt-v5-protocol inbound_publish_registers_topic_alias_then_resolves_alias_only_publish inbound_publish_alias_only_unknown_alias_is_protocol_error inbound_publish_alias_exceeds_client_alias_max_is_protocol_error`
 
 Expected: PASS.
 
 ## Task 5: CONNECT Property Surface Completion
 
 **Files:**
+
 - Modify: `crates/sansio-mqtt-v5-protocol/src/types.rs`
 - Modify: `crates/sansio-mqtt-v5-protocol/src/proto.rs`
 - Modify: `crates/sansio-mqtt-v5-protocol/tests/client_protocol.rs`
 
-- [ ] **Step 1: Add failing tests for CONNECT-side Receive Maximum and Maximum Packet Size**
+- [ ] **Step 1: Add failing tests for CONNECT-side Receive Maximum and Maximum
+      Packet Size**
 
 ```rust
 #[test]
@@ -224,7 +253,8 @@ fn connect_encodes_maximum_packet_size_when_configured() {
 
 - [ ] **Step 2: Run tests to verify failure**
 
-Run: `cargo test -p sansio-mqtt-v5-protocol connect_encodes_receive_maximum_when_configured connect_encodes_maximum_packet_size_when_configured -- --nocapture`
+Run:
+`cargo test -p sansio-mqtt-v5-protocol connect_encodes_receive_maximum_when_configured connect_encodes_maximum_packet_size_when_configured -- --nocapture`
 
 Expected: FAIL.
 
@@ -242,13 +272,15 @@ maximum_packet_size: options.maximum_packet_size,
 
 - [ ] **Step 4: Re-run targeted tests**
 
-Run: `cargo test -p sansio-mqtt-v5-protocol connect_encodes_receive_maximum_when_configured connect_encodes_maximum_packet_size_when_configured`
+Run:
+`cargo test -p sansio-mqtt-v5-protocol connect_encodes_receive_maximum_when_configured connect_encodes_maximum_packet_size_when_configured`
 
 Expected: PASS.
 
 ## Task 6: Will QoS/Retain Representation and Encoding
 
 **Files:**
+
 - Modify: `crates/sansio-mqtt-v5-protocol/src/types.rs`
 - Modify: `crates/sansio-mqtt-v5-protocol/src/proto.rs`
 - Modify: `crates/sansio-mqtt-v5-protocol/tests/client_protocol.rs`
@@ -265,7 +297,8 @@ fn build_connect_packet_maps_will_qos_and_retain_from_options() {
 
 - [ ] **Step 2: Run test to verify failure**
 
-Run: `cargo test -p sansio-mqtt-v5-protocol build_connect_packet_maps_will_qos_and_retain_from_options -- --nocapture`
+Run:
+`cargo test -p sansio-mqtt-v5-protocol build_connect_packet_maps_will_qos_and_retain_from_options -- --nocapture`
 
 Expected: FAIL.
 
@@ -283,13 +316,15 @@ retain: will.retain,
 
 - [ ] **Step 4: Re-run targeted test**
 
-Run: `cargo test -p sansio-mqtt-v5-protocol build_connect_packet_maps_will_qos_and_retain_from_options`
+Run:
+`cargo test -p sansio-mqtt-v5-protocol build_connect_packet_maps_will_qos_and_retain_from_options`
 
 Expected: PASS.
 
 ## Task 7: Server Capability Enforcement and Subscribe Validation
 
 **Files:**
+
 - Modify: `crates/sansio-mqtt-v5-protocol/src/proto.rs`
 - Modify: `crates/sansio-mqtt-v5-protocol/src/types.rs` (if needed)
 - Modify: `crates/sansio-mqtt-v5-protocol/tests/client_protocol.rs`
@@ -315,11 +350,13 @@ fn subscribe_shared_with_no_local_is_rejected() {
 
 - [ ] **Step 2: Run tests to verify failure**
 
-Run: `cargo test -p sansio-mqtt-v5-protocol publish_qos_above_server_maximum_qos_is_rejected publish_retain_when_server_retain_not_available_is_rejected subscribe_shared_with_no_local_is_rejected -- --nocapture`
+Run:
+`cargo test -p sansio-mqtt-v5-protocol publish_qos_above_server_maximum_qos_is_rejected publish_retain_when_server_retain_not_available_is_rejected subscribe_shared_with_no_local_is_rejected -- --nocapture`
 
 Expected: FAIL.
 
-- [ ] **Step 3: Store needed CONNACK capability flags and enforce in write paths**
+- [ ] **Step 3: Store needed CONNACK capability flags and enforce in write
+      paths**
 
 ```rust
 // negotiated_limits add:
@@ -334,18 +371,22 @@ subscription_identifiers_available: bool,
 
 - [ ] **Step 4: Re-run targeted tests**
 
-Run: `cargo test -p sansio-mqtt-v5-protocol publish_qos_above_server_maximum_qos_is_rejected publish_retain_when_server_retain_not_available_is_rejected subscribe_shared_with_no_local_is_rejected`
+Run:
+`cargo test -p sansio-mqtt-v5-protocol publish_qos_above_server_maximum_qos_is_rejected publish_retain_when_server_retain_not_available_is_rejected subscribe_shared_with_no_local_is_rejected`
 
 Expected: PASS.
 
 ## Task 8: Enhanced AUTH State Machine Completion
 
 **Files:**
-- Modify: `crates/sansio-mqtt-v5-protocol/src/types.rs` (if user events/config needed)
+
+- Modify: `crates/sansio-mqtt-v5-protocol/src/types.rs` (if user events/config
+  needed)
 - Modify: `crates/sansio-mqtt-v5-protocol/src/proto.rs`
 - Modify: `crates/sansio-mqtt-v5-protocol/tests/client_protocol.rs`
 
-- [ ] **Step 1: Add failing tests for AUTH continuation and invalid transitions**
+- [ ] **Step 1: Add failing tests for AUTH continuation and invalid
+      transitions**
 
 ```rust
 #[test]
@@ -361,7 +402,8 @@ fn auth_in_connected_without_support_is_protocol_error() {
 
 - [ ] **Step 2: Run tests to verify failure**
 
-Run: `cargo test -p sansio-mqtt-v5-protocol connecting_auth_continue_then_connack_success_connects auth_in_connected_without_support_is_protocol_error -- --nocapture`
+Run:
+`cargo test -p sansio-mqtt-v5-protocol connecting_auth_continue_then_connack_success_connects auth_in_connected_without_support_is_protocol_error -- --nocapture`
 
 Expected: FAIL.
 
@@ -375,15 +417,19 @@ enum ConnectingPhase { AwaitConnAck, AuthInProgress }
 
 - [ ] **Step 4: Re-run targeted tests**
 
-Run: `cargo test -p sansio-mqtt-v5-protocol connecting_auth_continue_then_connack_success_connects auth_in_connected_without_support_is_protocol_error`
+Run:
+`cargo test -p sansio-mqtt-v5-protocol connecting_auth_continue_then_connack_success_connects auth_in_connected_without_support_is_protocol_error`
 
 Expected: PASS.
 
 ## Task 9: Conformance Evidence, Checklist Sync, and Final Verification
 
 **Files:**
-- Modify: `docs/superpowers/checklists/2026-04-17-mqtt-v5-client-compliance-closure.md`
-- Create: `docs/superpowers/checklists/2026-04-17-mqtt-v5-client-requirement-traceability.md`
+
+- Modify:
+  `docs/superpowers/checklists/2026-04-17-mqtt-v5-client-compliance-closure.md`
+- Create:
+  `docs/superpowers/checklists/2026-04-17-mqtt-v5-client-requirement-traceability.md`
 - Modify: `crates/sansio-mqtt-v5-protocol/src/proto.rs`
 - Modify: `crates/sansio-mqtt-v5-protocol/tests/client_protocol.rs`
 
@@ -399,20 +445,23 @@ Expected: PASS.
 ```markdown
 # MQTT v5 Client Requirement Traceability
 
-| Requirement | Spec Ref | Code Path | Test Name | Status |
-|-------------|----------|-----------|-----------|--------|
-| Session Present mismatch close | MQTT-3.2.2-4 | proto.rs:... | ... | PASS |
+| Requirement                    | Spec Ref     | Code Path    | Test Name | Status |
+| ------------------------------ | ------------ | ------------ | --------- | ------ |
+| Session Present mismatch close | MQTT-3.2.2-4 | proto.rs:... | ...       | PASS   |
 ```
 
 - [ ] **Step 3: Sync closure checklist statuses**
 
-Update: `docs/superpowers/checklists/2026-04-17-mqtt-v5-client-compliance-closure.md`
+Update:
+`docs/superpowers/checklists/2026-04-17-mqtt-v5-client-compliance-closure.md`
 
 - [ ] **Step 4: Run formatting and verification suite**
 
-Run: `cargo fmt && cargo clippy -p sansio-mqtt-v5-protocol --all-targets && cargo test -p sansio-mqtt-v5-protocol && cargo test -p sansio-mqtt-v5-types`
+Run:
+`cargo fmt && cargo clippy -p sansio-mqtt-v5-protocol --all-targets && cargo test -p sansio-mqtt-v5-protocol && cargo test -p sansio-mqtt-v5-types`
 
-Expected: tests PASS; clippy warnings may remain in external crate areas unless policy is tightened globally.
+Expected: tests PASS; clippy warnings may remain in external crate areas unless
+policy is tightened globally.
 
 ## Plan Self-Review
 
@@ -425,4 +474,6 @@ Expected: tests PASS; clippy warnings may remain in external crate areas unless 
   - AUTH full-state behavior: Task 8.
   - Evidence and checklist closure: Task 9.
 - **Placeholder scan:** All tasks include concrete files/tests/commands.
-- **Type consistency:** Uses existing crate identifiers (`ConnectionOptions`, `Will`, `ClientState`, `on_flight_sent`, `pending_subscribe`) and introduces only explicit, scoped extensions.
+- **Type consistency:** Uses existing crate identifiers (`ConnectionOptions`,
+  `Will`, `ClientState`, `on_flight_sent`, `pending_subscribe`) and introduces
+  only explicit, scoped extensions.

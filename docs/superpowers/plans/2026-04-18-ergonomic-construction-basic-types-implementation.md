@@ -1,18 +1,28 @@
 # Ergonomic Construction for Basic MQTT Value Types Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use
+> superpowers:subagent-driven-development (recommended) or
+> superpowers:executing-plans to implement this plan task-by-task. Steps use
+> checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add a consistent `new`/`try_new` constructor model and stronger trait ergonomics for `Payload`, `BinaryData`, `Utf8String`, and `Topic` without changing validation behavior.
+**Goal:** Add a consistent `new`/`try_new` constructor model and stronger trait
+ergonomics for `Payload`, `BinaryData`, `Utf8String`, and `Topic` without
+changing validation behavior.
 
-**Architecture:** Keep `nutype` and existing invariants, then layer ergonomic inherent constructors and concrete trait impls in `basic.rs`. Validate behavior with focused constructor tests and small call-site migrations in protocol/tokio/tests.
+**Architecture:** Keep `nutype` and existing invariants, then layer ergonomic
+inherent constructors and concrete trait impls in `basic.rs`. Validate behavior
+with focused constructor tests and small call-site migrations in
+protocol/tokio/tests.
 
-**Tech Stack:** Rust (`no_std` + `alloc`), `bytes::Bytes`, `nutype`, Cargo tests.
+**Tech Stack:** Rust (`no_std` + `alloc`), `bytes::Bytes`, `nutype`, Cargo
+tests.
 
 ---
 
 ### Task 1: Add Constructor API Surface in `basic.rs`
 
 **Files:**
+
 - Modify: `crates/sansio-mqtt-v5-types/src/types/basic.rs`
 - Test: `crates/sansio-mqtt-v5-types/tests/basic_construction.rs` (new)
 
@@ -79,7 +89,8 @@ fn topic_new_panics_on_invalid_topic_filter_chars() {
 
 Run: `cargo test -p sansio-mqtt-v5-types --test basic_construction`
 
-Expected: FAIL with missing associated items (`new`/`try_new`) on one or more types.
+Expected: FAIL with missing associated items (`new`/`try_new`) on one or more
+types.
 
 - [ ] **Step 3: Add `new`/`try_new` inherent constructors with `Into<Bytes>`**
 
@@ -156,6 +167,7 @@ git commit -m "feat(types): add unified new/try_new constructors"
 ### Task 2: Complete Trait Coverage for Common Input Forms
 
 **Files:**
+
 - Modify: `crates/sansio-mqtt-v5-types/src/types/basic.rs`
 - Test: `crates/sansio-mqtt-v5-types/tests/basic_construction.rs`
 
@@ -190,7 +202,8 @@ fn payload_from_non_static_slice() {
 
 Run: `cargo test -p sansio-mqtt-v5-types --test basic_construction`
 
-Expected: FAIL for missing `TryFrom<&str>`/`TryFrom<&[u8]>`/`From<&[u8]>` where currently absent.
+Expected: FAIL for missing `TryFrom<&str>`/`TryFrom<&[u8]>`/`From<&[u8]>` where
+currently absent.
 
 - [ ] **Step 3: Implement missing `From`/`TryFrom` impls**
 
@@ -232,11 +245,13 @@ impl<'a> TryFrom<&'a str> for Utf8String {
 }
 ```
 
-Keep existing `'static` impls if needed for compatibility, but prefer lifetime-generic versions.
+Keep existing `'static` impls if needed for compatibility, but prefer
+lifetime-generic versions.
 
 - [ ] **Step 4: Run tests and full crate tests**
 
 Run:
+
 - `cargo test -p sansio-mqtt-v5-types --test basic_construction`
 - `cargo test -p sansio-mqtt-v5-types`
 
@@ -252,6 +267,7 @@ git commit -m "feat(types): extend conversion trait coverage for basic types"
 ### Task 3: Migrate Representative Call Sites and Validate Workspace
 
 **Files:**
+
 - Modify: `crates/sansio-mqtt-v5-protocol/tests/client_protocol.rs`
 - Modify: `crates/sansio-mqtt-v5-tokio/examples/echo.rs`
 - Modify: `crates/sansio-mqtt-v5-types/tests/mirror_encode_and_parse.rs`
@@ -259,7 +275,8 @@ git commit -m "feat(types): extend conversion trait coverage for basic types"
 
 - [ ] **Step 1: Write a small migration-focused failing test update**
 
-In `crates/sansio-mqtt-v5-types/tests/property_compatibility.rs`, update one existing constructor chain to the new API to force compiler guidance:
+In `crates/sansio-mqtt-v5-types/tests/property_compatibility.rs`, update one
+existing constructor chain to the new API to force compiler guidance:
 
 ```rust
 // Before:
@@ -279,6 +296,7 @@ content_type: Utf8String::try_new("text/plain").ok(),
 - [ ] **Step 2: Run targeted tests and verify migration compiles**
 
 Run:
+
 - `cargo test -p sansio-mqtt-v5-types --test property_compatibility`
 - `cargo test -p sansio-mqtt-v5-types --test mirror_encode_and_parse`
 
@@ -299,16 +317,19 @@ subscription: Utf8String::new("echo/+/in"),
 payload: Payload::new(&[1, 2, 3, 4][..]),
 ```
 
-Guideline: migrate repetitive constructor chains where readability clearly improves; avoid unrelated churn.
+Guideline: migrate repetitive constructor chains where readability clearly
+improves; avoid unrelated churn.
 
 - [ ] **Step 4: Run full verification**
 
 Run:
+
 - `cargo fmt`
 - `cargo test -q`
 - `cargo clippy -p sansio-mqtt-v5-types --all-targets`
 
 Expected:
+
 - Format clean
 - Full test suite PASS
 - Clippy passes for modified crate (or only pre-existing warnings outside scope)
@@ -323,6 +344,7 @@ git commit -m "refactor: adopt ergonomic constructors in representative call sit
 ### Task 4: Final Documentation and Regression Guardrails
 
 **Files:**
+
 - Modify: `crates/sansio-mqtt-v5-types/src/types/basic.rs`
 
 - [ ] **Step 1: Add rustdoc examples for each type constructor pair**
@@ -346,6 +368,7 @@ pub fn new(...)
 - [ ] **Step 2: Run docs and tests check**
 
 Run:
+
 - `cargo test -p sansio-mqtt-v5-types`
 
 Expected: PASS.
@@ -367,12 +390,15 @@ git commit -m "docs(types): document ergonomic constructor behavior"
 
 ## Placeholder Scan
 
-No `TODO`, `TBD`, or undefined “handle appropriately” instructions. All code-changing steps include explicit code blocks and runnable commands.
+No `TODO`, `TBD`, or undefined “handle appropriately” instructions. All
+code-changing steps include explicit code blocks and runnable commands.
 
 ## Type Consistency Check
 
 Plan consistently uses:
+
 - `try_new(value: impl Into<bytes::Bytes>) -> Result<..., ...>`
 - `new(value: impl Into<bytes::Bytes>) -> ...`
 
-No mixed naming variants (`from_str`, `from_slice`) are required for this iteration.
+No mixed naming variants (`from_str`, `from_slice`) are required for this
+iteration.

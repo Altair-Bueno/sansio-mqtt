@@ -1,19 +1,30 @@
 # MQTT v5 Protocol Spec Conformance Fixes Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use
+> superpowers:subagent-driven-development (recommended) or
+> superpowers:executing-plans to implement this plan task-by-task. Steps use
+> checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Close all spec-vs-implementation gaps found in `sansio-mqtt-v5-protocol` while preserving current QoS behavior and test stability.
+**Goal:** Close all spec-vs-implementation gaps found in
+`sansio-mqtt-v5-protocol` while preserving current QoS behavior and test
+stability.
 
-**Architecture:** Keep the existing sansio state machine shape, but add targeted substates/trackers for Keep Alive and AUTH handshake, explicit local-session reset rules for Clean Start and Session Expiry, and packet-id lifecycle tracking for SUBSCRIBE/UNSUBSCRIBE. Add tests first for each defect and fix incrementally.
+**Architecture:** Keep the existing sansio state machine shape, but add targeted
+substates/trackers for Keep Alive and AUTH handshake, explicit local-session
+reset rules for Clean Start and Session Expiry, and packet-id lifecycle tracking
+for SUBSCRIBE/UNSUBSCRIBE. Add tests first for each defect and fix
+incrementally.
 
-**Tech Stack:** Rust (`no_std` + `alloc`), `sansio`, `bytes`, `winnow`, `sansio-mqtt-v5-types`, `thiserror`, `tracing`.
+**Tech Stack:** Rust (`no_std` + `alloc`), `sansio`, `bytes`, `winnow`,
+`sansio-mqtt-v5-types`, `thiserror`, `tracing`.
 
 ---
 
 ## File Structure and Responsibilities
 
 - Modify: `crates/sansio-mqtt-v5-protocol/src/types.rs`
-  - Add config and event/error fields needed for keepalive/auth/session-policy behaviors.
+  - Add config and event/error fields needed for keepalive/auth/session-policy
+    behaviors.
 - Modify: `crates/sansio-mqtt-v5-protocol/src/proto.rs`
   - Implement all state-machine/spec fixes.
 - Modify: `crates/sansio-mqtt-v5-protocol/tests/client_protocol.rs`
@@ -26,6 +37,7 @@
 ## Task 1: Correct Keep Alive Semantics (MQTT 3.1.2.10, 3.12.4, 4.13)
 
 **Files:**
+
 - Modify: `crates/sansio-mqtt-v5-protocol/src/proto.rs`
 - Modify: `crates/sansio-mqtt-v5-protocol/tests/client_protocol.rs`
 
@@ -89,8 +101,10 @@ Expected: PASS.
 ## Task 2: Add AUTH Flow Support During Connecting (MQTT 3.15, 4.12)
 
 **Files:**
+
 - Modify: `crates/sansio-mqtt-v5-protocol/src/proto.rs`
-- Modify: `crates/sansio-mqtt-v5-protocol/src/types.rs` (if user-visible events/config needed)
+- Modify: `crates/sansio-mqtt-v5-protocol/src/types.rs` (if user-visible
+  events/config needed)
 - Modify: `crates/sansio-mqtt-v5-protocol/tests/client_protocol.rs`
 
 - [ ] **Step 1: Add failing tests for AUTH in connecting phase**
@@ -137,6 +151,7 @@ Expected: PASS.
 ## Task 3: Enforce Clean Start Local Session Reset (MQTT 3.1.2.4)
 
 **Files:**
+
 - Modify: `crates/sansio-mqtt-v5-protocol/src/proto.rs`
 - Modify: `crates/sansio-mqtt-v5-protocol/tests/client_protocol.rs`
 
@@ -152,7 +167,8 @@ fn clean_start_true_clears_local_session_before_connect() {
 
 - [ ] **Step 2: Run test and confirm failure**
 
-Run: `cargo test -p sansio-mqtt-v5-protocol clean_start_true_clears_local_session_before_connect -- --nocapture`
+Run:
+`cargo test -p sansio-mqtt-v5-protocol clean_start_true_clears_local_session_before_connect -- --nocapture`
 
 Expected: FAIL.
 
@@ -168,13 +184,15 @@ if self.pending_connect_options.clean_start {
 
 - [ ] **Step 4: Re-run clean-start test**
 
-Run: `cargo test -p sansio-mqtt-v5-protocol clean_start_true_clears_local_session_before_connect`
+Run:
+`cargo test -p sansio-mqtt-v5-protocol clean_start_true_clears_local_session_before_connect`
 
 Expected: PASS.
 
 ## Task 4: Respect Session Expiry on Disconnect/Close Persistence
 
 **Files:**
+
 - Modify: `crates/sansio-mqtt-v5-protocol/src/proto.rs`
 - Modify: `crates/sansio-mqtt-v5-protocol/tests/client_protocol.rs`
 
@@ -221,8 +239,10 @@ Expected: PASS.
 ## Task 5: Complete Packet Identifier Lifecycle for SUBSCRIBE/UNSUBSCRIBE
 
 **Files:**
+
 - Modify: `crates/sansio-mqtt-v5-protocol/src/proto.rs`
-- Modify: `crates/sansio-mqtt-v5-protocol/src/types.rs` (if internal state/types exposed)
+- Modify: `crates/sansio-mqtt-v5-protocol/src/types.rs` (if internal state/types
+  exposed)
 - Modify: `crates/sansio-mqtt-v5-protocol/tests/client_protocol.rs`
 
 - [ ] **Step 1: Add failing packet-id tracking tests**
@@ -246,11 +266,13 @@ fn unknown_suback_or_unsuback_is_protocol_error() {
 
 - [ ] **Step 2: Run tests and confirm failure**
 
-Run: `cargo test -p sansio-mqtt-v5-protocol subscribe_tracks_packet_id_until_suback unsubscribe_tracks_packet_id_until_unsuback unknown_suback_or_unsuback_is_protocol_error -- --nocapture`
+Run:
+`cargo test -p sansio-mqtt-v5-protocol subscribe_tracks_packet_id_until_suback unsubscribe_tracks_packet_id_until_unsuback unknown_suback_or_unsuback_is_protocol_error -- --nocapture`
 
 Expected: FAIL.
 
-- [ ] **Step 3: Add pending maps and PID allocator safety across packet classes**
+- [ ] **Step 3: Add pending maps and PID allocator safety across packet
+      classes**
 
 ```rust
 // proto.rs
@@ -276,13 +298,15 @@ ControlPacket::SubAck(suback) => {
 
 - [ ] **Step 5: Re-run packet-id tests**
 
-Run: `cargo test -p sansio-mqtt-v5-protocol subscribe_tracks_packet_id_until_suback unsubscribe_tracks_packet_id_until_unsuback unknown_suback_or_unsuback_is_protocol_error`
+Run:
+`cargo test -p sansio-mqtt-v5-protocol subscribe_tracks_packet_id_until_suback unsubscribe_tracks_packet_id_until_unsuback unknown_suback_or_unsuback_is_protocol_error`
 
 Expected: PASS.
 
 ## Task 6: Spec Markers and Final Verification
 
 **Files:**
+
 - Modify: `crates/sansio-mqtt-v5-protocol/src/proto.rs`
 - Modify: `crates/sansio-mqtt-v5-protocol/tests/client_protocol.rs`
 
@@ -297,7 +321,8 @@ Expected: PASS.
 
 - [ ] **Step 2: Run full checks**
 
-Run: `cargo fmt && cargo clippy -p sansio-mqtt-v5-protocol --all-targets && cargo test -p sansio-mqtt-v5-protocol`
+Run:
+`cargo fmt && cargo clippy -p sansio-mqtt-v5-protocol --all-targets && cargo test -p sansio-mqtt-v5-protocol`
 
 Expected: PASS (warnings in unrelated crates acceptable unless policy changed).
 
@@ -317,4 +342,6 @@ Expected: PASS.
   - SUBSCRIBE/UNSUBSCRIBE packet-id lifecycle: Task 5.
   - Marker and verification gate: Task 6.
 - **Placeholder scan:** All tasks include concrete files, tests, and commands.
-- **Type consistency:** Uses existing protocol naming (`on_flight_sent`, `on_flight_received`, `ClientState`) and extends with explicit pending maps/state helpers.
+- **Type consistency:** Uses existing protocol naming (`on_flight_sent`,
+  `on_flight_received`, `ClientState`) and extends with explicit pending
+  maps/state helpers.

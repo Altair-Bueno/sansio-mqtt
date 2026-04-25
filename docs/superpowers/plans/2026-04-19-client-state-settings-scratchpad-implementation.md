@@ -1,18 +1,29 @@
 # Client State/Settings/Scratchpad Flattening Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use
+> superpowers:subagent-driven-development (recommended) or
+> superpowers:executing-plans to implement this plan task-by-task. Steps use
+> checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Refactor `sansio_mqtt_v5_protocol::Client` into `ClientState`, `ClientSettings`, and `ClientScratchpad` with flattened fields, preserving behavior while enabling external persistence and resumability.
+**Goal:** Refactor `sansio_mqtt_v5_protocol::Client` into `ClientState`,
+`ClientSettings`, and `ClientScratchpad` with flattened fields, preserving
+behavior while enabling external persistence and resumability.
 
-**Architecture:** Perform a behavior-preserving structural refactor in small slices: first add the three new structs and constructors, then move transient and persistent fields with flattened layout, then rewire reset/transition logic (`clean_start`, session expiry, disconnect paths). Keep protocol outputs and packet handling unchanged, and validate with focused regression tests.
+**Architecture:** Perform a behavior-preserving structural refactor in small
+slices: first add the three new structs and constructors, then move transient
+and persistent fields with flattened layout, then rewire reset/transition logic
+(`clean_start`, session expiry, disconnect paths). Keep protocol outputs and
+packet handling unchanged, and validate with focused regression tests.
 
-**Tech Stack:** Rust, Cargo, sansio protocol state machine, integration tests in `client_protocol` and tokio bridge tests.
+**Tech Stack:** Rust, Cargo, sansio protocol state machine, integration tests in
+`client_protocol` and tokio bridge tests.
 
 ---
 
 ### Task 1: Introduce flattened top-level composition and constructors
 
 **Files:**
+
 - Modify: `crates/sansio-mqtt-v5-protocol/src/proto.rs`
 - Test: `crates/sansio-mqtt-v5-protocol/tests/client_protocol.rs`
 
@@ -46,11 +57,13 @@ Run:
 cargo test -p sansio-mqtt-v5-protocol --test client_protocol client_new_uses_default_state_and_blank_scratchpad -- --nocapture
 ```
 
-Expected: FAIL because `Client::new`, `Client::new_with_state`, and public `ClientState` do not exist yet.
+Expected: FAIL because `Client::new`, `Client::new_with_state`, and public
+`ClientState` do not exist yet.
 
 - [ ] **Step 3: Add flattened structs and constructors in `proto.rs`**
 
-Create new structs (with flattened fields, no `NegotiatedLimits`/`KeepAliveState`):
+Create new structs (with flattened fields, no
+`NegotiatedLimits`/`KeepAliveState`):
 
 ```rust
 #[derive(Debug, Clone, PartialEq)]
@@ -127,10 +140,12 @@ git commit -m "refactor(protocol): compose client from state settings and scratc
 ### Task 2: Flatten transient negotiated/keepalive fields into `ClientScratchpad`
 
 **Files:**
+
 - Modify: `crates/sansio-mqtt-v5-protocol/src/proto.rs`
 - Test: `crates/sansio-mqtt-v5-protocol/tests/client_protocol.rs`
 
-- [ ] **Step 1: Write failing regression tests for negotiated-limit and keepalive behavior**
+- [ ] **Step 1: Write failing regression tests for negotiated-limit and
+      keepalive behavior**
 
 Use these existing behavior tests to prove unchanged semantics:
 
@@ -167,7 +182,8 @@ fn connack_server_keep_alive_zero_disables_keepalive_without_panic() {
 }
 ```
 
-- [ ] **Step 2: Run targeted tests to verify RED after temporary removal of old structs**
+- [ ] **Step 2: Run targeted tests to verify RED after temporary removal of old
+      structs**
 
 Run:
 
@@ -175,9 +191,11 @@ Run:
 cargo test -p sansio-mqtt-v5-protocol --test client_protocol keepalive_timeout_without_pingresp_closes_connection connect_encodes_receive_maximum_when_configured -- --nocapture
 ```
 
-Expected: FAIL while references still point to `NegotiatedLimits` / `KeepAliveState`.
+Expected: FAIL while references still point to `NegotiatedLimits` /
+`KeepAliveState`.
 
-- [ ] **Step 3: Remove `NegotiatedLimits` and `KeepAliveState`, rewrite accesses**
+- [ ] **Step 3: Remove `NegotiatedLimits` and `KeepAliveState`, rewrite
+      accesses**
 
 In `proto.rs`:
 
@@ -192,6 +210,7 @@ self.scratchpad.keep_alive_ping_outstanding
 ```
 
 Rewrite these helpers to operate on flattened scratchpad fields:
+
 - `reset_negotiated_limits`
 - `reset_keepalive`
 - parser/timeout/network-activity updates
@@ -217,6 +236,7 @@ git commit -m "refactor(protocol): flatten negotiated and keepalive runtime fiel
 ### Task 3: Move resumable maps and packet-id tracking into `ClientState`
 
 **Files:**
+
 - Modify: `crates/sansio-mqtt-v5-protocol/src/proto.rs`
 - Test: `crates/sansio-mqtt-v5-protocol/tests/client_protocol.rs`
 
@@ -232,7 +252,8 @@ fn resumed_session_replays_outbound_qos_publish_with_dup_set() {}
 fn non_resumed_session_drops_inflight_and_emits_publish_dropped_events() {}
 ```
 
-Add this concrete constructor test to verify `new_with_state` accepts persisted state:
+Add this concrete constructor test to verify `new_with_state` accepts persisted
+state:
 
 ```rust
 #[test]
@@ -284,8 +305,8 @@ self.state.inbound_topic_aliases
 self.state.next_packet_id
 ```
 
-Ensure helper methods (`next_packet_id`, inflight replay/reset, subscribe/unsubscribe tracking)
-read/write only through `self.state`.
+Ensure helper methods (`next_packet_id`, inflight replay/reset,
+subscribe/unsubscribe tracking) read/write only through `self.state`.
 
 - [ ] **Step 4: Run targeted tests to verify GREEN**
 
@@ -308,6 +329,7 @@ git commit -m "refactor(protocol): move resumable session data into client state
 ### Task 4: Enforce clean-start/session-expiry rules on the new ownership boundaries
 
 **Files:**
+
 - Modify: `crates/sansio-mqtt-v5-protocol/src/proto.rs`
 - Test: `crates/sansio-mqtt-v5-protocol/tests/client_protocol.rs`
 
@@ -370,7 +392,8 @@ cargo test -p sansio-mqtt-v5-protocol --test client_protocol clean_start_true_dr
 
 Expected: FAIL before reset rules are fully rewired.
 
-- [ ] **Step 3: Implement reset policy using `self.state` and `self.scratchpad`**
+- [ ] **Step 3: Implement reset policy using `self.state` and
+      `self.scratchpad`**
 
 In `handle_write(UserWriteIn::Connect(options))`:
 
@@ -413,8 +436,11 @@ git commit -m "fix(protocol): enforce clean-start state drop and session persist
 ### Task 5: Full regression verification and cleanup
 
 **Files:**
-- Modify: `crates/sansio-mqtt-v5-protocol/src/proto.rs` (only if final fixes required)
-- Modify: `crates/sansio-mqtt-v5-protocol/tests/client_protocol.rs` (only if final fixes required)
+
+- Modify: `crates/sansio-mqtt-v5-protocol/src/proto.rs` (only if final fixes
+  required)
+- Modify: `crates/sansio-mqtt-v5-protocol/tests/client_protocol.rs` (only if
+  final fixes required)
 
 - [ ] **Step 1: Run full protocol and workspace validation**
 
@@ -454,8 +480,11 @@ git commit -m "test(protocol): cover flattened client state settings scratchpad 
 ## Spec Coverage Check
 
 - `Client` composed from exactly three components: covered in Task 1.
-- `NegotiatedLimits` / `KeepAliveState` removed and flattened: covered in Task 2.
+- `NegotiatedLimits` / `KeepAliveState` removed and flattened: covered in
+  Task 2.
 - Persistent fields moved to `ClientState`: covered in Task 3.
 - `clean_start=true` drops loaded state: covered in Task 4.
-- Scratchpad default-on-create and runtime reset semantics: covered in Tasks 1, 2, and 4.
-- Regression preservation of existing protocol behavior: covered across Tasks 2-5.
+- Scratchpad default-on-create and runtime reset semantics: covered in Tasks 1,
+  2, and 4.
+- Regression preservation of existing protocol behavior: covered across Tasks
+  2-5.

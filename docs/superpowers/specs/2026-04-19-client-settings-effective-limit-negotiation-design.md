@@ -1,32 +1,39 @@
 # ClientSettings Effective Limit Negotiation and Parser Integration Design
 
-Date: 2026-04-19
-Scope: `crates/sansio-mqtt-v5-protocol` (`types.rs`, `proto.rs`) and tokio integration call sites
+Date: 2026-04-19 Scope: `crates/sansio-mqtt-v5-protocol` (`types.rs`,
+`proto.rs`) and tokio integration call sites
 
 ## Goal
 
-Expand `ClientSettings` from parser-only knobs into application policy input for protocol negotiation,
-and recompute effective limits whenever state changes so protocol checks and parser configuration
-always use the currently applied envelope.
+Expand `ClientSettings` from parser-only knobs into application policy input for
+protocol negotiation, and recompute effective limits whenever state changes so
+protocol checks and parser configuration always use the currently applied
+envelope.
 
 Core requirement:
+
 - Always enforce the most restrictive limit among participating sources.
 - Broker may further restrict limits per connection.
-- Negotiated/effective limits are transient and must be recomputed after reconnect.
+- Negotiated/effective limits are transient and must be recomputed after
+  reconnect.
 
 ## Non-Goals
 
-- No persistence of broker-negotiated capability envelope across network reconnections.
+- No persistence of broker-negotiated capability envelope across network
+  reconnections.
 - No change to MQTT wire protocol semantics.
 - No external storage API in this change.
 
 ## Spec and lifecycle grounding
 
-- MQTT v5 reconnect requires a new `CONNECT`/`CONNACK` exchange per transport connection.
-- `Session Present=1` resumes session data, but capability limits are still renegotiated.
+- MQTT v5 reconnect requires a new `CONNECT`/`CONNACK` exchange per transport
+  connection.
+- `Session Present=1` resumes session data, but capability limits are still
+  renegotiated.
 - Therefore negotiated/effective limits are per-connection transient data.
 
 Placement decision:
+
 - Persistent: `ClientState` only session continuity data.
 - Transient: `ClientScratchpad` negotiated and effective limits.
 
@@ -34,7 +41,8 @@ Placement decision:
 
 ## 1) `ClientSettings` additions (application policy)
 
-`ClientSettings` keeps parser settings and gains local negotiation policy fields:
+`ClientSettings` keeps parser settings and gains local negotiation policy
+fields:
 
 - Parser maxima (existing):
   - `max_bytes_string: u16`
@@ -55,9 +63,11 @@ Placement decision:
   - `default_request_problem_information: Option<bool>`
   - `default_keep_alive: Option<NonZero<u16>>`
 
-Defaults remain permissive except parser maxima inherited from `ParserSettings::default()`.
+Defaults remain permissive except parser maxima inherited from
+`ParserSettings::default()`.
 
 Topic alias policy note:
+
 - `None` means "no additional app cap".
 - `Some(0)` explicitly disables inbound aliases.
 - `Some(n)` caps inbound alias maximum to `n`.
@@ -84,17 +94,19 @@ Topic alias policy note:
   - `effective_wildcard_subscription_available: bool`
   - `effective_shared_subscription_available: bool`
   - `effective_subscription_identifiers_available: bool`
-  - Keepalive effective runtime fields (existing flattened keepalive fields remain)
+  - Keepalive effective runtime fields (existing flattened keepalive fields
+    remain)
 
 Naming rule:
+
 - Do not add client/broker prefixes where one effective value is truly shared.
 - Use neutral names only for shared limits/capabilities.
 - Prefix only when audience differs and values diverge:
   - client-only value: `effective_client_*`
   - broker-only value: `effective_broker_*`
 
-Broker-advertised raw values may also remain in scratchpad for traceability if needed,
-but all behavior checks must reference effective fields.
+Broker-advertised raw values may also remain in scratchpad for traceability if
+needed, but all behavior checks must reference effective fields.
 
 ## Effective-limit recomputation model
 
@@ -154,13 +166,15 @@ effective_max_remaining_bytes = min(
 ```
 
 Direction note:
+
 - `CONNECT.maximum_packet_size` limits inbound packets accepted by the client.
 - `CONNACK.maximum_packet_size` limits outbound packets sent to the broker.
 - These are different directions and must not be collapsed into one field.
 
 ## Parser integration
 
-`parser_settings()` must use scratchpad effective parser fields, not raw `ClientSettings`:
+`parser_settings()` must use scratchpad effective parser fields, not raw
+`ClientSettings`:
 
 ```rust
 ParserSettings {
@@ -179,9 +193,10 @@ This keeps parser behavior aligned with currently applied negotiation envelope.
 When building CONNECT:
 
 - Use explicit `ConnectionOptions` values when provided.
-- Otherwise use `ClientSettings` defaults for request fields (`default_keep_alive`,
-  request info defaults).
-- Clamp outgoing CONNECT-advertised client-facing limits to app policy maxima before encoding.
+- Otherwise use `ClientSettings` defaults for request fields
+  (`default_keep_alive`, request info defaults).
+- Clamp outgoing CONNECT-advertised client-facing limits to app policy maxima
+  before encoding.
 
 Example:
 
@@ -194,30 +209,36 @@ Broker-facing limits are then applied from CONNACK after connect succeeds.
 
 ## Behavioral invariants
 
-- Effective limits are always available and internally consistent after every transition.
+- Effective limits are always available and internally consistent after every
+  transition.
 - Runtime checks (`publish`, `subscribe`, packet-size, keepalive, alias checks)
   use effective fields only.
 - Directional checks use directional effective fields only (client vs broker).
-- Reconnection starts from app+connect baseline and re-applies broker restrictions
-  when CONNACK arrives.
-- Session state persistence does not carry negotiated/effective connection limits.
+- Reconnection starts from app+connect baseline and re-applies broker
+  restrictions when CONNACK arrives.
+- Session state persistence does not carry negotiated/effective connection
+  limits.
 
 ## Testing strategy
 
-Required additions/updates in `crates/sansio-mqtt-v5-protocol/tests/client_protocol.rs`:
+Required additions/updates in
+`crates/sansio-mqtt-v5-protocol/tests/client_protocol.rs`:
 
 1. Effective recompute on `Connect`:
    - connect options less restrictive than app still resolve to app caps.
 2. Effective recompute on `ConnAck`:
-   - broker-lower receive maximum/packet size/capabilities further restrict broker-facing behavior.
+   - broker-lower receive maximum/packet size/capabilities further restrict
+     broker-facing behavior.
 3. Parser settings alignment:
    - parser uses effective values (including max_remaining_bytes clamp).
 4. Reconnect reset/recompute:
-   - after socket close/disconnect, effective limits reset and recompute for next connection.
+   - after socket close/disconnect, effective limits reset and recompute for
+     next connection.
 5. Capability booleans:
    - any app `allow_* = false` remains false even if broker advertises true.
 
-Also run tokio crate tests to validate constructor/config call sites compile and behave as before.
+Also run tokio crate tests to validate constructor/config call sites compile and
+behave as before.
 
 ## Verification commands
 

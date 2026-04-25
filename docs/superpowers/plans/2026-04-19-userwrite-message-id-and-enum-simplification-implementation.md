@@ -1,25 +1,36 @@
 # UserWrite Message ID and Enum Simplification Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use
+> superpowers:subagent-driven-development (recommended) or
+> superpowers:executing-plans to implement this plan task-by-task. Steps use
+> checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Split inbound message output variants, introduce opaque inbound message ids, and simplify driver-facing enum derives while preserving protocol behavior.
+**Goal:** Split inbound message output variants, introduce opaque inbound
+message ids, and simplify driver-facing enum derives while preserving protocol
+behavior.
 
-**Architecture:** First update protocol public types and compile-facing tests, then adapt protocol state-machine internals to use opaque ids, then update tokio bridge/event mapping. Keep behavior unchanged except the requested output/API surface changes and derive pruning.
+**Architecture:** First update protocol public types and compile-facing tests,
+then adapt protocol state-machine internals to use opaque ids, then update tokio
+bridge/event mapping. Keep behavior unchanged except the requested output/API
+surface changes and derive pruning.
 
-**Tech Stack:** Rust, Cargo, protocol state-machine tests, tokio integration tests.
+**Tech Stack:** Rust, Cargo, protocol state-machine tests, tokio integration
+tests.
 
 ---
 
 ### Task 1: Reshape protocol public types and add opaque `InboundMessageId`
 
 **Files:**
+
 - Modify: `crates/sansio-mqtt-v5-protocol/src/types.rs`
 - Modify: `crates/sansio-mqtt-v5-protocol/src/lib.rs`
 - Test: `crates/sansio-mqtt-v5-protocol/tests/client_protocol.rs`
 
 - [ ] **Step 1: Write failing tests for new output/input API shape**
 
-Update `crates/sansio-mqtt-v5-protocol/tests/client_protocol.rs` test(s) to compile against:
+Update `crates/sansio-mqtt-v5-protocol/tests/client_protocol.rs` test(s) to
+compile against:
 
 ```rust
 let msg = BrokerMessage::default();
@@ -30,7 +41,8 @@ let ack_cmd = UserWriteIn::AcknowledgeMessage(id);
 let reject_cmd = UserWriteIn::RejectMessage(id, IncomingRejectReason::UnspecifiedError);
 ```
 
-Also add one API-shape test that ensures `DriverEventIn`/`DriverEventOut` are still pattern-matchable without requiring equality.
+Also add one API-shape test that ensures `DriverEventIn`/`DriverEventOut` are
+still pattern-matchable without requiring equality.
 
 - [ ] **Step 2: Run targeted test to verify RED**
 
@@ -40,13 +52,14 @@ Run:
 cargo test -p sansio-mqtt-v5-protocol --test client_protocol user_write_out_exposes_qos_delivery_events_with_packet_id -- --nocapture
 ```
 
-Expected: FAIL due to missing split variants and missing `InboundMessageId` type wiring.
+Expected: FAIL due to missing split variants and missing `InboundMessageId` type
+wiring.
 
 - [ ] **Step 3: Implement type/API changes in `types.rs`**
 
 In `crates/sansio-mqtt-v5-protocol/src/types.rs`:
 
-1) Add opaque id:
+1. Add opaque id:
 
 ```rust
 #[derive(Debug)]
@@ -58,29 +71,32 @@ impl InboundMessageId {
 }
 ```
 
-2) Split output variants:
+2. Split output variants:
 
 ```rust
 ReceivedMessage(BrokerMessage),
 ReceivedMessageWithRequiredAcknowledgement(InboundMessageId, BrokerMessage),
 ```
 
-3) Update command ids:
+3. Update command ids:
 
 ```rust
 AcknowledgeMessage(InboundMessageId),
 RejectMessage(InboundMessageId, IncomingRejectReason),
 ```
 
-4) Remove derives from driver-facing enums to `#[derive(Debug)]` only:
+4. Remove derives from driver-facing enums to `#[derive(Debug)]` only:
+
 - `UserWriteOut`
 - `UserWriteIn`
 - `DriverEventIn`
 - `DriverEventOut`
 
-**Important:** If compilation requires adding any extra derive trait, stop and ask user for explicit approval before adding it.
+**Important:** If compilation requires adding any extra derive trait, stop and
+ask user for explicit approval before adding it.
 
-5) Re-export `InboundMessageId` from `crates/sansio-mqtt-v5-protocol/src/lib.rs`.
+5. Re-export `InboundMessageId` from
+   `crates/sansio-mqtt-v5-protocol/src/lib.rs`.
 
 - [ ] **Step 4: Run targeted protocol test to verify GREEN for API shape**
 
@@ -102,15 +118,20 @@ git commit -m "refactor(protocol): split inbound message outputs and add opaque 
 ### Task 2: Adapt protocol state machine internals to opaque ids and split outputs
 
 **Files:**
+
 - Modify: `crates/sansio-mqtt-v5-protocol/src/proto.rs`
 - Modify: `crates/sansio-mqtt-v5-protocol/tests/client_protocol.rs`
 
 - [ ] **Step 1: Add failing behavior assertions for new variants**
 
-In `crates/sansio-mqtt-v5-protocol/tests/client_protocol.rs`, update relevant tests to require:
+In `crates/sansio-mqtt-v5-protocol/tests/client_protocol.rs`, update relevant
+tests to require:
+
 - QoS0 inbound publish emits `ReceivedMessage(msg)`
-- QoS1/QoS2 inbound publish emits `ReceivedMessageWithRequiredAcknowledgement(id, msg)`
-- `AcknowledgeMessage(id)` / `RejectMessage(id, reason)` behavior still matches previous semantics
+- QoS1/QoS2 inbound publish emits
+  `ReceivedMessageWithRequiredAcknowledgement(id, msg)`
+- `AcknowledgeMessage(id)` / `RejectMessage(id, reason)` behavior still matches
+  previous semantics
 
 Keep existing manual ack/reject behavior assertions intact.
 
@@ -128,15 +149,18 @@ Expected: FAIL until output variant and id plumbing are updated.
 
 In `crates/sansio-mqtt-v5-protocol/src/proto.rs`:
 
-1) When emitting inbound user messages:
-- QoS0 -> `UserWriteOut::ReceivedMessage(message)`
-- QoS1/QoS2 -> `UserWriteOut::ReceivedMessageWithRequiredAcknowledgement(InboundMessageId::new(packet_id), message)`
+1. When emitting inbound user messages:
 
-2) For command handling:
+- QoS0 -> `UserWriteOut::ReceivedMessage(message)`
+- QoS1/QoS2 ->
+  `UserWriteOut::ReceivedMessageWithRequiredAcknowledgement(InboundMessageId::new(packet_id), message)`
+
+2. For command handling:
+
 - `UserWriteIn::AcknowledgeMessage(id)` use `id.get()` internally
 - `UserWriteIn::RejectMessage(id, reason)` use `id.get()` internally
 
-3) Keep existing conflict/reject-duplicate hardening behavior unchanged.
+3. Keep existing conflict/reject-duplicate hardening behavior unchanged.
 
 - [ ] **Step 4: Run full protocol tests**
 
@@ -157,13 +181,16 @@ git commit -m "refactor(protocol): route manual ack flow through opaque inbound 
 ### Task 3: Update tokio event bridge and tests for split message variants
 
 **Files:**
+
 - Modify: `crates/sansio-mqtt-v5-tokio/src/event.rs`
 - Modify: `crates/sansio-mqtt-v5-tokio/tests/client_event_loop.rs`
-- Modify: `crates/sansio-mqtt-v5-tokio/examples/cli.rs` (if needed for new event shape)
+- Modify: `crates/sansio-mqtt-v5-tokio/examples/cli.rs` (if needed for new event
+  shape)
 
 - [ ] **Step 1: Write failing tokio mapping tests first**
 
-Update/add tests in `crates/sansio-mqtt-v5-tokio/tests/client_event_loop.rs` to assert mapping of:
+Update/add tests in `crates/sansio-mqtt-v5-tokio/tests/client_event_loop.rs` to
+assert mapping of:
 
 ```rust
 UserWriteOut::ReceivedMessage(msg)
@@ -193,7 +220,8 @@ MessageWithRequiredAcknowledgement(InboundMessageId, BrokerMessage),
 
 Update `from_protocol_output` mapping accordingly.
 
-Adjust `crates/sansio-mqtt-v5-tokio/examples/cli.rs` pattern matches for the new variants if compilation requires.
+Adjust `crates/sansio-mqtt-v5-tokio/examples/cli.rs` pattern matches for the new
+variants if compilation requires.
 
 - [ ] **Step 4: Run tokio tests and workspace tests**
 
@@ -214,11 +242,14 @@ git commit -m "refactor(tokio): split inbound message events by ack requirement"
 ### Task 4: Derive-pruning enforcement and final checks
 
 **Files:**
-- Modify: `crates/sansio-mqtt-v5-protocol/tests/client_protocol.rs` (assertion style updates)
+
+- Modify: `crates/sansio-mqtt-v5-protocol/tests/client_protocol.rs` (assertion
+  style updates)
 
 - [ ] **Step 1: Replace equality-based assertions for driver-facing enums**
 
 In protocol tests, migrate any `assert_eq!` relying on `PartialEq` for:
+
 - `UserWriteOut`
 - `UserWriteIn`
 - `DriverEventIn`
@@ -247,7 +278,8 @@ rg "#\[derive\(" crates/sansio-mqtt-v5-protocol/src/types.rs
 
 Verify driver-facing enums are `Debug` only.
 
-If compile currently depends on extra traits for these enums, STOP and request user review before adding traits.
+If compile currently depends on extra traits for these enums, STOP and request
+user review before adding traits.
 
 - [ ] **Step 4: Commit Task 4**
 
@@ -259,9 +291,12 @@ git commit -m "test(protocol): align assertions with debug-only driver enums"
 ## Spec Coverage Check
 
 - Split `ReceivedMessage` into two explicit variants: Task 1 + Task 2 + Task 3.
-- Opaque wrapper type for inbound ids with no public construction: Task 1 + Task 2.
-- Remove `Clone`/`PartialEq`/`Eq` derives from driver-facing enums: Task 1 + Task 4.
-- “If extra derive is required, review with user”: explicit gate in Task 1 and Task 4.
+- Opaque wrapper type for inbound ids with no public construction: Task 1 +
+  Task 2.
+- Remove `Clone`/`PartialEq`/`Eq` derives from driver-facing enums: Task 1 +
+  Task 4.
+- “If extra derive is required, review with user”: explicit gate in Task 1 and
+  Task 4.
 
 ## Placeholder Scan
 

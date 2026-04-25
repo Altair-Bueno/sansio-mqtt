@@ -1,18 +1,29 @@
 # MQTT v5 Tokio Client Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use
+> superpowers:subagent-driven-development (recommended) or
+> superpowers:executing-plans to implement this plan task-by-task. Steps use
+> checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Implement a Tokio-native MQTT v5 client crate over the sansio protocol engine, and migrate the interactive example to an env-driven echo program with reconnect behavior that does not drain stdin while disconnected.
+**Goal:** Implement a Tokio-native MQTT v5 client crate over the sansio protocol
+engine, and migrate the interactive example to an env-driven echo program with
+reconnect behavior that does not drain stdin while disconnected.
 
-**Architecture:** The Tokio crate exposes a split API with `Client` (command handle) and `EventLoop` (single network/protocol owner). `connect()` wires channels, socket, and protocol bootstrap. The event loop drives read/write/event/timeout integration via Tokio `select!`, and the example uses a reconnect-aware driver loop built on `poll()`.
+**Architecture:** The Tokio crate exposes a split API with `Client` (command
+handle) and `EventLoop` (single network/protocol owner). `connect()` wires
+channels, socket, and protocol bootstrap. The event loop drives
+read/write/event/timeout integration via Tokio `select!`, and the example uses a
+reconnect-aware driver loop built on `poll()`.
 
-**Tech Stack:** Rust, Tokio (`net`, `sync`, `time`, `io-util`, `io-std`, `signal`), sansio, `sansio-mqtt-v5-protocol`, Cargo tests/examples.
+**Tech Stack:** Rust, Tokio (`net`, `sync`, `time`, `io-util`, `io-std`,
+`signal`), sansio, `sansio-mqtt-v5-protocol`, Cargo tests/examples.
 
 ---
 
 ### Task 1: Implement Tokio crate public API and runtime loop
 
 **Files:**
+
 - Create: `crates/sansio-mqtt-v5-tokio/src/client.rs`
 - Create: `crates/sansio-mqtt-v5-tokio/src/connect.rs`
 - Create: `crates/sansio-mqtt-v5-tokio/src/error.rs`
@@ -38,7 +49,8 @@ async fn connect_api_exposes_split_handles() {
 
 - [ ] **Step 2: Run test and verify failure**
 
-Run: `cargo test -p sansio-mqtt-v5-tokio connect_api_exposes_split_handles -- --nocapture`
+Run:
+`cargo test -p sansio-mqtt-v5-tokio connect_api_exposes_split_handles -- --nocapture`
 
 Expected: FAIL due to missing exported types/functions.
 
@@ -71,7 +83,8 @@ async fn client_publish_enqueues_command() {
 
 - [ ] **Step 5: Run test and verify failure**
 
-Run: `cargo test -p sansio-mqtt-v5-tokio client_publish_enqueues_command -- --nocapture`
+Run:
+`cargo test -p sansio-mqtt-v5-tokio client_publish_enqueues_command -- --nocapture`
 
 Expected: FAIL due to unimplemented command channel plumbing.
 
@@ -102,7 +115,8 @@ fn maps_protocol_outputs_to_public_events() {
 
 - [ ] **Step 8: Run test and verify failure**
 
-Run: `cargo test -p sansio-mqtt-v5-tokio maps_protocol_outputs_to_public_events -- --nocapture`
+Run:
+`cargo test -p sansio-mqtt-v5-tokio maps_protocol_outputs_to_public_events -- --nocapture`
 
 Expected: FAIL due to missing mapper.
 
@@ -131,11 +145,13 @@ async fn poll_emits_connected_after_connack_flow() {
 
 - [ ] **Step 11: Run test and verify failure**
 
-Run: `cargo test -p sansio-mqtt-v5-tokio poll_emits_connected_after_connack_flow -- --nocapture`
+Run:
+`cargo test -p sansio-mqtt-v5-tokio poll_emits_connected_after_connack_flow -- --nocapture`
 
 Expected: FAIL due to missing event loop orchestration.
 
-- [ ] **Step 12: Implement EventLoop + connect bootstrap with minimal passing behavior**
+- [ ] **Step 12: Implement EventLoop + connect bootstrap with minimal passing
+      behavior**
 
 ```rust
 pub async fn connect(options: ConnectOptions) -> Result<(Client, EventLoop), ConnectError> {
@@ -170,6 +186,7 @@ git commit -m "feat(tokio): add split client and event loop API"
 ### Task 2: Migrate example to reconnecting echo mode
 
 **Files:**
+
 - Delete: `crates/sansio-mqtt-v5-tokio/examples/connect_test_mosquitto.rs`
 - Create: `crates/sansio-mqtt-v5-tokio/examples/echo.rs`
 - Create: `crates/sansio-mqtt-v5-tokio/tests/echo_example_contract.rs`
@@ -187,7 +204,8 @@ fn echo_example_uses_broker_and_topic_env_vars() {
 
 - [ ] **Step 2: Run test and verify failure**
 
-Run: `cargo test -p sansio-mqtt-v5-tokio echo_example_uses_broker_and_topic_env_vars -- --nocapture`
+Run:
+`cargo test -p sansio-mqtt-v5-tokio echo_example_uses_broker_and_topic_env_vars -- --nocapture`
 
 Expected: FAIL because `echo.rs` does not exist yet.
 
@@ -209,7 +227,8 @@ fn echo_driver_gates_stdin_on_connection_state() {
 
 - [ ] **Step 5: Run test and verify failure**
 
-Run: `cargo test -p sansio-mqtt-v5-tokio echo_driver_gates_stdin_on_connection_state -- --nocapture`
+Run:
+`cargo test -p sansio-mqtt-v5-tokio echo_driver_gates_stdin_on_connection_state -- --nocapture`
 
 Expected: FAIL until reconnect-aware loop exists.
 
@@ -233,6 +252,7 @@ loop {
 ```
 
 Constraints enforced by code:
+
 - read stdin only when connected (`if connected` guard in `select!`)
 - print broker payloads to stdout
 - reconnect forever with delay after disconnect/error
@@ -245,7 +265,8 @@ git rm crates/sansio-mqtt-v5-tokio/examples/connect_test_mosquitto.rs
 
 - [ ] **Step 8: Run example compile and tests**
 
-Run: `cargo test -p sansio-mqtt-v5-tokio --tests && cargo check -p sansio-mqtt-v5-tokio --examples`
+Run:
+`cargo test -p sansio-mqtt-v5-tokio --tests && cargo check -p sansio-mqtt-v5-tokio --examples`
 
 Expected: PASS.
 
@@ -259,7 +280,9 @@ git commit -m "feat(tokio): add reconnecting env-driven echo example"
 ### Task 3: Workspace verification and docs alignment
 
 **Files:**
-- Modify: `docs/superpowers/specs/2026-04-17-mqtt-v5-tokio-client-design.md` (only if implementation-driven clarifications are needed)
+
+- Modify: `docs/superpowers/specs/2026-04-17-mqtt-v5-tokio-client-design.md`
+  (only if implementation-driven clarifications are needed)
 
 - [ ] **Step 1: Run required repo checks**
 
@@ -273,7 +296,8 @@ cargo test -p sansio-mqtt-v5-tokio
 
 Expected: all commands succeed.
 
-- [ ] **Step 2: Update spec wording only if implementation diverged intentionally**
+- [ ] **Step 2: Update spec wording only if implementation diverged
+      intentionally**
 
 ```markdown
 Record exact divergence and rationale with no TODO placeholders.

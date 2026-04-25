@@ -2,15 +2,19 @@
 
 ## Goal
 
-Finish `crates/sansio-mqtt-v5-protocol` as a functional sansio MQTT v5 client MVP with strict protocol handling, typed state transitions, and no_std-first constraints.
+Finish `crates/sansio-mqtt-v5-protocol` as a functional sansio MQTT v5 client
+MVP with strict protocol handling, typed state transitions, and no_std-first
+constraints.
 
-This design targets a coherent MVP implementation in the existing scaffold (no new crates), with explicit room for later QoS1/QoS2 expansion.
+This design targets a coherent MVP implementation in the existing scaffold (no
+new crates), with explicit room for later QoS1/QoS2 expansion.
 
 ## Scope
 
 ### In scope (MVP)
 
-- Client lifecycle: open socket, CONNECT/CONNACK handshake, DISCONNECT, socket close handling.
+- Client lifecycle: open socket, CONNECT/CONNACK handshake, DISCONNECT, socket
+  close handling.
 - Inbound parsing loop with buffering/remainder handling in `handle_read`.
 - Outbound user commands:
   - connect
@@ -27,7 +31,8 @@ This design targets a coherent MVP implementation in the existing scaffold (no n
   - DISCONNECT
 - Keepalive ping cycle (PINGREQ/PINGRESP).
 - Enforce broker-advertised limits from CONNACK on outbound behavior.
-- Strict error policy: treat client-side SHOULD close guidance as MUST in this implementation.
+- Strict error policy: treat client-side SHOULD close guidance as MUST in this
+  implementation.
 
 ### Out of scope (for this MVP)
 
@@ -41,11 +46,13 @@ This design targets a coherent MVP implementation in the existing scaffold (no n
 - `#![no_std]`, `extern crate alloc`, `#![forbid(unsafe_code)]` remain enforced.
 - Use `sansio::Protocol` trait implementation as the protocol boundary.
 - Keep changes atomic and minimal within `sansio-mqtt-v5-protocol`.
-- Conformance references should use `[MQTT-x.x.x-y]` where normative behavior is implemented.
+- Conformance references should use `[MQTT-x.x.x-y]` where normative behavior is
+  implemented.
 
 ## Architecture
 
-Implement a typed-state-first protocol core inside `src/proto.rs` with `Protocol` methods as thin adapters.
+Implement a typed-state-first protocol core inside `src/proto.rs` with
+`Protocol` methods as thin adapters.
 
 ### State model
 
@@ -54,7 +61,8 @@ Implement a typed-state-first protocol core inside `src/proto.rs` with `Protocol
 - `Connected`
 - `Disconnected`
 
-Each transition is explicit and invalid transitions return `Error::InvalidStateTransition`.
+Each transition is explicit and invalid transitions return
+`Error::InvalidStateTransition`.
 
 ### Internal responsibilities
 
@@ -70,7 +78,8 @@ Each transition is explicit and invalid transitions return `Error::InvalidStateT
 
 ### Capabilities/limits cache
 
-On CONNACK, store negotiated constraints in internal fields and enforce on subsequent outbound packets:
+On CONNACK, store negotiated constraints in internal fields and enforce on
+subsequent outbound packets:
 
 - Maximum Packet Size
 - Topic Alias Maximum
@@ -92,20 +101,24 @@ pub struct ClientMessage {
 }
 ```
 
-2. Expand `Config` from empty struct to protocol/parser/runtime knobs used by the MVP implementation.
+2. Expand `Config` from empty struct to protocol/parser/runtime knobs used by
+   the MVP implementation.
 
-3. Replace empty `Error` enum with concrete variants for parse, protocol, state, encoding, and MVP limitations.
+3. Replace empty `Error` enum with concrete variants for parse, protocol, state,
+   encoding, and MVP limitations.
 
 ### Known limitation (explicit)
 
-QoS1/QoS2 outbound publish is intentionally rejected in MVP even though `ClientMessage` now carries `Qos`.
+QoS1/QoS2 outbound publish is intentionally rejected in MVP even though
+`ClientMessage` now carries `Qos`.
 
 - Behavior: `qos != Qos::AtMostOnce` returns `Error::UnsupportedQosForMvp`.
 - Follow-up required: implement QoS1/QoS2 packet flows and remove this guard.
 
 ## `handle_read` design
 
-Use the provided buffering strategy to avoid unnecessary allocations when the read buffer is empty, then parse in a loop with `ControlPacket::parse(...)`.
+Use the provided buffering strategy to avoid unnecessary allocations when the
+read buffer is empty, then parse in a loop with `ControlPacket::parse(...)`.
 
 Core behavior:
 
@@ -121,14 +134,16 @@ Parser settings are configured from `self.config` and negotiated limits.
 
 ## Protocol/error handling policy
 
-For malformed packets and protocol violations, this implementation uses strict close semantics:
+For malformed packets and protocol violations, this implementation uses strict
+close semantics:
 
 - Send DISCONNECT with the best available reason code when possible.
 - Queue `DriverEventOut::CloseSocket`.
 - Transition to `Disconnected`.
 - Return an error.
 
-This intentionally treats client-side SHOULD guidance in section 4.13.1 as MUST for robustness in this MVP.
+This intentionally treats client-side SHOULD guidance in section 4.13.1 as MUST
+for robustness in this MVP.
 
 Reason code preference:
 
@@ -139,8 +154,10 @@ Reason code preference:
 
 ### `handle_event`
 
-- `SocketConnected` in `Start/Disconnected`: transition to `Connecting`, emit CONNECT bytes.
-- `SocketClosed`: transition to `Disconnected`, emit `UserWriteOut::Disconnected`.
+- `SocketConnected` in `Start/Disconnected`: transition to `Connecting`, emit
+  CONNECT bytes.
+- `SocketClosed`: transition to `Disconnected`, emit
+  `UserWriteOut::Disconnected`.
 - socket error event: route to standardized close/error path.
 
 ### `handle_write`
@@ -175,7 +192,8 @@ Reason code preference:
 
 Add tests in protocol crate for:
 
-1. Handshake success path (`SocketConnected` -> CONNECT -> CONNACK -> Connected event).
+1. Handshake success path (`SocketConnected` -> CONNECT -> CONNACK -> Connected
+   event).
 2. Fragmented packet parsing and read remainder behavior.
 3. Malformed packet handling: disconnect + close + error.
 4. Invalid-state packet handling (e.g. PUBLISH before CONNACK).
@@ -185,7 +203,8 @@ Add tests in protocol crate for:
 8. Keepalive timeout sends PINGREQ; PINGRESP handling.
 9. Socket close drives disconnected event and state transition.
 
-Where practical, annotate tests/implementation with spec markers like `[MQTT-4.13.1-1]` and packet-specific normative IDs.
+Where practical, annotate tests/implementation with spec markers like
+`[MQTT-4.13.1-1]` and packet-specific normative IDs.
 
 ## Verification gates
 

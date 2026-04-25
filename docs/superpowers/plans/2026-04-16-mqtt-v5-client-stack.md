@@ -1,37 +1,57 @@
 # MQTT v5 Client Stack Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use
+> superpowers:subagent-driven-development (recommended) or
+> superpowers:executing-plans to implement this plan task-by-task. Steps use
+> checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Build a no_std-first MQTT v5 client stack with a shared contract crate, a statig-based state machine, and a protocol layer centered on `sansio::Protocol` consumed by a tokio runtime adapter.
+**Goal:** Build a no_std-first MQTT v5 client stack with a shared contract
+crate, a statig-based state machine, and a protocol layer centered on
+`sansio::Protocol` consumed by a tokio runtime adapter.
 
-**Architecture:** Rename the existing `sansio-mqtt-v5-statig` crate to `sansio-mqtt-v5-state-machine`, add `sansio-mqtt-v5-contract` for shared types to avoid cyclic dependencies, implement session logic in the state machine, and make `sansio-mqtt-v5-protocol` the canonical `sansio::Protocol` implementation. Reuse open-source crates wherever feasible, especially for containers, state management, timers, and channels.
+**Architecture:** Rename the existing `sansio-mqtt-v5-statig` crate to
+`sansio-mqtt-v5-state-machine`, add `sansio-mqtt-v5-contract` for shared types
+to avoid cyclic dependencies, implement session logic in the state machine, and
+make `sansio-mqtt-v5-protocol` the canonical `sansio::Protocol` implementation.
+Reuse open-source crates wherever feasible, especially for containers, state
+management, timers, and channels.
 
-**Tech Stack:** Rust workspace crates, `sansio-mqtt-v5-types`, `sansio` (`1.0.1`), `statig`, `heapless`, `thiserror` (no_std mode), `tokio`, `bytes`, `tokio-util` (DelayQueue in tokio crate), `futures`.
+**Tech Stack:** Rust workspace crates, `sansio-mqtt-v5-types`, `sansio`
+(`1.0.1`), `statig`, `heapless`, `thiserror` (no_std mode), `tokio`, `bytes`,
+`tokio-util` (DelayQueue in tokio crate), `futures`.
 
 ---
 
 ## File Structure
 
 - Modify: `Cargo.toml`
-- Rename: `crates/sansio-mqtt-v5-statig` -> `crates/sansio-mqtt-v5-state-machine`
+- Rename: `crates/sansio-mqtt-v5-statig` ->
+  `crates/sansio-mqtt-v5-state-machine`
 - Modify: `crates/sansio-mqtt-v5-state-machine/Cargo.toml`
 - Create: `crates/sansio-mqtt-v5-contract/Cargo.toml`
 - Create: `crates/sansio-mqtt-v5-contract/src/lib.rs`
-- Create: `crates/sansio-mqtt-v5-contract/src/{action.rs,error.rs,input.rs,options.rs,timer.rs}`
+- Create:
+  `crates/sansio-mqtt-v5-contract/src/{action.rs,error.rs,input.rs,options.rs,timer.rs}`
 - Create: `crates/sansio-mqtt-v5-contract/tests/contracts.rs`
-- Create: `crates/sansio-mqtt-v5-state-machine/src/{context.rs,states.rs,transitions.rs}`
+- Create:
+  `crates/sansio-mqtt-v5-state-machine/src/{context.rs,states.rs,transitions.rs}`
 - Modify: `crates/sansio-mqtt-v5-state-machine/src/lib.rs`
-- Create: `crates/sansio-mqtt-v5-state-machine/tests/{block_a_connection.rs,block_b_keepalive.rs,block_cd_publish.rs,block_ef_subscribe_qos2.rs,block_gh_inbound_disconnect.rs}`
+- Create:
+  `crates/sansio-mqtt-v5-state-machine/tests/{block_a_connection.rs,block_b_keepalive.rs,block_cd_publish.rs,block_ef_subscribe_qos2.rs,block_gh_inbound_disconnect.rs}`
 - Create: `crates/sansio-mqtt-v5-protocol/Cargo.toml`
-- Create: `crates/sansio-mqtt-v5-protocol/src/{client.rs,error.rs,lib.rs,timer_queue.rs}`
-- Create: `crates/sansio-mqtt-v5-protocol/tests/{timer_queue.rs,packet_id.rs,protocol_trait.rs,poll_decode.rs}`
+- Create:
+  `crates/sansio-mqtt-v5-protocol/src/{client.rs,error.rs,lib.rs,timer_queue.rs}`
+- Create:
+  `crates/sansio-mqtt-v5-protocol/tests/{timer_queue.rs,packet_id.rs,protocol_trait.rs,poll_decode.rs}`
 - Create: `crates/sansio-mqtt-v5-tokio/Cargo.toml`
-- Create: `crates/sansio-mqtt-v5-tokio/src/{driver.rs,lib.rs,timer.rs,transport.rs}`
+- Create:
+  `crates/sansio-mqtt-v5-tokio/src/{driver.rs,lib.rs,timer.rs,transport.rs}`
 - Create: `crates/sansio-mqtt-v5-tokio/tests/integration_mock_broker.rs`
 
 ### Task 1: Workspace rename and dependency baseline
 
 **Files:**
+
 - Modify: `Cargo.toml`
 - Modify: `crates/sansio-mqtt-v5-state-machine/Cargo.toml`
 
@@ -41,7 +61,9 @@
 cargo metadata --no-deps --format-version 1
 ```
 
-Expected: FAIL or missing package names for `sansio-mqtt-v5-state-machine`, `sansio-mqtt-v5-contract`, `sansio-mqtt-v5-protocol`, `sansio-mqtt-v5-tokio`, or missing `sansio` dependency.
+Expected: FAIL or missing package names for `sansio-mqtt-v5-state-machine`,
+`sansio-mqtt-v5-contract`, `sansio-mqtt-v5-protocol`, `sansio-mqtt-v5-tokio`, or
+missing `sansio` dependency.
 
 - [ ] **Step 2: Rename crate and update workspace dependency keys**
 
@@ -99,9 +121,11 @@ git commit -m "chore: rename statig crate and align workspace dependencies"
 ### Task 2: Create `sansio-mqtt-v5-contract` with shared boundary types
 
 **Files:**
+
 - Create: `crates/sansio-mqtt-v5-contract/Cargo.toml`
 - Create: `crates/sansio-mqtt-v5-contract/src/lib.rs`
-- Create: `crates/sansio-mqtt-v5-contract/src/{action.rs,error.rs,input.rs,options.rs,timer.rs}`
+- Create:
+  `crates/sansio-mqtt-v5-contract/src/{action.rs,error.rs,input.rs,options.rs,timer.rs}`
 - Test: `crates/sansio-mqtt-v5-contract/tests/contracts.rs`
 
 - [ ] **Step 1: Write failing contract tests**
@@ -177,9 +201,11 @@ git commit -m "feat: add shared mqtt v5 contract crate"
 ### Task 3: Scaffold state-machine internals and block A tests
 
 **Files:**
+
 - Modify: `crates/sansio-mqtt-v5-state-machine/Cargo.toml`
 - Modify: `crates/sansio-mqtt-v5-state-machine/src/lib.rs`
-- Create: `crates/sansio-mqtt-v5-state-machine/src/{context.rs,states.rs,transitions.rs}`
+- Create:
+  `crates/sansio-mqtt-v5-state-machine/src/{context.rs,states.rs,transitions.rs}`
 - Test: `crates/sansio-mqtt-v5-state-machine/tests/block_a_connection.rs`
 
 - [ ] **Step 1: Write failing block A tests (connect lifecycle)**
@@ -254,7 +280,9 @@ git commit -m "feat: scaffold no-std mqtt v5 state machine"
 ### Task 4: Implement blocks B, C, D (keepalive + QoS0/QoS1 outbound)
 
 **Files:**
-- Modify: `crates/sansio-mqtt-v5-state-machine/src/{context.rs,states.rs,transitions.rs,lib.rs}`
+
+- Modify:
+  `crates/sansio-mqtt-v5-state-machine/src/{context.rs,states.rs,transitions.rs,lib.rs}`
 - Test: `crates/sansio-mqtt-v5-state-machine/tests/block_b_keepalive.rs`
 - Test: `crates/sansio-mqtt-v5-state-machine/tests/block_cd_publish.rs`
 
@@ -342,7 +370,9 @@ git commit -m "feat: implement keepalive and outbound qos0/qos1 transitions"
 ### Task 5: Implement blocks E and F (QoS2 outbound + subscribe)
 
 **Files:**
-- Modify: `crates/sansio-mqtt-v5-state-machine/src/{context.rs,states.rs,transitions.rs}`
+
+- Modify:
+  `crates/sansio-mqtt-v5-state-machine/src/{context.rs,states.rs,transitions.rs}`
 - Test: `crates/sansio-mqtt-v5-state-machine/tests/block_ef_subscribe_qos2.rs`
 
 - [ ] **Step 1: Write failing tests for QoS2 phase flow and suback handling**
@@ -425,10 +455,13 @@ git commit -m "feat: implement qos2 outbound and subscribe transitions"
 ### Task 6: Implement blocks G and H (inbound publish + disconnect)
 
 **Files:**
-- Modify: `crates/sansio-mqtt-v5-state-machine/src/transitions.rs`
-- Test: `crates/sansio-mqtt-v5-state-machine/tests/block_gh_inbound_disconnect.rs`
 
-- [ ] **Step 1: Write failing tests for inbound qos handling and user disconnect**
+- Modify: `crates/sansio-mqtt-v5-state-machine/src/transitions.rs`
+- Test:
+  `crates/sansio-mqtt-v5-state-machine/tests/block_gh_inbound_disconnect.rs`
+
+- [ ] **Step 1: Write failing tests for inbound qos handling and user
+      disconnect**
 
 ```rust
 #[test]
@@ -494,11 +527,15 @@ git commit -m "feat: implement inbound publish and disconnect transitions"
 ### Task 7: Create protocol crate skeleton implementing `sansio::Protocol`
 
 **Files:**
-- Create: `crates/sansio-mqtt-v5-protocol/Cargo.toml`
-- Create: `crates/sansio-mqtt-v5-protocol/src/{lib.rs,error.rs,timer_queue.rs,client.rs}`
-- Test: `crates/sansio-mqtt-v5-protocol/tests/{timer_queue.rs,packet_id.rs,protocol_trait.rs}`
 
-- [ ] **Step 1: Write failing timer queue, packet-id, and trait conformance tests**
+- Create: `crates/sansio-mqtt-v5-protocol/Cargo.toml`
+- Create:
+  `crates/sansio-mqtt-v5-protocol/src/{lib.rs,error.rs,timer_queue.rs,client.rs}`
+- Test:
+  `crates/sansio-mqtt-v5-protocol/tests/{timer_queue.rs,packet_id.rs,protocol_trait.rs}`
+
+- [ ] **Step 1: Write failing timer queue, packet-id, and trait conformance
+      tests**
 
 ```rust
 #[test]
@@ -616,6 +653,7 @@ git commit -m "feat: add protocol timer queue and packet id allocator"
 ### Task 8: Implement protocol decode/dispatch through sansio push-pull methods
 
 **Files:**
+
 - Modify: `crates/sansio-mqtt-v5-protocol/src/client.rs`
 - Test: `crates/sansio-mqtt-v5-protocol/tests/poll_decode.rs`
 
@@ -658,7 +696,8 @@ fn handle_event(&mut self, evt: UserCommand) -> Result<(), Self::Error> {
 }
 ```
 
-- [ ] **Step 3: Implement timeout mapping via `poll_timeout` + `handle_timeout`**
+- [ ] **Step 3: Implement timeout mapping via `poll_timeout` +
+      `handle_timeout`**
 
 ```rust
 fn handle_timeout(&mut self, now: u32) -> Result<(), Self::Error> {
@@ -690,8 +729,10 @@ git commit -m "feat: implement sansio protocol decode event and timeout orchestr
 ### Task 9: Create tokio runtime adapter using existing async crates
 
 **Files:**
+
 - Create: `crates/sansio-mqtt-v5-tokio/Cargo.toml`
-- Create: `crates/sansio-mqtt-v5-tokio/src/{lib.rs,timer.rs,transport.rs,driver.rs}`
+- Create:
+  `crates/sansio-mqtt-v5-tokio/src/{lib.rs,timer.rs,transport.rs,driver.rs}`
 - Test: `crates/sansio-mqtt-v5-tokio/tests/integration_mock_broker.rs`
 
 - [ ] **Step 1: Write failing integration test with mock broker**
@@ -723,7 +764,8 @@ let (read_tx, read_rx) = tokio::sync::mpsc::channel::<bytes::Bytes>(32);
 let (write_tx, write_rx) = tokio::sync::mpsc::channel::<bytes::Bytes>(32);
 ```
 
-- [ ] **Step 3: Implement timer abstraction with `tokio_util::time::DelayQueue`**
+- [ ] **Step 3: Implement timer abstraction with
+      `tokio_util::time::DelayQueue`**
 
 ```rust
 // timer.rs
@@ -764,6 +806,7 @@ git commit -m "feat: add tokio driver for mqtt v5 protocol client"
 ### Task 10: Final verification and no_std compliance
 
 **Files:**
+
 - Modify: any touched files from previous tasks
 
 - [ ] **Step 1: Run formatting and linting gates**
@@ -824,9 +867,12 @@ git commit -m "chore: pass formatting linting and verification gates"
 - Only write custom code when:
   - behavior is MQTT-domain-specific, or
   - no suitable no_std-compatible crate exists.
-- Any custom utility added must be justified in PR notes with "why existing crate is insufficient".
+- Any custom utility added must be justified in PR notes with "why existing
+  crate is insufficient".
 
 ## Notes on MQTT Spec Traceability
 
-- During implementation, annotate key transition/test assertions with MQTT conformance tags (for example `[MQTT-3.1.2-24]`) where relevant.
-- Keep tags in tests close to assertions so behavior and spec references stay aligned.
+- During implementation, annotate key transition/test assertions with MQTT
+  conformance tags (for example `[MQTT-3.1.2-24]`) where relevant.
+- Keep tags in tests close to assertions so behavior and spec references stay
+  aligned.

@@ -1,11 +1,13 @@
 # MQTT v5 Client Conformance Report
 
-Date: 2026-04-18
-Scope: `crates/sansio-mqtt-v5-protocol` (with dependency validation in `crates/sansio-mqtt-v5-types`)
+Date: 2026-04-18 Scope: `crates/sansio-mqtt-v5-protocol` (with dependency
+validation in `crates/sansio-mqtt-v5-types`)
 
 ## Result
 
-- Practical conformance closure status: PASS for all currently tracked checklist items except one release-process artifact note (this file now provides that artifact).
+- Practical conformance closure status: PASS for all currently tracked checklist
+  items except one release-process artifact note (this file now provides that
+  artifact).
 
 ## Verification Commands and Outcomes
 
@@ -18,7 +20,8 @@ Scope: `crates/sansio-mqtt-v5-protocol` (with dependency validation in `crates/s
 4. `cargo fmt`
    - Result: PASS
 5. `cargo clippy -p sansio-mqtt-v5-protocol --all-targets`
-   - Result: PASS for `sansio-mqtt-v5-protocol`; warnings remain in `sansio-mqtt-v5-types` and pre-existing large-enum/style advisories.
+   - Result: PASS for `sansio-mqtt-v5-protocol`; warnings remain in
+     `sansio-mqtt-v5-types` and pre-existing large-enum/style advisories.
 
 ## Coverage Notes
 
@@ -30,5 +33,8 @@ Scope: `crates/sansio-mqtt-v5-protocol` (with dependency validation in `crates/s
 
 ## Open Risks / Follow-up
 
-- `clippy` warnings in `sansio-mqtt-v5-types` remain and are not regressions from this closure pass.
-- Additional strict formal conformance certification (beyond current practical checklist/test matrix) may still require expanded external interoperability runs.
+- `clippy` warnings in `sansio-mqtt-v5-types` remain and are not regressions
+  from this closure pass.
+- Additional strict formal conformance certification (beyond current practical
+  checklist/test matrix) may still require expanded external interoperability
+  runs.

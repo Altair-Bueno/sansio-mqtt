@@ -1,18 +1,31 @@
 # ClientSettings Effective Limit Negotiation Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use
+> superpowers:subagent-driven-development (recommended) or
+> superpowers:executing-plans to implement this plan task-by-task. Steps use
+> checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Expand `ClientSettings` into local negotiation policy input and implement directional effective limit recomputation so parser/protocol behavior always uses the currently applied limits.
+**Goal:** Expand `ClientSettings` into local negotiation policy input and
+implement directional effective limit recomputation so parser/protocol behavior
+always uses the currently applied limits.
 
-**Architecture:** Keep persistent session continuity in `ClientState` and move all negotiated/effective limits to `ClientScratchpad`. Introduce one recomputation path that runs on every relevant transition (`Connect`, `SocketConnected`, `ConnAck`, disconnect/close/error) and computes directional effective limits (`effective_client_*`, `effective_broker_*`, and shared `effective_*` where truly shared). Route parser settings and runtime checks exclusively through effective fields.
+**Architecture:** Keep persistent session continuity in `ClientState` and move
+all negotiated/effective limits to `ClientScratchpad`. Introduce one
+recomputation path that runs on every relevant transition (`Connect`,
+`SocketConnected`, `ConnAck`, disconnect/close/error) and computes directional
+effective limits (`effective_client_*`, `effective_broker_*`, and shared
+`effective_*` where truly shared). Route parser settings and runtime checks
+exclusively through effective fields.
 
-**Tech Stack:** Rust (`no_std` with `alloc`), Cargo test suite (`client_protocol` + crate/workspace tests), tokio wrapper integration.
+**Tech Stack:** Rust (`no_std` with `alloc`), Cargo test suite
+(`client_protocol` + crate/workspace tests), tokio wrapper integration.
 
 ---
 
 ### Task 1: Extend `ClientSettings` with negotiation policy fields and defaults
 
 **Files:**
+
 - Modify: `crates/sansio-mqtt-v5-protocol/src/types.rs`
 - Modify: `crates/sansio-mqtt-v5-protocol/tests/client_protocol.rs`
 
@@ -96,12 +109,15 @@ git commit -m "feat(protocol): add negotiation policy fields to client settings"
 ### Task 2: Introduce directional effective limit fields on `ClientScratchpad`
 
 **Files:**
+
 - Modify: `crates/sansio-mqtt-v5-protocol/src/proto.rs`
 - Modify: `crates/sansio-mqtt-v5-protocol/tests/client_protocol.rs`
 
-- [ ] **Step 1: Write failing compile/shape tests for effective directional fields**
+- [ ] **Step 1: Write failing compile/shape tests for effective directional
+      fields**
 
-Add tests that force directional behavior usage (client/broker distinction), for example:
+Add tests that force directional behavior usage (client/broker distinction), for
+example:
 
 ```rust
 #[test]
@@ -145,7 +161,8 @@ Initialize in `Default` with permissive values.
 
 - [ ] **Step 4: Route current checks to directional fields (mechanical pass)**
 
-Update existing checks in `proto.rs` to stop reading old negotiated fields directly and use effective directional fields where applicable:
+Update existing checks in `proto.rs` to stop reading old negotiated fields
+directly and use effective directional fields where applicable:
 
 ```rust
 // outbound inflight capacity
@@ -175,6 +192,7 @@ git commit -m "refactor(protocol): add directional effective limit fields"
 ### Task 3: Implement `recompute_effective_limits()` and call it on every transition
 
 **Files:**
+
 - Modify: `crates/sansio-mqtt-v5-protocol/src/proto.rs`
 - Modify: `crates/sansio-mqtt-v5-protocol/tests/client_protocol.rs`
 
@@ -213,11 +231,13 @@ Expected: FAIL before recomputation hook wiring is complete.
 - [ ] **Step 3: Implement `recompute_effective_limits()` in `proto.rs`**
 
 Implement one method that recalculates effective fields from:
+
 - `self.settings`
 - `self.scratchpad.pending_connect_options`
 - broker-advertised values currently in scratchpad
 
-Use helper `min_option_u16`, `min_option_u32` style local functions where useful.
+Use helper `min_option_u16`, `min_option_u32` style local functions where
+useful.
 
 Representative logic:
 
@@ -240,6 +260,7 @@ self.scratchpad.effective_broker_receive_maximum =
 - [ ] **Step 4: Call recomputation after every relevant state mutation**
 
 Ensure `recompute_effective_limits()` is called in:
+
 - `UserWriteIn::Connect` after `pending_connect_options` update
 - `DriverEventIn::SocketConnected`
 - successful `ConnAck` branch after negotiated fields are updated
@@ -266,9 +287,11 @@ git commit -m "feat(protocol): recompute effective limits on every negotiation t
 ### Task 4: Route parser settings and CONNECT defaults through effective/app policy
 
 **Files:**
+
 - Modify: `crates/sansio-mqtt-v5-protocol/src/proto.rs`
 - Modify: `crates/sansio-mqtt-v5-protocol/tests/client_protocol.rs`
-- Modify: `crates/sansio-mqtt-v5-tokio/src/connect.rs` (if constructor callsite adjustments needed)
+- Modify: `crates/sansio-mqtt-v5-tokio/src/connect.rs` (if constructor callsite
+  adjustments needed)
 
 - [ ] **Step 1: Write failing parser integration tests**
 
@@ -313,7 +336,8 @@ fn parser_settings(&self) -> ParserSettings {
 }
 ```
 
-In `build_connect_packet`, apply settings defaults when option fields are `None`.
+In `build_connect_packet`, apply settings defaults when option fields are
+`None`.
 
 - [ ] **Step 4: Run tests to verify GREEN**
 
@@ -336,9 +360,13 @@ git commit -m "feat(protocol): apply effective parser limits and connect default
 ### Task 5: Full regression and cleanup
 
 **Files:**
-- Modify: `crates/sansio-mqtt-v5-protocol/src/proto.rs` (if final fixes required)
-- Modify: `crates/sansio-mqtt-v5-protocol/src/types.rs` (if final fixes required)
-- Modify: `crates/sansio-mqtt-v5-protocol/tests/client_protocol.rs` (if final fixes required)
+
+- Modify: `crates/sansio-mqtt-v5-protocol/src/proto.rs` (if final fixes
+  required)
+- Modify: `crates/sansio-mqtt-v5-protocol/src/types.rs` (if final fixes
+  required)
+- Modify: `crates/sansio-mqtt-v5-protocol/tests/client_protocol.rs` (if final
+  fixes required)
 
 - [ ] **Step 1: Run protocol integration suite**
 
@@ -389,4 +417,5 @@ git commit -m "test(protocol): cover directional effective limit recomputation"
 - Recompute on every relevant transition: Task 3.
 - Parser configured from effective applied limits: Task 4.
 - CONNECT defaults and app-clamped outgoing client-facing values: Task 4.
-- Session persistence unaffected by negotiated transient limits: Task 3 regression paths + Task 5 full suite.
+- Session persistence unaffected by negotiated transient limits: Task 3
+  regression paths + Task 5 full suite.
