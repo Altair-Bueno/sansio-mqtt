@@ -165,7 +165,9 @@ fn on_socket_closed_or_error<Time: InstantAdd>(
             Err(Error::ProtocolError),
         )
     } else {
-        scratchpad.read_queue.push_back(UserWriteOut::Disconnected);
+        scratchpad
+            .read_queue
+            .push_back(UserWriteOut::Disconnected(None));
         (ClientState::Disconnected(Disconnected), Ok(()))
     }
 }
@@ -205,6 +207,24 @@ fn on_connack_success<Time: InstantAdd>(
         .unwrap_or(true);
     scratchpad.pending_connect_options = connecting.pending_connect_options;
     limits::recompute_effective_limits(settings, scratchpad);
+
+    // [MQTT-3.1.2-4] The server may override the session expiry interval in CONNACK.
+    // Update session_should_persist based on the server's negotiated value:
+    // Some(0) or None → do not persist; Some(n > 0) → persist.
+    scratchpad.session_should_persist = match connack.properties.session_expiry_interval {
+        Some(0) => false,
+        Some(_) => true,
+        None => {
+            scratchpad
+                .pending_connect_options
+                .session_expiry_interval
+                .unwrap_or(0)
+                > 0
+        }
+    };
+
+    // [MQTT-3.1.2-22] If the server specifies a keep-alive of 0 in CONNACK, it disables
+    // keep-alive for this connection. The client MUST use the server's value when present.
     scratchpad.keep_alive_interval_secs = match scratchpad.negotiated_server_keep_alive {
         Some(server_keep_alive) => NonZero::new(server_keep_alive),
         None => scratchpad.pending_connect_options.keep_alive,
@@ -361,7 +381,9 @@ impl<Time: InstantAdd> StateHandler<Time> for Connecting {
                 session_ops::reset_keepalive(scratchpad);
                 limits::reset_negotiated_limits(settings, session, scratchpad);
                 session_ops::maybe_reset_session_state(session, scratchpad);
-                scratchpad.read_queue.push_back(UserWriteOut::Disconnected);
+                scratchpad
+                    .read_queue
+                    .push_back(UserWriteOut::Disconnected(None));
                 (ClientState::Disconnected(Disconnected), Ok(()))
             }
             _ => (
@@ -407,11 +429,19 @@ impl<Time: InstantAdd> StateHandler<Time> for Connecting {
         self,
         _settings: &ClientSettings,
         _session: &mut ClientSession,
-        _scratchpad: &mut ClientScratchpad<Time>,
+        scratchpad: &mut ClientScratchpad<Time>,
         _now: Time,
     ) -> (ClientState, Result<(), Error>) {
-        // Keep-alive timer only runs while Connected.
-        (ClientState::Connecting(self), Ok(()))
+        // [MQTT-3.1.4-5] A timeout in the Connecting state means the server did not respond
+        // with CONNACK within the caller-imposed deadline. Close the socket and signal the error.
+        scratchpad.pending_connect_options = self.pending_connect_options;
+        scratchpad
+            .action_queue
+            .push_back(DriverEventOut::CloseSocket);
+        (
+            ClientState::Disconnected(Disconnected),
+            Err(Error::ConnectTimeout),
+        )
     }
 
     fn close(
@@ -435,7 +465,9 @@ impl<Time: InstantAdd> StateHandler<Time> for Connecting {
         session_ops::reset_keepalive(scratchpad);
         limits::reset_negotiated_limits(settings, session, scratchpad);
         session_ops::maybe_reset_session_state(session, scratchpad);
-        scratchpad.read_queue.push_back(UserWriteOut::Disconnected);
+        scratchpad
+            .read_queue
+            .push_back(UserWriteOut::Disconnected(None));
         (ClientState::Disconnected(Disconnected), Ok(()))
     }
 }

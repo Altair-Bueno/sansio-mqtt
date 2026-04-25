@@ -117,7 +117,7 @@ fn maps_publish_dropped_and_delivery_events_tuple_variants() {
     let packet_id = NonZero::new(7).expect("non-zero packet id");
 
     let connected = Event::from_protocol_output(UserWriteOut::Connected);
-    let disconnected = Event::from_protocol_output(UserWriteOut::Disconnected);
+    let disconnected = Event::from_protocol_output(UserWriteOut::Disconnected(None));
     let acknowledged = Event::from_protocol_output(UserWriteOut::PublishAcknowledged(
         packet_id,
         PubAckReasonCode::Success,
@@ -136,7 +136,7 @@ fn maps_publish_dropped_and_delivery_events_tuple_variants() {
         ));
 
     assert!(matches!(connected, Event::Connected));
-    assert!(matches!(disconnected, Event::Disconnected));
+    assert!(matches!(disconnected, Event::Disconnected(_)));
     assert!(matches!(
         acknowledged,
         Event::PublishAcknowledged(id, reason)

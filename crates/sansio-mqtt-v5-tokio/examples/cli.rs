@@ -66,8 +66,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                                 .await?;
                         }
                     }
-                    Event::Disconnected => {
-                        tracing::info!("Disconnected from broker");
+                    Event::Disconnected(reason_code) => {
+                        tracing::info!(?reason_code, "Disconnected from broker");
                     }
                     Event::Message(message) => {
                         tracing::info!(topic = %message.topic, len = message.payload.len(), "Received message");
