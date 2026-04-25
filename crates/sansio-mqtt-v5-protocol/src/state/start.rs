@@ -10,8 +10,8 @@ use crate::state::connecting::Connecting;
 use crate::state::disconnected::Disconnected;
 use crate::state::{ClientState, StateHandler};
 use crate::types::{
-    ClientSettings, ConnectionOptions, DriverEventIn, DriverEventOut, Error, UserWriteIn,
-    UserWriteOut,
+    ClientSettings, ConnectionOptions, DriverEventIn, DriverEventOut, Error, InstantAdd,
+    UserWriteIn, UserWriteOut,
 };
 
 #[allow(dead_code)]
@@ -26,7 +26,7 @@ pub(crate) struct Start;
 /// The actual transition to Connecting happens when `SocketConnected` fires.
 ///
 /// [MQTT-3.1.2-4] Clean Start=1 starts a new Session.
-pub(crate) fn store_connect_options_and_enqueue_open_socket<Time: Copy + Ord + 'static>(
+pub(crate) fn store_connect_options_and_enqueue_open_socket<Time: InstantAdd>(
     settings: &ClientSettings,
     session: &mut ClientSession,
     scratchpad: &mut ClientScratchpad<Time>,
@@ -55,7 +55,7 @@ pub(crate) fn store_connect_options_and_enqueue_open_socket<Time: Copy + Ord + '
     }
 }
 
-impl<Time: Copy + Ord + 'static> StateHandler<Time> for Start {
+impl<Time: InstantAdd> StateHandler<Time> for Start {
     fn handle_control_packet(
         self,
         settings: &ClientSettings,

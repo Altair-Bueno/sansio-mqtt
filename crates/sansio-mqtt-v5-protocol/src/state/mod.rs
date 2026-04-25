@@ -12,7 +12,7 @@ use sansio_mqtt_v5_types::ControlPacket;
 
 use crate::scratchpad::ClientScratchpad;
 use crate::session::ClientSession;
-use crate::types::{ClientSettings, DriverEventIn, Error, UserWriteIn};
+use crate::types::{ClientSettings, DriverEventIn, Error, InstantAdd, UserWriteIn};
 
 /// The MQTT client lifecycle as a type-state FSM.
 ///
@@ -31,7 +31,7 @@ pub(crate) enum ClientState {
 }
 
 #[allow(dead_code)]
-pub(crate) trait StateHandler<Time>: Sized {
+pub(crate) trait StateHandler<Time: InstantAdd>: Sized {
     fn handle_control_packet(
         self,
         settings: &ClientSettings,
@@ -72,7 +72,7 @@ pub(crate) trait StateHandler<Time>: Sized {
     ) -> (ClientState, Result<(), Error>);
 }
 
-impl<Time: Copy + Ord + 'static> StateHandler<Time> for ClientState {
+impl<Time: InstantAdd> StateHandler<Time> for ClientState {
     fn handle_control_packet(
         self,
         settings: &ClientSettings,

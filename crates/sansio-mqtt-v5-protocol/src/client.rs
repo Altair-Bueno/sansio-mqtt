@@ -85,10 +85,26 @@ impl<Time> Client<Time> {
     }
 }
 
-impl<Time> Protocol<Bytes, UserWriteIn, DriverEventIn> for Client<Time>
-where
-    Time: Copy + Ord + 'static,
-{
+impl<Time: InstantAdd> Client<Time> {
+    /// Arms the keep-alive timer so that the first deadline fires one keep-alive interval
+    /// after `now`.
+    ///
+    /// Call this immediately after observing [`UserWriteOut::Connected`] (i.e., after a
+    /// successful CONNACK) to start the keep-alive machinery.  If no keep-alive was
+    /// negotiated this is a no-op.
+    ///
+    /// # Keep-alive specification
+    ///
+    /// [MQTT-3.1.2-22] The Client MUST send a PINGREQ if no other packet has been sent
+    /// within the keep-alive period.
+    pub fn arm_keep_alive_timer(&mut self, now: Time) {
+        if let Some(interval_secs) = self.scratchpad.keep_alive_interval_secs {
+            self.scratchpad.next_timeout = Some(now.add_secs(interval_secs.get()));
+        }
+    }
+}
+
+impl<Time: InstantAdd> Protocol<Bytes, UserWriteIn, DriverEventIn> for Client<Time> {
     type Rout = UserWriteOut;
     type Wout = Bytes;
     type Eout = DriverEventOut;

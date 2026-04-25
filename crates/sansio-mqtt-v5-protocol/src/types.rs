@@ -1,3 +1,43 @@
+/// Trait for time types that support deadline arithmetic with keep-alive intervals.
+///
+/// Implementors can compute a future deadline by adding a number of seconds to
+/// a current instant.  The protocol crate uses this to schedule keep-alive
+/// timeouts without a dependency on any specific time library.
+///
+/// # Implementing for custom time types
+///
+/// ```rust
+/// use sansio_mqtt_v5_protocol::InstantAdd;
+///
+/// #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+/// struct MyTick(u64);
+///
+/// impl InstantAdd for MyTick {
+///     fn add_secs(self, secs: u16) -> Self {
+///         MyTick(self.0 + u64::from(secs))
+///     }
+/// }
+/// ```
+pub trait InstantAdd: Copy + Ord + 'static {
+    /// Returns a new instant that is `secs` seconds after `self`.
+    fn add_secs(self, secs: u16) -> Self;
+}
+
+impl InstantAdd for u64 {
+    #[inline]
+    fn add_secs(self, secs: u16) -> Self {
+        self + u64::from(secs)
+    }
+}
+
+#[cfg(feature = "tokio")]
+impl InstantAdd for ::tokio::time::Instant {
+    #[inline]
+    fn add_secs(self, secs: u16) -> Self {
+        self + core::time::Duration::from_secs(u64::from(secs))
+    }
+}
+
 // Reexport types from the sansio-mqtt-v5-types crate for usability
 pub use sansio_mqtt_v5_types::AuthenticationKind;
 pub use sansio_mqtt_v5_types::BinaryData;

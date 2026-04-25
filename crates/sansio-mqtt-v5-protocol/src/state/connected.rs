@@ -30,7 +30,7 @@ use crate::state::disconnected::Disconnected;
 use crate::state::{ClientState, StateHandler};
 use crate::types::{
     BrokerMessage, ClientMessage, ClientSettings, DriverEventIn, DriverEventOut, Error,
-    InboundMessageId, IncomingRejectReason, UserWriteIn, UserWriteOut,
+    InboundMessageId, IncomingRejectReason, InstantAdd, UserWriteIn, UserWriteOut,
 };
 
 #[derive(Debug)]
@@ -242,7 +242,7 @@ fn build_outbound_publish(
     Ok((publish, inflight_state))
 }
 
-impl<Time: Copy + Ord + 'static> StateHandler<Time> for Connected {
+impl<Time: InstantAdd> StateHandler<Time> for Connected {
     fn handle_control_packet(
         self,
         settings: &ClientSettings,
@@ -827,10 +827,10 @@ impl<Time: Copy + Ord + 'static> StateHandler<Time> for Connected {
         scratchpad: &mut ClientScratchpad<Time>,
         now: Time,
     ) -> (ClientState, Result<(), Error>) {
-        if scratchpad.keep_alive_interval_secs.is_none() {
+        let Some(interval_secs) = scratchpad.keep_alive_interval_secs else {
             scratchpad.next_timeout = None;
             return (ClientState::Connected(self), Ok(()));
-        }
+        };
 
         if scratchpad.keep_alive_ping_outstanding {
             // [MQTT-3.1.2-24] [MQTT-4.13.1-1] Keep Alive timeout closes the network connection.
@@ -846,10 +846,13 @@ impl<Time: Copy + Ord + 'static> StateHandler<Time> for Connected {
             );
         }
 
+        // Schedule the next keep-alive check one full interval from now.
+        let next_deadline = now.add_secs(interval_secs.get());
+
         if scratchpad.keep_alive_saw_network_activity {
             // [MQTT-3.1.2-22] Any control packet traffic resets keep-alive idle detection.
             scratchpad.keep_alive_saw_network_activity = false;
-            scratchpad.next_timeout = Some(now);
+            scratchpad.next_timeout = Some(next_deadline);
             return (ClientState::Connected(self), Ok(()));
         }
 
@@ -857,7 +860,7 @@ impl<Time: Copy + Ord + 'static> StateHandler<Time> for Connected {
         match queues::enqueue_packet(scratchpad, &ControlPacket::PingReq(PingReq {})) {
             Ok(()) => {
                 scratchpad.keep_alive_ping_outstanding = true;
-                scratchpad.next_timeout = Some(now);
+                scratchpad.next_timeout = Some(next_deadline);
                 (ClientState::Connected(self), Ok(()))
             }
             Err(e) => (ClientState::Connected(self), Err(e)),

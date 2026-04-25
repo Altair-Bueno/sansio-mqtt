@@ -4,13 +4,13 @@ use crate::scratchpad::ClientScratchpad;
 use crate::session::ClientSession;
 use crate::state::connecting::Connecting;
 use crate::state::{ClientState, StateHandler};
-use crate::types::{ClientSettings, DriverEventIn, DriverEventOut, Error, UserWriteIn};
+use crate::types::{ClientSettings, DriverEventIn, DriverEventOut, Error, InstantAdd, UserWriteIn};
 
 #[allow(dead_code)]
 #[derive(Debug)]
 pub(crate) struct Disconnected;
 
-impl<Time: Copy + Ord + 'static> StateHandler<Time> for Disconnected {
+impl<Time: InstantAdd> StateHandler<Time> for Disconnected {
     fn handle_control_packet(
         self,
         _settings: &ClientSettings,

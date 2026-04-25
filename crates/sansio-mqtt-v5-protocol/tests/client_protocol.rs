@@ -3506,7 +3506,8 @@ fn timeout_in_connected_state_enqueues_pingreq() {
 
     assert_eq!(client.handle_timeout(42), Ok(()));
     assert_eq!(client.poll_write(), Some(Bytes::from_static(&[0xC0, 0x00])));
-    assert_eq!(client.poll_timeout(), Some(42));
+    // Deadline must advance by the keep-alive interval (10), not stay at `now`.
+    assert_eq!(client.poll_timeout(), Some(52));
 }
 
 #[test]
@@ -3646,7 +3647,8 @@ fn timeout_is_cleared_on_close() {
     ));
 
     assert_eq!(close_client.handle_timeout(42), Ok(()));
-    assert_eq!(close_client.poll_timeout(), Some(42));
+    // Deadline must advance by the keep-alive interval (10), not stay at `now`.
+    assert_eq!(close_client.poll_timeout(), Some(52));
 
     assert_eq!(close_client.close(), Ok(()));
     assert_eq!(close_client.poll_timeout(), None);
@@ -3680,7 +3682,8 @@ fn timeout_is_cleared_on_close() {
     ));
 
     assert_eq!(socket_closed_client.handle_timeout(99), Ok(()));
-    assert_eq!(socket_closed_client.poll_timeout(), Some(99));
+    // Deadline must advance by the keep-alive interval (10), not stay at `now`.
+    assert_eq!(socket_closed_client.poll_timeout(), Some(109));
 
     assert_eq!(
         socket_closed_client.handle_event(DriverEventIn::SocketClosed),
@@ -4673,6 +4676,88 @@ fn unknown_suback_or_unsuback_is_protocol_error() {
         client.poll_event(),
         Some(sansio_mqtt_v5_protocol::DriverEventOut::CloseSocket)
     ));
+}
+
+// ── Keep-alive timer tests ──────────────────────────────────────────────────
+
+/// Helper: bring a `Client<u64>` to the Connected state with the given keep-alive
+/// (in seconds). Returns the client with the Connected event already drained.
+fn make_connected_client_with_keep_alive(keep_alive_secs: Option<u16>) -> Client<u64> {
+    let mut client = Client::<u64>::default();
+
+    assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
+    assert!(client.poll_write().is_some()); // drain CONNECT frame
+
+    let server_keep_alive = keep_alive_secs.and_then(|s| NonZero::new(s).map(|_| s));
+    let connack = ControlPacket::ConnAck(ConnAck {
+        kind: ConnAckKind::Other {
+            reason_code: ConnackReasonCode::Success,
+        },
+        properties: ConnAckProperties {
+            server_keep_alive,
+            ..ConnAckProperties::default()
+        },
+    });
+    assert_eq!(client.handle_read(encode_packet(&connack)), Ok(()));
+    assert!(matches!(client.poll_read(), Some(UserWriteOut::Connected)));
+    client
+}
+
+#[test]
+fn keep_alive_timer_armed_after_arm_keep_alive_timer_when_keep_alive_configured() {
+    let mut client = make_connected_client_with_keep_alive(Some(30));
+
+    assert_eq!(client.poll_timeout(), None);
+
+    client.arm_keep_alive_timer(100u64);
+    assert_eq!(client.poll_timeout(), Some(130u64));
+}
+
+#[test]
+fn keep_alive_timer_not_armed_when_no_keep_alive_configured() {
+    let mut client = make_connected_client_with_keep_alive(None);
+
+    assert_eq!(client.poll_timeout(), None);
+    client.arm_keep_alive_timer(100u64);
+    assert_eq!(client.poll_timeout(), None);
+}
+
+#[test]
+fn handle_timeout_reschedules_deadline_to_now_plus_interval_when_activity_seen() {
+    let interval_secs: u64 = 30;
+    let mut client = make_connected_client_with_keep_alive(Some(interval_secs as u16));
+
+    client.arm_keep_alive_timer(100u64);
+    assert_eq!(client.poll_timeout(), Some(130u64));
+
+    let pingresp = ControlPacket::PingResp(sansio_mqtt_v5_types::PingResp {});
+    assert_eq!(client.handle_read(encode_packet(&pingresp)), Ok(()));
+
+    assert_eq!(client.handle_timeout(130u64), Ok(()));
+    assert_eq!(client.poll_timeout(), Some(160u64));
+}
+
+#[test]
+fn handle_timeout_sends_pingreq_and_reschedules_when_no_activity() {
+    let interval_secs: u64 = 10;
+    let mut client = make_connected_client_with_keep_alive(Some(interval_secs as u16));
+
+    client.arm_keep_alive_timer(0u64);
+    assert_eq!(client.poll_timeout(), Some(10u64));
+
+    assert_eq!(client.handle_timeout(10u64), Ok(()));
+
+    assert_eq!(
+        client.poll_write(),
+        Some(bytes::Bytes::from_static(&[0xC0, 0x00]))
+    );
+    assert_eq!(client.poll_timeout(), Some(20u64));
+
+    assert_eq!(
+        client.handle_timeout(20u64),
+        Err(Error::ProtocolError),
+        "keep-alive timeout should trigger protocol error"
+    );
 }
 
 /// Regression test: `handle_event(SocketConnected)` must preserve `pending_connect_options`

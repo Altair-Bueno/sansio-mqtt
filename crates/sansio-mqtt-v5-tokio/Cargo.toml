@@ -6,7 +6,7 @@ rust-version.workspace = true
 
 [dependencies]
 sansio = { workspace = true }
-sansio-mqtt-v5-protocol = { workspace = true }
+sansio-mqtt-v5-protocol = { workspace = true, features = ["tokio"] }
 sansio-mqtt-v5-types = { workspace = true }
 bytes = { workspace = true }
 tokio = { workspace = true, features = [

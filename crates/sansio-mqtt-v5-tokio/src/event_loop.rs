@@ -32,15 +32,15 @@ impl EventLoop {
 
     pub async fn poll(&mut self) -> Result<Event, EventLoopError> {
         loop {
-            if let Some(out) = self.protocol.poll_read() {
-                return Ok(Event::from_protocol_output(out));
+            if let Some(event) = self.try_deliver_event() {
+                return Ok(event);
             }
 
             self.flush_protocol_writes().await?;
             self.handle_protocol_actions().await?;
 
-            if let Some(out) = self.protocol.poll_read() {
-                return Ok(Event::from_protocol_output(out));
+            if let Some(event) = self.try_deliver_event() {
+                return Ok(event);
             }
 
             let timeout = self.protocol.poll_timeout();
@@ -81,6 +81,18 @@ impl EventLoop {
                 }
             }
         }
+    }
+
+    // [MQTT-3.1.2-22] Arm the keep-alive timer the moment Connected is delivered so the
+    // deadline is set before the next poll_timeout() call.
+    fn try_deliver_event(&mut self) -> Option<Event> {
+        let out = self.protocol.poll_read()?;
+        let event = Event::from_protocol_output(out);
+        if matches!(event, Event::Connected) {
+            self.protocol
+                .arm_keep_alive_timer(tokio::time::Instant::now());
+        }
+        Some(event)
     }
 
     async fn flush_protocol_writes(&mut self) -> Result<(), EventLoopError> {
