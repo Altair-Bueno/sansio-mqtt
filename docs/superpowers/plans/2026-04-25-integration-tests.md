@@ -1,34 +1,44 @@
 # Integration Tests Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use
+> superpowers:subagent-driven-development (recommended) or
+> superpowers:executing-plans to implement this plan task-by-task. Steps use
+> checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add feature-gated integration tests to `sansio-mqtt-v5-tokio` that verify the full MQTT v5.0 client against a real Mosquitto 2 broker managed by testcontainers.
+**Goal:** Add feature-gated integration tests to `sansio-mqtt-v5-tokio` that
+verify the full MQTT v5.0 client against a real Mosquitto 2 broker managed by
+testcontainers.
 
-**Architecture:** Tests live in `crates/sansio-mqtt-v5-tokio/tests/integration/` and are compiled only when the `integration-tests` Cargo feature is enabled. Each test starts its own container for full isolation. Shared helpers in `common.rs` encapsulate container startup and `ConnectOptions` construction.
+**Architecture:** Tests live in `crates/sansio-mqtt-v5-tokio/tests/integration/`
+and are compiled only when the `integration-tests` Cargo feature is enabled.
+Each test starts its own container for full isolation. Shared helpers in
+`common.rs` encapsulate container startup and `ConnectOptions` construction.
 
-**Tech Stack:** testcontainers 0.23 (GenericImage + AsyncRunner), Eclipse Mosquitto 2 image, tokio multi-thread runtime, Cargo `required-features`.
+**Tech Stack:** testcontainers 0.23 (GenericImage + AsyncRunner), Eclipse
+Mosquitto 2 image, tokio multi-thread runtime, Cargo `required-features`.
 
 ---
 
 ## File Structure
 
-| File | Action | Responsibility |
-|------|--------|----------------|
-| `crates/sansio-mqtt-v5-tokio/Cargo.toml` | Modify | Add feature, `[[test]]` entry, testcontainers dev-dep |
-| `tests/integration/main.rs` | Create | `mod` declarations for all submodules |
-| `tests/integration/common.rs` | Create | Container helpers, `ConnectOptions` builders, subscribe/publish helpers |
-| `tests/integration/core_flows.rs` | Create | 5 core tests: connect, QoS 0/1/2, keep-alive |
-| `tests/integration/session.rs` | Create | 3 session tests: clean start, resumption, will |
-| `tests/integration/auth.rs` | Create | 3 auth tests: valid creds, invalid creds, anon rejected |
-| `tests/integration/mosquitto/anonymous.conf` | Create | Mosquitto config: allow anonymous, listen 1883 |
-| `tests/integration/mosquitto/authenticated.conf` | Create | Mosquitto config: require password file |
-| `tests/integration/mosquitto/passwd` | Create | Pre-generated mosquitto_passwd file |
+| File                                             | Action | Responsibility                                                          |
+| ------------------------------------------------ | ------ | ----------------------------------------------------------------------- |
+| `crates/sansio-mqtt-v5-tokio/Cargo.toml`         | Modify | Add feature, `[[test]]` entry, testcontainers dev-dep                   |
+| `tests/integration/main.rs`                      | Create | `mod` declarations for all submodules                                   |
+| `tests/integration/common.rs`                    | Create | Container helpers, `ConnectOptions` builders, subscribe/publish helpers |
+| `tests/integration/core_flows.rs`                | Create | 5 core tests: connect, QoS 0/1/2, keep-alive                            |
+| `tests/integration/session.rs`                   | Create | 3 session tests: clean start, resumption, will                          |
+| `tests/integration/auth.rs`                      | Create | 3 auth tests: valid creds, invalid creds, anon rejected                 |
+| `tests/integration/mosquitto/anonymous.conf`     | Create | Mosquitto config: allow anonymous, listen 1883                          |
+| `tests/integration/mosquitto/authenticated.conf` | Create | Mosquitto config: require password file                                 |
+| `tests/integration/mosquitto/passwd`             | Create | Pre-generated mosquitto_passwd file                                     |
 
 ---
 
 ## Task 1: Cargo.toml — Feature Flag, Dev-Dep, [[test]]
 
 **Files:**
+
 - Modify: `crates/sansio-mqtt-v5-tokio/Cargo.toml`
 
 - [ ] **Step 1: Add feature, dev-dep, and [[test]] entry**
@@ -89,7 +99,8 @@ required-features = ["integration-tests"]
 cargo test -p sansio-mqtt-v5-tokio
 ```
 
-Expected: all existing tests pass (no `mqtt_integration` binary compiled yet because feature is not enabled).
+Expected: all existing tests pass (no `mqtt_integration` binary compiled yet
+because feature is not enabled).
 
 - [ ] **Step 3: Verify feature-gated compilation succeeds**
 
@@ -97,7 +108,8 @@ Expected: all existing tests pass (no `mqtt_integration` binary compiled yet bec
 cargo test -p sansio-mqtt-v5-tokio --features integration-tests --test mqtt_integration --no-run
 ```
 
-Expected: error about missing `tests/integration/main.rs` (binary would compile if file existed). The important thing: no dependency errors.
+Expected: error about missing `tests/integration/main.rs` (binary would compile
+if file existed). The important thing: no dependency errors.
 
 - [ ] **Step 4: Commit**
 
@@ -111,8 +123,11 @@ git commit -m "feat(tokio): add integration-tests feature gate and testcontainer
 ## Task 2: Mosquitto Configuration Files
 
 **Files:**
-- Create: `crates/sansio-mqtt-v5-tokio/tests/integration/mosquitto/anonymous.conf`
-- Create: `crates/sansio-mqtt-v5-tokio/tests/integration/mosquitto/authenticated.conf`
+
+- Create:
+  `crates/sansio-mqtt-v5-tokio/tests/integration/mosquitto/anonymous.conf`
+- Create:
+  `crates/sansio-mqtt-v5-tokio/tests/integration/mosquitto/authenticated.conf`
 - Create: `crates/sansio-mqtt-v5-tokio/tests/integration/mosquitto/passwd`
 
 - [ ] **Step 1: Create anonymous.conf**
@@ -126,7 +141,8 @@ allow_anonymous true
 
 - [ ] **Step 2: Create authenticated.conf**
 
-Create `crates/sansio-mqtt-v5-tokio/tests/integration/mosquitto/authenticated.conf`:
+Create
+`crates/sansio-mqtt-v5-tokio/tests/integration/mosquitto/authenticated.conf`:
 
 ```
 listener 1883
@@ -136,7 +152,8 @@ password_file /mosquitto/config/passwd
 
 - [ ] **Step 3: Generate the passwd file**
 
-Run this command to generate a mosquitto password file for `testuser`/`testpassword`:
+Run this command to generate a mosquitto password file for
+`testuser`/`testpassword`:
 
 ```bash
 DOCKER_HOST=unix:///run/user/$(id -u)/podman/podman.sock \
@@ -149,6 +166,7 @@ Save the output (one line beginning with `testuser:$7$...`) to:
 `crates/sansio-mqtt-v5-tokio/tests/integration/mosquitto/passwd`
 
 The file should look like:
+
 ```
 testuser:$7$101$<base64-salt>$<base64-hash>
 ```
@@ -173,6 +191,7 @@ git commit -m "feat(tokio/integration): add Mosquitto config files for anonymous
 ## Task 3: Test Scaffold — main.rs and common.rs
 
 **Files:**
+
 - Create: `crates/sansio-mqtt-v5-tokio/tests/integration/main.rs`
 - Create: `crates/sansio-mqtt-v5-tokio/tests/integration/common.rs`
 
@@ -343,7 +362,8 @@ pub fn msg(topic: &str, payload: &[u8], qos: Qos) -> ClientMessage {
 }
 ```
 
-- [ ] **Step 3: Create stub files for the remaining modules so the binary compiles**
+- [ ] **Step 3: Create stub files for the remaining modules so the binary
+      compiles**
 
 Create `crates/sansio-mqtt-v5-tokio/tests/integration/core_flows.rs`:
 
@@ -385,6 +405,7 @@ git commit -m "feat(tokio/integration): add test scaffold (main.rs, common.rs, m
 ## Task 4: core_flows.rs — Connect, QoS 0/1/2, Keep-Alive
 
 **Files:**
+
 - Modify: `crates/sansio-mqtt-v5-tokio/tests/integration/core_flows.rs`
 
 - [ ] **Step 1: Write the five core flow tests**
@@ -595,7 +616,8 @@ TESTCONTAINERS_RYUK_DISABLED=true \
   cargo test -p sansio-mqtt-v5-tokio --features integration-tests --test mqtt_integration core_flows
 ```
 
-Expected: `connect_and_disconnect`, `publish_qos0`, `publish_qos1`, `publish_qos2` pass quickly; `keep_alive_maintains_connection` takes ~7 seconds.
+Expected: `connect_and_disconnect`, `publish_qos0`, `publish_qos1`,
+`publish_qos2` pass quickly; `keep_alive_maintains_connection` takes ~7 seconds.
 
 - [ ] **Step 3: Commit**
 
@@ -609,6 +631,7 @@ git commit -m "test(tokio/integration): add core_flows integration tests (connec
 ## Task 5: session.rs — Clean Start, Session Resumption, Will Message
 
 **Files:**
+
 - Modify: `crates/sansio-mqtt-v5-tokio/tests/integration/session.rs`
 
 - [ ] **Step 1: Write the three session tests**
@@ -809,7 +832,9 @@ TESTCONTAINERS_RYUK_DISABLED=true \
   cargo test -p sansio-mqtt-v5-tokio --features integration-tests --test mqtt_integration session
 ```
 
-Expected: all three session tests pass. `clean_start_clears_session` uses a 300ms timeout (fast). `session_resumption` and `will_message_delivered` complete within 3s.
+Expected: all three session tests pass. `clean_start_clears_session` uses a
+300ms timeout (fast). `session_resumption` and `will_message_delivered` complete
+within 3s.
 
 - [ ] **Step 3: Commit**
 
@@ -823,6 +848,7 @@ git commit -m "test(tokio/integration): add session integration tests (clean sta
 ## Task 6: auth.rs — Valid Credentials, Invalid Credentials, Anonymous Rejected
 
 **Files:**
+
 - Modify: `crates/sansio-mqtt-v5-tokio/tests/integration/auth.rs`
 
 - [ ] **Step 1: Write the three auth tests**
@@ -895,7 +921,8 @@ TESTCONTAINERS_RYUK_DISABLED=true \
   cargo test -p sansio-mqtt-v5-tokio --features integration-tests --test mqtt_integration auth
 ```
 
-Expected: all three auth tests pass. The two rejection tests should complete quickly (broker sends CONNACK immediately).
+Expected: all three auth tests pass. The two rejection tests should complete
+quickly (broker sends CONNACK immediately).
 
 - [ ] **Step 3: Run the full integration suite**
 
@@ -905,7 +932,8 @@ TESTCONTAINERS_RYUK_DISABLED=true \
   cargo test -p sansio-mqtt-v5-tokio --features integration-tests --test mqtt_integration
 ```
 
-Expected: 11 tests pass. Only `keep_alive_maintains_connection` takes ~7 seconds; all others complete in under 3 seconds.
+Expected: 11 tests pass. Only `keep_alive_maintains_connection` takes ~7
+seconds; all others complete in under 3 seconds.
 
 - [ ] **Step 4: Verify baseline tests still pass**
 
