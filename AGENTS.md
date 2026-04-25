@@ -1,6 +1,7 @@
 # AGENTS.md
 
 ## Index
+
 - [Purpose and Scope](#purpose-and-scope)
 - [Mandatory Checklist (MUST follow)](#mandatory-checklist-must-follow)
 - [Build and Tooling](#build-and-tooling)
@@ -11,10 +12,13 @@
 - [Key Paths](#key-paths)
 
 ## Purpose and Scope
+
 - This repo implements sansio MQTT protocol components in Rust.
 - Current focus: MQTT v5.0; future MQTT versions are planned and should follow the same conventions.
 
 ## Mandatory Checklist (MUST follow)
+
+- Follow andrej-karpathy-skills skill for all code changes
 - Spec gate: MUST read the MQTT v5.0 spec before implementing anything: https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html
 - TDD: for behavior changes, add/adjust tests before implementation when feasible; run relevant tests after.
 - Type safety: encode invariants in types; avoid runtime checks when types can enforce.
@@ -28,31 +32,37 @@
 - Change atomicity: keep changes commit-ready as a single coherent unit.
 
 ## Build and Tooling
+
 - Build system: Cargo.
 - Tests: for behavior changes follow the TDD checklist item; for non-behavior changes they are optional.
 - **rust-analyzer is REQUIRED**: at session start, verify rust-analyzer is available by running `rust-analyzer --version`. If the command fails, STOP all work and ask the user whether you should install it by running `rustup component add rust-analyzer`. Do NOT proceed with any code changes until rust-analyzer is confirmed available.
 - Use the rust-analyzer LSP for all Rust intelligence (diagnostics, type info, go-to-definition, etc.).
 
 ## Architecture and Crates
+
 - Workspace layout: `crates/*`.
 - Crate naming convention: `sansio-mqtt-<mqtt-version>-<scope>` (crate naming).
 - Follow existing crate boundaries; add new crates using the naming convention.
 
 ## Protocol and Spec Compliance
+
 - MQTT v5.0 spec is authoritative for current behavior.
 - Spec gate applies (see checklist item).
 - Cite exact conformance statements using `[MQTT-x.x.x-y]` in code or docs when relevant.
 - Apply the same citation style for future MQTT versions.
 
 ## Error Handling and Invalid States
+
 - Prefer types that make invalid states unrepresentable.
 
 ## Contribution Workflow
+
 - Keep changes minimal and atomic (see checklist).
 - Run required checks from the checklist before completion.
 - Default execution mode: subagent-driven (use subagents for plan execution by default).
 
 ## Key Paths
+
 - `AGENTS.md` (repo root)
 - `Cargo.toml`
 - `crates/*`

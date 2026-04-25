@@ -5,12 +5,7 @@
   },
   "permissions": {
     "allow": [
-      "Bash(cargo *)",
-      "Bash(grep *)",
-      "Bash(rust-analyzer *)",
-      "Bash(rustup *)",
-      "Bash(rustc *)",
-      "Bash(git *)",
+      "Bash",
       "Read($CARGO_HOME/)",
       "Read(~/$HOME/.cargo/)",
       "WebFetch",
@@ -21,7 +16,8 @@
     "superpowers@claude-plugins-official": true,
     "rust-analyzer-lsp@claude-plugins-official": true,
     "claude-md-management@claude-plugins-official": true,
-    "context7@claude-plugins-official": true
+    "context7@claude-plugins-official": true,
+    "andrej-karpathy-skills@karpathy-skills": true
   },
   "defaultMode": "acceptEdits"
 }
