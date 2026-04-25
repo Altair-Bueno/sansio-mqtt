@@ -1,6 +1,3 @@
-use sansio_mqtt_v5_types::ControlPacket;
-use sansio_mqtt_v5_types::DisconnectReasonCode;
-
 use crate::limits;
 use crate::queues;
 use crate::scratchpad::ClientScratchpad;
@@ -10,9 +7,13 @@ use crate::state::connecting::Connecting;
 use crate::state::disconnected::Disconnected;
 use crate::state::{ClientState, StateHandler};
 use crate::types::{
-    ClientSettings, ConnectionOptions, DriverEventIn, DriverEventOut, Error, InstantAdd,
-    UserWriteIn, UserWriteOut,
+    ClientSettings, ConnectionOptions, DriverEventIn, DriverEventOut, Error, UserWriteIn,
+    UserWriteOut,
 };
+use core::ops::Add;
+use core::time::Duration;
+use sansio_mqtt_v5_types::ControlPacket;
+use sansio_mqtt_v5_types::DisconnectReasonCode;
 
 #[allow(dead_code)]
 #[derive(Debug)]
@@ -26,12 +27,14 @@ pub(crate) struct Start;
 /// The actual transition to Connecting happens when `SocketConnected` fires.
 ///
 /// [MQTT-3.1.2-4] Clean Start=1 starts a new Session.
-pub(crate) fn store_connect_options_and_enqueue_open_socket<Time: InstantAdd>(
+pub(crate) fn store_connect_options_and_enqueue_open_socket<Time>(
     settings: &ClientSettings,
     session: &mut ClientSession,
     scratchpad: &mut ClientScratchpad<Time>,
     options: ConnectionOptions,
-) {
+) where
+    Time: Ord + Add<Duration, Output = Time> + Copy,
+{
     scratchpad.pending_connect_options = options;
     limits::recompute_effective_limits(settings, scratchpad);
     if scratchpad.pending_connect_options.clean_start {
@@ -55,7 +58,10 @@ pub(crate) fn store_connect_options_and_enqueue_open_socket<Time: InstantAdd>(
     }
 }
 
-impl<Time: InstantAdd> StateHandler<Time> for Start {
+impl<Time> StateHandler<Time> for Start
+where
+    Time: Ord + Add<Duration, Output = Time> + Copy,
+{
     fn handle_control_packet(
         self,
         settings: &ClientSettings,

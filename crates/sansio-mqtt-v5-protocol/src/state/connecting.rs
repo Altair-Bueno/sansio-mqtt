@@ -1,5 +1,18 @@
+use crate::limits;
+use crate::queues;
+use crate::scratchpad::ClientScratchpad;
+use crate::session::ClientSession;
+use crate::session_ops;
+use crate::state::connected::Connected;
+use crate::state::disconnected::Disconnected;
+use crate::state::{ClientState, StateHandler};
+use crate::types::{
+    ClientSettings, ConnectionOptions, DriverEventIn, DriverEventOut, Error, UserWriteIn,
+    UserWriteOut,
+};
 use core::num::NonZero;
-
+use core::ops::Add;
+use core::time::Duration;
 use sansio_mqtt_v5_types::BinaryData;
 use sansio_mqtt_v5_types::ConnAckKind;
 use sansio_mqtt_v5_types::ConnackReasonCode;
@@ -12,19 +25,6 @@ use sansio_mqtt_v5_types::DisconnectReasonCode;
 use sansio_mqtt_v5_types::Utf8String;
 use sansio_mqtt_v5_types::Will as ConnectWill;
 use sansio_mqtt_v5_types::WillProperties;
-
-use crate::limits;
-use crate::queues;
-use crate::scratchpad::ClientScratchpad;
-use crate::session::ClientSession;
-use crate::session_ops;
-use crate::state::connected::Connected;
-use crate::state::disconnected::Disconnected;
-use crate::state::{ClientState, StateHandler};
-use crate::types::{
-    ClientSettings, ConnectionOptions, DriverEventIn, DriverEventOut, Error, InstantAdd,
-    UserWriteIn, UserWriteOut,
-};
 
 #[derive(Debug)]
 pub(crate) struct Connecting {
@@ -114,12 +114,15 @@ fn build_connect(settings: &ClientSettings, options: &ConnectionOptions) -> Resu
 ///
 /// Resets negotiated limits, builds and enqueues the CONNECT packet, and
 /// resets keepalive tracking flags. On error, stays in Connecting.
-pub(crate) fn on_socket_connected<Time: InstantAdd>(
+pub(crate) fn on_socket_connected<Time>(
     connecting: Connecting,
     settings: &ClientSettings,
     session: &mut ClientSession,
     scratchpad: &mut ClientScratchpad<Time>,
-) -> (ClientState, Result<(), Error>) {
+) -> (ClientState, Result<(), Error>)
+where
+    Time: Ord + Add<Duration, Output = Time> + Copy,
+{
     limits::reset_negotiated_limits(settings, session, scratchpad);
     let connect = match build_connect(settings, &connecting.pending_connect_options) {
         Ok(packet) => packet,
@@ -145,12 +148,15 @@ pub(crate) fn on_socket_connected<Time: InstantAdd>(
 ///
 /// Clears the read buffer, resets keepalive, negotiated limits, and session state,
 /// then emits `Disconnected`. On error, also enqueues `CloseSocket` and returns `ProtocolError`.
-fn on_socket_closed_or_error<Time: InstantAdd>(
+fn on_socket_closed_or_error<Time>(
     settings: &ClientSettings,
     session: &mut ClientSession,
     scratchpad: &mut ClientScratchpad<Time>,
     is_error: bool,
-) -> (ClientState, Result<(), Error>) {
+) -> (ClientState, Result<(), Error>)
+where
+    Time: Ord + Add<Duration, Output = Time> + Copy,
+{
     scratchpad.read_buffer.clear();
     session_ops::reset_keepalive(scratchpad);
     limits::reset_negotiated_limits(settings, session, scratchpad);
@@ -177,13 +183,16 @@ fn on_socket_closed_or_error<Time: InstantAdd>(
 /// Populates negotiated scratchpad fields from CONNACK properties, recomputes
 /// effective limits, sets keep-alive from server or options, resets keepalive
 /// tracking, then transitions to Connected and emits `UserWriteOut::Connected`.
-fn on_connack_success<Time: InstantAdd>(
+fn on_connack_success<Time>(
     connecting: Connecting,
     settings: &ClientSettings,
     session: &mut ClientSession,
     scratchpad: &mut ClientScratchpad<Time>,
     connack: sansio_mqtt_v5_types::ConnAck,
-) -> (ClientState, Result<(), Error>) {
+) -> (ClientState, Result<(), Error>)
+where
+    Time: Ord + Add<Duration, Output = Time> + Copy,
+{
     scratchpad.negotiated_receive_maximum = connack
         .properties
         .receive_maximum
@@ -281,7 +290,10 @@ fn on_connack_success<Time: InstantAdd>(
     (ClientState::Connected(Connected), Ok(()))
 }
 
-impl<Time: InstantAdd> StateHandler<Time> for Connecting {
+impl<Time> StateHandler<Time> for Connecting
+where
+    Time: Ord + Add<Duration, Output = Time> + Copy,
+{
     fn handle_control_packet(
         self,
         settings: &ClientSettings,

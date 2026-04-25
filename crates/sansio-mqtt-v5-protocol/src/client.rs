@@ -6,6 +6,8 @@ use crate::state::{ClientState, StateHandler};
 use crate::types::*;
 use bytes::Bytes;
 use bytes::BytesMut;
+use core::ops::Add;
+use core::time::Duration;
 use sansio::Protocol;
 use sansio_mqtt_v5_types::ControlPacket;
 use sansio_mqtt_v5_types::DisconnectReasonCode;
@@ -85,7 +87,10 @@ impl<Time> Client<Time> {
     }
 }
 
-impl<Time: InstantAdd> Client<Time> {
+impl<Time> Client<Time>
+where
+    Time: Ord + Add<Duration, Output = Time> + Copy,
+{
     /// Arms the keep-alive timer so that the first deadline fires one keep-alive interval
     /// after `now`.
     ///
@@ -99,12 +104,16 @@ impl<Time: InstantAdd> Client<Time> {
     /// within the keep-alive period.
     pub fn arm_keep_alive_timer(&mut self, now: Time) {
         if let Some(interval_secs) = self.scratchpad.keep_alive_interval_secs {
-            self.scratchpad.next_timeout = Some(now.add_secs(interval_secs.get()));
+            self.scratchpad.next_timeout =
+                Some(now + Duration::from_secs(interval_secs.get() as u64));
         }
     }
 }
 
-impl<Time: InstantAdd> Protocol<Bytes, UserWriteIn, DriverEventIn> for Client<Time> {
+impl<Time> Protocol<Bytes, UserWriteIn, DriverEventIn> for Client<Time>
+where
+    Time: Ord + Add<Duration, Output = Time> + Copy,
+{
     type Rout = UserWriteOut;
     type Wout = Bytes;
     type Eout = DriverEventOut;

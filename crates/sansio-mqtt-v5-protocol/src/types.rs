@@ -1,50 +1,14 @@
-/// Trait for time types that support deadline arithmetic with keep-alive intervals.
-///
-/// Implementors can compute a future deadline by adding a number of seconds to
-/// a current instant.  The protocol crate uses this to schedule keep-alive
-/// timeouts without a dependency on any specific time library.
-///
-/// # Implementing for custom time types
-///
-/// ```rust
-/// use sansio_mqtt_v5_protocol::InstantAdd;
-///
-/// #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-/// struct MyTick(u64);
-///
-/// impl InstantAdd for MyTick {
-///     fn add_secs(self, secs: u16) -> Self {
-///         MyTick(self.0 + u64::from(secs))
-///     }
-/// }
-/// ```
-pub trait InstantAdd: Copy + Ord + 'static {
-    /// Returns a new instant that is `secs` seconds after `self`.
-    fn add_secs(self, secs: u16) -> Self;
-}
-
-impl InstantAdd for u64 {
-    #[inline]
-    fn add_secs(self, secs: u16) -> Self {
-        self + u64::from(secs)
-    }
-}
-
-#[cfg(feature = "tokio")]
-impl InstantAdd for ::tokio::time::Instant {
-    #[inline]
-    fn add_secs(self, secs: u16) -> Self {
-        self + core::time::Duration::from_secs(u64::from(secs))
-    }
-}
-
-// Reexport types from the sansio-mqtt-v5-types crate for usability
+use alloc::vec::Vec;
+use core::num::NonZero;
+use core::time::Duration;
 pub use sansio_mqtt_v5_types::Auth as AuthPacket;
 pub use sansio_mqtt_v5_types::AuthReasonCode;
 pub use sansio_mqtt_v5_types::AuthenticationKind;
 pub use sansio_mqtt_v5_types::BinaryData;
 pub use sansio_mqtt_v5_types::DisconnectReasonCode;
 pub use sansio_mqtt_v5_types::FormatIndicator;
+use sansio_mqtt_v5_types::MaximumQoS;
+use sansio_mqtt_v5_types::ParserSettings;
 pub use sansio_mqtt_v5_types::Payload;
 pub use sansio_mqtt_v5_types::PubAckReasonCode;
 pub use sansio_mqtt_v5_types::PubCompReasonCode;
@@ -53,12 +17,6 @@ pub use sansio_mqtt_v5_types::Qos;
 pub use sansio_mqtt_v5_types::Subscription;
 pub use sansio_mqtt_v5_types::Topic;
 pub use sansio_mqtt_v5_types::Utf8String;
-
-use alloc::vec::Vec;
-use core::num::NonZero;
-use core::time::Duration;
-use sansio_mqtt_v5_types::MaximumQoS;
-use sansio_mqtt_v5_types::ParserSettings;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ClientSettings {

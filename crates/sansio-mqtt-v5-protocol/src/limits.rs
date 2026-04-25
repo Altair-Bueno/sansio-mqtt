@@ -1,10 +1,8 @@
-use core::num::NonZero;
-
-use sansio_mqtt_v5_types::{MaximumQoS, Publish};
-
 use crate::scratchpad::ClientScratchpad;
 use crate::session::ClientSession;
 use crate::types::{ClientMessage, ClientSettings, Error};
+use core::num::NonZero;
+use sansio_mqtt_v5_types::{MaximumQoS, Publish};
 
 pub(crate) fn min_option_nonzero_u16(
     a: Option<NonZero<u16>>,

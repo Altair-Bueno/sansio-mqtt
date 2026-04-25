@@ -1,3 +1,6 @@
+use crate::scratchpad::ClientScratchpad;
+use crate::session::ClientSession;
+use crate::types::{ClientSettings, DriverEventOut, Error};
 use alloc::vec::Vec;
 use bytes::Bytes;
 use core::num::NonZero;
@@ -7,10 +10,6 @@ use sansio_mqtt_v5_types::{
     PubAckProperties, PubAckReasonCode, PubComp, PubCompProperties, PubCompReasonCode, PubRec,
     PubRecProperties, PubRecReasonCode, PubRel, PubRelProperties, PubRelReasonCode,
 };
-
-use crate::scratchpad::ClientScratchpad;
-use crate::session::ClientSession;
-use crate::types::{ClientSettings, DriverEventOut, Error};
 
 pub(crate) fn encode_control_packet(packet: &ControlPacket) -> Result<Bytes, Error> {
     let mut encoded = Vec::new();

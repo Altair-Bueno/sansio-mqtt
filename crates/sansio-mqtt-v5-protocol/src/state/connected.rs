@@ -1,6 +1,19 @@
+use crate::limits;
+use crate::queues;
+use crate::scratchpad::ClientScratchpad;
+use crate::session::ClientSession;
+use crate::session::InboundInflightState;
+use crate::session::OutboundInflightState;
+use crate::session_ops;
+use crate::state::disconnected::Disconnected;
+use crate::state::{ClientState, StateHandler};
+use crate::types::{
+    BrokerMessage, ClientMessage, ClientSettings, DriverEventIn, DriverEventOut, Error,
+    InboundMessageId, IncomingRejectReason, UserWriteIn, UserWriteOut,
+};
 use alloc::vec::Vec;
+use core::ops::Add;
 use core::time::Duration;
-
 use sansio_mqtt_v5_types::ControlPacket;
 use sansio_mqtt_v5_types::Disconnect;
 use sansio_mqtt_v5_types::DisconnectProperties;
@@ -18,20 +31,6 @@ use sansio_mqtt_v5_types::Subscribe;
 use sansio_mqtt_v5_types::SubscribeProperties;
 use sansio_mqtt_v5_types::Unsubscribe;
 use sansio_mqtt_v5_types::UnsubscribeProperties;
-
-use crate::limits;
-use crate::queues;
-use crate::scratchpad::ClientScratchpad;
-use crate::session::ClientSession;
-use crate::session::InboundInflightState;
-use crate::session::OutboundInflightState;
-use crate::session_ops;
-use crate::state::disconnected::Disconnected;
-use crate::state::{ClientState, StateHandler};
-use crate::types::{
-    BrokerMessage, ClientMessage, ClientSettings, DriverEventIn, DriverEventOut, Error,
-    InboundMessageId, IncomingRejectReason, InstantAdd, UserWriteIn, UserWriteOut,
-};
 
 #[derive(Debug)]
 pub(crate) struct Connected;
@@ -242,7 +241,10 @@ fn build_outbound_publish(
     Ok((publish, inflight_state))
 }
 
-impl<Time: InstantAdd> StateHandler<Time> for Connected {
+impl<Time> StateHandler<Time> for Connected
+where
+    Time: Ord + Add<Duration, Output = Time> + Copy,
+{
     fn handle_control_packet(
         self,
         settings: &ClientSettings,
@@ -866,7 +868,7 @@ impl<Time: InstantAdd> StateHandler<Time> for Connected {
         }
 
         // Schedule the next keep-alive check one full interval from now.
-        let next_deadline = now.add_secs(interval_secs.get());
+        let next_deadline = now + Duration::from_secs(interval_secs.get() as u64);
 
         if scratchpad.keep_alive_saw_network_activity {
             // [MQTT-3.1.2-22] Any control packet traffic resets keep-alive idle detection.
@@ -888,7 +890,7 @@ impl<Time: InstantAdd> StateHandler<Time> for Connected {
                 // half-interval deadline. A minimum of 1 second is enforced so the deadline
                 // always advances even for a keep-alive of 1 second.
                 let half_interval = (interval_secs.get() / 2).max(1);
-                scratchpad.next_timeout = Some(now.add_secs(half_interval));
+                scratchpad.next_timeout = Some(now + Duration::from_secs(half_interval as u64));
                 (ClientState::Connected(self), Ok(()))
             }
             Err(e) => (ClientState::Connected(self), Err(e)),

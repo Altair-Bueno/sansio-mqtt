@@ -1,9 +1,8 @@
+use crate::types::{ConnectionOptions, DriverEventOut, UserWriteOut};
 use alloc::collections::vec_deque::VecDeque;
 use bytes::{Bytes, BytesMut};
 use core::num::NonZero;
 use sansio_mqtt_v5_types::MaximumQoS;
-
-use crate::types::{ConnectionOptions, DriverEventOut, UserWriteOut};
 
 #[derive(Debug)]
 pub struct ClientScratchpad<Time>

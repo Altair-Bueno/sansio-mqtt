@@ -1,6 +1,5 @@
 use alloc::collections::btree_map::BTreeMap;
 use core::num::NonZero;
-
 use sansio_mqtt_v5_types::{PubRecReasonCode, Publish, Topic};
 
 #[derive(Debug, Clone, PartialEq)]
