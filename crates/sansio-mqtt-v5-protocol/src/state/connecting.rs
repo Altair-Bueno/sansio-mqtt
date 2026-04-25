@@ -80,14 +80,12 @@ fn build_connect(settings: &ClientSettings, options: &ConnectionOptions) -> Resu
         keep_alive: options.keep_alive.or(settings.default_keep_alive),
         properties: ConnectProperties {
             session_expiry_interval: options.session_expiry_interval,
-            receive_maximum: limits::min_option_nonzero_u16(
-                options.receive_maximum,
-                settings.max_incoming_receive_maximum,
-            ),
-            maximum_packet_size: limits::min_option_nonzero_u32(
-                options.maximum_packet_size,
-                settings.max_incoming_packet_size,
-            ),
+            receive_maximum: options
+                .receive_maximum
+                .min(settings.max_incoming_receive_maximum),
+            maximum_packet_size: options
+                .maximum_packet_size
+                .min(settings.max_incoming_packet_size),
             topic_alias_maximum: options
                 .topic_alias_maximum
                 .or(settings.max_incoming_topic_alias_maximum)

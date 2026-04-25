@@ -4,46 +4,6 @@ use crate::types::{ClientMessage, ClientSettings, Error};
 use core::num::NonZero;
 use sansio_mqtt_v5_types::{MaximumQoS, Publish};
 
-pub(crate) fn min_option_nonzero_u16(
-    a: Option<NonZero<u16>>,
-    b: Option<NonZero<u16>>,
-) -> Option<NonZero<u16>> {
-    match (a, b) {
-        (Some(a), Some(b)) => Some(if a.get() <= b.get() { a } else { b }),
-        (Some(a), None) => Some(a),
-        (None, Some(b)) => Some(b),
-        (None, None) => None,
-    }
-}
-
-pub(crate) fn min_option_nonzero_u32(
-    a: Option<NonZero<u32>>,
-    b: Option<NonZero<u32>>,
-) -> Option<NonZero<u32>> {
-    match (a, b) {
-        (Some(a), Some(b)) => Some(if a.get() <= b.get() { a } else { b }),
-        (Some(a), None) => Some(a),
-        (None, Some(b)) => Some(b),
-        (None, None) => None,
-    }
-}
-
-pub(crate) fn min_option_maximum_qos(
-    a: Option<MaximumQoS>,
-    b: Option<MaximumQoS>,
-) -> Option<MaximumQoS> {
-    match (a, b) {
-        (Some(MaximumQoS::AtMostOnce), _) | (_, Some(MaximumQoS::AtMostOnce)) => {
-            Some(MaximumQoS::AtMostOnce)
-        }
-        (Some(MaximumQoS::AtLeastOnce), Some(MaximumQoS::AtLeastOnce)) => {
-            Some(MaximumQoS::AtLeastOnce)
-        }
-        (Some(x), None) | (None, Some(x)) => Some(x),
-        (None, None) => None,
-    }
-}
-
 pub(crate) fn recompute_effective_limits<Time>(
     settings: &ClientSettings,
     scratchpad: &mut ClientScratchpad<Time>,
@@ -60,17 +20,14 @@ pub(crate) fn recompute_effective_limits<Time>(
     scratchpad.effective_client_max_user_properties_len = settings.max_user_properties_len;
     scratchpad.effective_client_max_subscription_identifiers_len =
         settings.max_subscription_identifiers_len;
-
-    scratchpad.effective_client_receive_maximum = min_option_nonzero_u16(
-        settings.max_incoming_receive_maximum,
-        scratchpad.pending_connect_options.receive_maximum,
-    )
-    .unwrap_or(NonZero::new(u16::MAX).expect("u16::MAX is always non-zero"));
-
-    scratchpad.effective_client_maximum_packet_size = min_option_nonzero_u32(
-        settings.max_incoming_packet_size,
-        scratchpad.pending_connect_options.maximum_packet_size,
-    );
+    scratchpad.effective_client_receive_maximum = settings
+        .max_incoming_receive_maximum
+        .min(scratchpad.pending_connect_options.receive_maximum)
+        .or(NonZero::new(u16::MAX))
+        .expect("u16::MAX is always non-zero for receive_maximum");
+    scratchpad.effective_client_maximum_packet_size = settings
+        .max_incoming_packet_size
+        .min(scratchpad.pending_connect_options.maximum_packet_size);
 
     scratchpad.effective_client_topic_alias_maximum = settings
         .max_incoming_topic_alias_maximum
@@ -86,8 +43,9 @@ pub(crate) fn recompute_effective_limits<Time>(
     scratchpad.effective_broker_receive_maximum = scratchpad.negotiated_receive_maximum;
     scratchpad.effective_broker_maximum_packet_size = scratchpad.negotiated_maximum_packet_size;
     scratchpad.effective_broker_topic_alias_maximum = scratchpad.negotiated_topic_alias_maximum;
-    scratchpad.effective_broker_maximum_qos =
-        min_option_maximum_qos(settings.max_outgoing_qos, scratchpad.negotiated_maximum_qos);
+    scratchpad.effective_broker_maximum_qos = settings
+        .max_outgoing_qos
+        .min(scratchpad.negotiated_maximum_qos);
     scratchpad.effective_retain_available =
         settings.allow_retain && scratchpad.negotiated_retain_available;
     scratchpad.effective_wildcard_subscription_available = settings.allow_wildcard_subscriptions
