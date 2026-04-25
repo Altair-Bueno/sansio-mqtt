@@ -26,7 +26,7 @@ jobs:
       - uses: actions/checkout@v6
       - uses: taiki-e/install-action@v2
         with:
-          tool: taplo-cli@0
+          tool: taplo-cli@0.10
       - run: taplo fmt --check --diff
 
   prettier-fmt:
@@ -60,7 +60,7 @@ jobs:
           key: ${{ runner.os }}-cargo-checks-${{ hashFiles('**/Cargo.lock') }}
       - uses: taiki-e/install-action@v2
         with:
-          tool: cargo-nextest@0
+          tool: cargo-nextest@0.9
       - name: Check formatting
         run: cargo fmt --all -- --check
       - name: Run clippy
@@ -106,10 +106,7 @@ jobs:
           components: llvm-tools-preview
       - uses: taiki-e/install-action@v2
         with:
-          tool: cargo-llvm-cov@0
-      - uses: taiki-e/install-action@v2
-        with:
-          tool: cargo-nextest@0
+          tool: cargo-llvm-cov@0.8,cargo-nextest@0.9
       - uses: actions/cache@v5
         with:
           path: |
