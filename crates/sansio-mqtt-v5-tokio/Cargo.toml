@@ -4,6 +4,9 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 
+[features]
+integration-tests = []
+
 [dependencies]
 sansio = { workspace = true }
 sansio-mqtt-v5-protocol = { workspace = true, features = ["tokio"] }
@@ -34,3 +37,9 @@ tokio = { workspace = true, features = [
 ] }
 encode = { workspace = true }
 tracing-subscriber = { workspace = true, features = ["fmt", "ansi"] }
+testcontainers = { version = "0.23" }
+
+[[test]]
+name = "mqtt_integration"
+path = "tests/integration/main.rs"
+required-features = ["integration-tests"]
