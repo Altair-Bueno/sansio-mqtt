@@ -105,9 +105,7 @@ impl<Time: Copy + Ord + 'static> StateHandler<Time> for Start {
                 // In Start state the user may not have called Connect first; use stored
                 // pending_connect_options (defaults when never set).
                 let connecting = Connecting {
-                    pending_connect_options: core::mem::take(
-                        &mut scratchpad.pending_connect_options,
-                    ),
+                    pending_connect_options: scratchpad.pending_connect_options.clone(),
                     connect_sent: false,
                 };
                 crate::state::connecting::on_socket_connected(

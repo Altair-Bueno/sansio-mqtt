@@ -203,9 +203,6 @@ fn on_connack_success<Time: Copy + Ord + 'static>(
         .properties
         .shared_subscription_available
         .unwrap_or(true);
-    // Restore connect options to scratchpad so recompute_effective_limits can read them
-    // (e.g., topic_alias_maximum, receive_maximum). After CONNACK, the options are saved
-    // in scratchpad for potential reconnect.
     scratchpad.pending_connect_options = connecting.pending_connect_options;
     limits::recompute_effective_limits(settings, scratchpad);
     scratchpad.keep_alive_interval_secs = match scratchpad.negotiated_server_keep_alive {

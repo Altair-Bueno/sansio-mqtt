@@ -17,6 +17,9 @@ use super::*;
 #[derive(Debug, PartialEq, Clone, EnumDiscriminants)]
 #[strum_discriminants(derive(Hash, EnumIter, Display))]
 #[strum_discriminants(name(ControlPacketType))]
+#[strum_discriminants(
+    doc = "Control Packet Type discriminant of [`ControlPacket`] ([§2.1.2](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901022)). Identifies a packet type without the payload."
+)]
 #[allow(clippy::large_enum_variant)]
 pub enum ControlPacket {
     /// Reserved type (`0`, [§2.1.2](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901022)).

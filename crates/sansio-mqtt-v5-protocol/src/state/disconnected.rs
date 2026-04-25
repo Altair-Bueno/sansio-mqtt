@@ -53,9 +53,7 @@ impl<Time: Copy + Ord + 'static> StateHandler<Time> for Disconnected {
             DriverEventIn::SocketConnected => {
                 // Use stored pending_connect_options (from before disconnection) to reconnect.
                 let connecting = Connecting {
-                    pending_connect_options: core::mem::take(
-                        &mut scratchpad.pending_connect_options,
-                    ),
+                    pending_connect_options: scratchpad.pending_connect_options.clone(),
                     connect_sent: false,
                 };
                 crate::state::connecting::on_socket_connected(

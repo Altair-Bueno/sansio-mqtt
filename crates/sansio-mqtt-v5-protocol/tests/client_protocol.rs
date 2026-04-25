@@ -4674,3 +4674,152 @@ fn unknown_suback_or_unsuback_is_protocol_error() {
         Some(sansio_mqtt_v5_protocol::DriverEventOut::CloseSocket)
     ));
 }
+
+/// Regression test: `handle_event(SocketConnected)` must preserve `pending_connect_options`
+/// in the scratchpad so that `reset_negotiated_limits` → `recompute_effective_limits` reads
+/// the user-supplied values rather than defaults.
+///
+/// Previously `core::mem::take` moved the options out before the call, causing
+/// `effective_client_topic_alias_maximum` (and similar fields) to be recomputed as 0
+/// (the default when no options are set), so a PUBLISH with a topic alias within the
+/// user-configured limit was incorrectly rejected as a protocol error.
+#[test]
+fn socket_connected_preserves_connect_options_for_effective_limit_recomputation() {
+    let mut client = Client::<u64>::default();
+
+    // Configure a topic_alias_maximum of 10.
+    assert_eq!(
+        client.handle_write(UserWriteIn::Connect(ConnectionOptions {
+            topic_alias_maximum: Some(10),
+            ..ConnectionOptions::default()
+        })),
+        Ok(())
+    );
+    assert!(matches!(
+        client.poll_event(),
+        Some(DriverEventOut::OpenSocket)
+    ));
+
+    // SocketConnected must not erase pending_connect_options from the scratchpad.
+    assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
+    let _ = client.poll_write().expect("connect frame expected");
+
+    let connack = ControlPacket::ConnAck(ConnAck {
+        kind: ConnAckKind::Other {
+            reason_code: ConnackReasonCode::Success,
+        },
+        properties: ConnAckProperties::default(),
+    });
+    assert_eq!(client.handle_read(encode_packet(&connack)), Ok(()));
+    assert!(matches!(client.poll_read(), Some(UserWriteOut::Connected)));
+
+    // A PUBLISH with topic alias 5 is within the user-configured limit of 10.
+    // If the bug is present, effective_client_topic_alias_maximum is 0 and this
+    // would be rejected as ProtocolError. After the fix it must succeed.
+    let topic = Topic::try_new("test/topic").expect("valid topic");
+    let alias = NonZero::new(5).expect("non-zero alias");
+    let publish_with_alias = ControlPacket::Publish(Publish {
+        kind: PublishKind::FireAndForget,
+        retain: false,
+        payload: Payload::new(b"hello".as_slice()),
+        topic: topic.clone(),
+        properties: PublishProperties {
+            topic_alias: Some(alias),
+            ..PublishProperties::default()
+        },
+    });
+
+    assert_eq!(
+        client.handle_read(encode_packet(&publish_with_alias)),
+        Ok(()),
+        "PUBLISH with topic alias within configured limit must be accepted"
+    );
+    assert!(matches!(
+        client.poll_read(),
+        Some(UserWriteOut::ReceivedMessage(_))
+    ));
+}
+
+/// Companion to `socket_connected_preserves_connect_options_for_effective_limit_recomputation`:
+/// covers the `Disconnected → SocketConnected` reconnect path in `disconnected.rs`.
+#[test]
+fn reconnect_from_disconnected_preserves_connect_options_for_effective_limit_recomputation() {
+    let mut client = Client::<u64>::default();
+
+    // Initial connect with topic_alias_maximum = 10.
+    assert_eq!(
+        client.handle_write(UserWriteIn::Connect(ConnectionOptions {
+            topic_alias_maximum: Some(10),
+            ..ConnectionOptions::default()
+        })),
+        Ok(())
+    );
+    assert!(matches!(
+        client.poll_event(),
+        Some(DriverEventOut::OpenSocket)
+    ));
+    assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
+    let _ = client.poll_write().expect("connect frame expected");
+
+    let connack = ControlPacket::ConnAck(ConnAck {
+        kind: ConnAckKind::Other {
+            reason_code: ConnackReasonCode::Success,
+        },
+        properties: ConnAckProperties::default(),
+    });
+    assert_eq!(client.handle_read(encode_packet(&connack)), Ok(()));
+    assert!(matches!(client.poll_read(), Some(UserWriteOut::Connected)));
+
+    // Disconnect via SocketClosed → transitions to Disconnected state.
+    assert_eq!(client.handle_event(DriverEventIn::SocketClosed), Ok(()));
+    assert!(matches!(
+        client.poll_read(),
+        Some(UserWriteOut::Disconnected)
+    ));
+
+    // Reconnect from Disconnected state, re-supplying the same options.
+    assert_eq!(
+        client.handle_write(UserWriteIn::Connect(ConnectionOptions {
+            topic_alias_maximum: Some(10),
+            ..ConnectionOptions::default()
+        })),
+        Ok(())
+    );
+    assert!(matches!(
+        client.poll_event(),
+        Some(DriverEventOut::OpenSocket)
+    ));
+
+    // Disconnected::handle_event(SocketConnected) must not erase pending_connect_options.
+    assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
+    let _ = client
+        .poll_write()
+        .expect("reconnect CONNECT frame expected");
+
+    assert_eq!(client.handle_read(encode_packet(&connack)), Ok(()));
+    assert!(matches!(client.poll_read(), Some(UserWriteOut::Connected)));
+
+    // A PUBLISH with topic alias 5 must be accepted after reconnect.
+    let topic = Topic::try_new("test/topic").expect("valid topic");
+    let alias = NonZero::new(5).expect("non-zero alias");
+    let publish_with_alias = ControlPacket::Publish(Publish {
+        kind: PublishKind::FireAndForget,
+        retain: false,
+        payload: Payload::new(b"hello".as_slice()),
+        topic: topic.clone(),
+        properties: PublishProperties {
+            topic_alias: Some(alias),
+            ..PublishProperties::default()
+        },
+    });
+
+    assert_eq!(
+        client.handle_read(encode_packet(&publish_with_alias)),
+        Ok(()),
+        "PUBLISH with topic alias within configured limit must be accepted after reconnect"
+    );
+    assert!(matches!(
+        client.poll_read(),
+        Some(UserWriteOut::ReceivedMessage(_))
+    ));
+}
