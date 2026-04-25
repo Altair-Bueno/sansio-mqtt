@@ -22,3 +22,4 @@ strum = { version = "0.27.0", default-features = false }
 encode = { version = "1.0.0", default-features = false }
 rstest = { version = "0.25.0", default-features = false }
 sansio = { version = "1.0.1", default-features = false }
+testcontainers = { version = "0.23", default-features = false }
