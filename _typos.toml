@@ -1,0 +1,6 @@
+[default.extend-words]
+# Eclipse Mosquitto is an MQTT broker — "mosquitto" is the correct spelling
+mosquitto = "mosquitto"
+# Intentional generic type parameter names used in design docs (R-input, E-input)
+Rin = "Rin"
+Ein = "Ein"

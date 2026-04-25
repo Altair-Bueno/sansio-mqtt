@@ -167,7 +167,7 @@ Reason code preference:
   - enforce negotiated limits
   - accept only QoS0 in MVP
   - encode PUBLISH and queue bytes
-- `Subscribe`/`Unsubcribe`:
+- `Subscribe`/`Unsubscribe`:
   - allocate packet id
   - encode and queue
 - `Disconnect`:

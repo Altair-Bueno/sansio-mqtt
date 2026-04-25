@@ -1,6 +1,6 @@
 //! A simple MQTT client that sends stdin lines to the broker and prints received messages to stdout.
 //!
-//! The client is configured using enviroment variables:
+//! The client is configured using environment variables:
 //! - `BROKER`: The address of the MQTT broker to connect to (default: `test.mosquitto.org:1883`)
 //! - `SUBSCRIPTION`: The subscription filter to subscribe to (default: `echo/#`)
 //! - `TOPIC`: The topic to publish to (default: `echo`)

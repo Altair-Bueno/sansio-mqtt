@@ -318,7 +318,7 @@ fn assert_that_parsing_an_invalid_field_on_unsuback_fails(
         2, 0, 0, 16, 225, // message expiry interval
         3, 0, 4, 116, 101, 115, 116, // content type
         8, 0, 5, 116, 111, 112, 105, 99, // response topic
-        9, 0, 4, 1, 2, 3, 4, // corelation data
+        9, 0, 4, 1, 2, 3, 4, // correlation data
         38, 0, 4, 116, 101, 115, 116, 0, 4, 116, 101, 115, 116, // user properties
         0, 5, // Will topic length
         116, 111, 112, 105, 99, // Will topic
@@ -395,7 +395,7 @@ fn assert_that_parsing_an_invalid_field_on_unsuback_fails(
         2, 0, 0, 16, 225, // message expiry interval
         3, 0, 4, 116, 101, 115, 116, // content type
         8, 0, 5, 116, 111, 112, 105, 99, // response topic
-        9, 0, 4, 1, 2, 3, 4, // corelation data
+        9, 0, 4, 1, 2, 3, 4, // correlation data
         38, 0, 4, 116, 101, 115, 116, 0, 4, 116, 101, 115, 116, // user properties
         0, 5, // Will topic length
         116, 111, 112, 105, 99, // Will topic
