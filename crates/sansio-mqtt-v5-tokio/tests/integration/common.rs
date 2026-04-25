@@ -3,51 +3,110 @@ use sansio_mqtt_v5_protocol::{
 };
 use sansio_mqtt_v5_tokio::ConnectOptions;
 use sansio_mqtt_v5_types::{Payload, Qos, RetainHandling, Topic, Utf8String};
-use testcontainers::core::{IntoContainerPort, WaitFor};
-use testcontainers::runners::AsyncRunner;
-use testcontainers::{ContainerAsync, CopyDataSource, GenericImage, ImageExt};
+use std::io::Write;
+use std::process::{Child, Command, Stdio};
+use tokio::net::TcpListener;
 
-/// Starts an anonymous Mosquitto 2 broker, returns the container (keep alive for test duration)
-/// and the mapped host TCP port.
-pub async fn anonymous_broker() -> (ContainerAsync<GenericImage>, u16) {
-    let container = GenericImage::new("eclipse-mosquitto", "2")
-        .with_exposed_port(1883.tcp())
-        .with_wait_for(WaitFor::message_on_stderr("mosquitto version"))
-        .with_copy_to(
-            "/mosquitto/config/mosquitto.conf",
-            CopyDataSource::Data(include_bytes!("mosquitto/anonymous.conf").to_vec()),
-        )
-        .start()
+/// A running Mosquitto process that is killed when dropped.
+pub struct MosquittoProcess {
+    child: Child,
+    // Temp files that must outlive the process.
+    _config_file: tempfile::NamedTempFile,
+    _passwd_file: Option<tempfile::NamedTempFile>,
+}
+
+impl Drop for MosquittoProcess {
+    fn drop(&mut self) {
+        let _ = self.child.kill();
+        let _ = self.child.wait();
+    }
+}
+
+/// Find a free TCP port on 127.0.0.1.
+async fn free_port() -> u16 {
+    let listener = TcpListener::bind("127.0.0.1:0")
         .await
-        .expect("mosquitto starts");
-    let port = container
-        .get_host_port_ipv4(1883)
-        .await
-        .expect("gets host port");
-    (container, port)
+        .expect("bind to free port");
+    let port = listener.local_addr().expect("local addr").port();
+    drop(listener);
+    port
+}
+
+/// Start mosquitto with the given config content and return the process handle.
+fn start_mosquitto(
+    config_content: &str,
+    passwd_file: Option<tempfile::NamedTempFile>,
+) -> MosquittoProcess {
+    let mut config_file = tempfile::Builder::new()
+        .suffix(".conf")
+        .tempfile()
+        .expect("create temp config file");
+    config_file
+        .write_all(config_content.as_bytes())
+        .expect("write config");
+    config_file.flush().expect("flush config");
+
+    let child = Command::new("/opt/homebrew/opt/mosquitto/sbin/mosquitto")
+        .arg("-c")
+        .arg(config_file.path())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .expect("spawn mosquitto");
+
+    MosquittoProcess {
+        child,
+        _config_file: config_file,
+        _passwd_file: passwd_file,
+    }
+}
+
+/// Wait until mosquitto is accepting connections on the given port (up to 2s).
+async fn wait_for_mosquitto(port: u16) {
+    for _ in 0..40 {
+        if tokio::net::TcpStream::connect(format!("127.0.0.1:{port}"))
+            .await
+            .is_ok()
+        {
+            return;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    }
+    panic!("mosquitto did not start within 2s on port {port}");
+}
+
+/// Starts an anonymous Mosquitto 2 broker, returns the process handle (keep alive for test
+/// duration) and the mapped host TCP port.
+pub async fn anonymous_broker() -> (MosquittoProcess, u16) {
+    let port = free_port().await;
+    let config = format!("listener {port}\nallow_anonymous true\n", port = port);
+    let process = start_mosquitto(&config, None);
+    wait_for_mosquitto(port).await;
+    (process, port)
 }
 
 /// Starts an authenticated Mosquitto 2 broker (requires testuser/testpassword).
-pub async fn authenticated_broker() -> (ContainerAsync<GenericImage>, u16) {
-    let container = GenericImage::new("eclipse-mosquitto", "2")
-        .with_exposed_port(1883.tcp())
-        .with_wait_for(WaitFor::message_on_stderr("mosquitto version"))
-        .with_copy_to(
-            "/mosquitto/config/mosquitto.conf",
-            CopyDataSource::Data(include_bytes!("mosquitto/authenticated.conf").to_vec()),
-        )
-        .with_copy_to(
-            "/mosquitto/config/passwd",
-            CopyDataSource::Data(include_bytes!("mosquitto/passwd").to_vec()),
-        )
-        .start()
-        .await
-        .expect("mosquitto starts");
-    let port = container
-        .get_host_port_ipv4(1883)
-        .await
-        .expect("gets host port");
-    (container, port)
+pub async fn authenticated_broker() -> (MosquittoProcess, u16) {
+    let port = free_port().await;
+
+    let mut passwd_file = tempfile::Builder::new()
+        .suffix(".passwd")
+        .tempfile()
+        .expect("create temp passwd file");
+    passwd_file
+        .write_all(include_bytes!("mosquitto/passwd"))
+        .expect("write passwd");
+    passwd_file.flush().expect("flush passwd");
+
+    let config = format!(
+        "listener {port}\nallow_anonymous false\npassword_file {passwd}\n",
+        port = port,
+        passwd = passwd_file.path().display()
+    );
+
+    let process = start_mosquitto(&config, Some(passwd_file));
+    wait_for_mosquitto(port).await;
+    (process, port)
 }
 
 /// Default connect options: clean_start=true, no session persistence.
@@ -92,7 +151,12 @@ pub fn resume_connect_options(port: u16, client_id: &str) -> ConnectOptions {
 }
 
 /// Connect options with username/password credentials.
-pub fn authenticated_connect_options(port: u16, client_id: &str, user: &str, pass: &str) -> ConnectOptions {
+pub fn authenticated_connect_options(
+    port: u16,
+    client_id: &str,
+    user: &str,
+    pass: &str,
+) -> ConnectOptions {
     ConnectOptions {
         addr: format!("127.0.0.1:{port}").parse().expect("valid addr"),
         connection: ConnectionOptions {

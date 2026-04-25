@@ -1,6 +1,8 @@
 use core::num::NonZero;
 
-use sansio_mqtt_v5_protocol::{AuthPacket, BrokerMessage, DisconnectReasonCode, InboundMessageId, UserWriteOut};
+use sansio_mqtt_v5_protocol::{
+    AuthPacket, BrokerMessage, DisconnectReasonCode, InboundMessageId, UserWriteOut,
+};
 use sansio_mqtt_v5_types::{PubAckReasonCode, PubCompReasonCode, PubRecReasonCode};
 
 #[derive(Debug)]
