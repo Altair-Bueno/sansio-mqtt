@@ -23,6 +23,10 @@ impl Drop for MosquittoProcess {
 }
 
 /// Find a free TCP port on 127.0.0.1.
+///
+/// There is a narrow TOCTOU window between releasing the listener and Mosquitto binding
+/// the port. This race is accepted in a local test environment where port reuse by another
+/// process is unlikely; `wait_for_mosquitto` provides a clear failure if it occurs.
 async fn free_port() -> u16 {
     let listener = TcpListener::bind("127.0.0.1:0")
         .await
@@ -46,13 +50,15 @@ fn start_mosquitto(
         .expect("write config");
     config_file.flush().expect("flush config");
 
-    let child = Command::new("/opt/homebrew/opt/mosquitto/sbin/mosquitto")
+    // Use `mosquitto` from PATH; set MOSQUITTO_BIN env var to override the binary location.
+    let bin = std::env::var("MOSQUITTO_BIN").unwrap_or_else(|_| "mosquitto".to_owned());
+    let child = Command::new(&bin)
         .arg("-c")
         .arg(config_file.path())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .spawn()
-        .expect("spawn mosquitto");
+        .unwrap_or_else(|e| panic!("failed to spawn {bin}: {e}"));
 
     MosquittoProcess {
         child,
