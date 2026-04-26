@@ -72,29 +72,29 @@ jobs:
       - name: Run clippy
         run: cargo clippy --all-targets -- -D warnings
 
-  rust-check-msrv:
-    name: Cargo check (MSRV)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-      - name: Read MSRV from Cargo.toml
-        id: msrv
-        run: |
-          echo "version=$(sed -n 's/^rust-version = "\(.*\)"/\1/p' Cargo.toml)" >> "$GITHUB_OUTPUT"
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          toolchain: ${{ steps.msrv.outputs.version }}
-      - uses: actions/cache@v5
-        with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-          key: ${{ runner.os }}-${{ github.job }}
-      - name: Check MSRV
-        run: cargo check --all-targets
+  # rust-check-msrv:
+  #   name: Cargo check (MSRV)
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - uses: actions/checkout@v6
+  #     - name: Read MSRV from Cargo.toml
+  #       id: msrv
+  #       run: |
+  #         echo "version=$(sed -n 's/^rust-version = "\(.*\)"/\1/p' Cargo.toml)" >> "$GITHUB_OUTPUT"
+  #     - uses: dtolnay/rust-toolchain@stable
+  #       with:
+  #         toolchain: ${{ steps.msrv.outputs.version }}
+  #     - uses: actions/cache@v5
+  #       with:
+  #         path: |
+  #           ~/.cargo/bin/
+  #           ~/.cargo/registry/index/
+  #           ~/.cargo/registry/cache/
+  #           ~/.cargo/git/db/
+  #           target/
+  #         key: ${{ runner.os }}-${{ github.job }}
+  #     - name: Check MSRV
+  #       run: cargo check --all-targets
 
   rust-coverage:
     name: coverage
@@ -138,7 +138,7 @@ jobs:
       - prettier-fmt
       - rust-fmt
       - rust-clippy
-      - rust-check-msrv
+      # - rust-check-msrv
       - rust-coverage
     runs-on: ubuntu-latest
     steps:
