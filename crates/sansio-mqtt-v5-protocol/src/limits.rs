@@ -43,9 +43,11 @@ pub(crate) fn recompute_effective_limits<Time>(
     scratchpad.effective_broker_receive_maximum = scratchpad.negotiated_receive_maximum;
     scratchpad.effective_broker_maximum_packet_size = scratchpad.negotiated_maximum_packet_size;
     scratchpad.effective_broker_topic_alias_maximum = scratchpad.negotiated_topic_alias_maximum;
-    scratchpad.effective_broker_maximum_qos = settings
-        .max_outgoing_qos
-        .min(scratchpad.negotiated_maximum_qos);
+    scratchpad.effective_broker_maximum_qos =
+        [settings.max_outgoing_qos, scratchpad.negotiated_maximum_qos]
+            .into_iter()
+            .flatten()
+            .min();
     scratchpad.effective_retain_available =
         settings.allow_retain && scratchpad.negotiated_retain_available;
     scratchpad.effective_wildcard_subscription_available = settings.allow_wildcard_subscriptions
