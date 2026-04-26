@@ -59,14 +59,13 @@ pub struct Utf8StringError;
 ///
 /// Invariants enforced by the constructors:
 ///
-/// * The UTF-8 encoded byte form has length ≤ `u16::MAX`
-///   ([MQTT-1.5.4-1]).
-/// * The data is well-formed UTF-8 — no encodings of surrogate
-///   code points, no overlong encodings ([MQTT-1.5.4-1]).
+/// * The UTF-8 encoded byte form has length ≤ `u16::MAX` ([MQTT-1.5.4-1]).
+/// * The data is well-formed UTF-8 — no encodings of surrogate code points, no
+///   overlong encodings ([MQTT-1.5.4-1]).
 /// * Does not contain the null character `U+0000` ([MQTT-1.5.4-2]).
-/// * Does not contain any disallowed control characters
-///   (`U+0001..=U+001F`, `U+007F..=U+009F`) or the non-characters
-///   `U+FFFE`, `U+FFFF` ([MQTT-1.5.4-3]).
+/// * Does not contain any disallowed control characters (`U+0001..=U+001F`,
+///   `U+007F..=U+009F`) or the non-characters `U+FFFE`, `U+FFFF`
+///   ([MQTT-1.5.4-3]).
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
 pub struct Utf8String(bytes::Bytes);
 
@@ -93,15 +92,16 @@ pub struct TopicError;
 pub struct Topic(Utf8String);
 
 impl Payload {
-    /// Constructs a [`Payload`] from any value convertible into [`bytes::Bytes`].
+    /// Constructs a [`Payload`] from any value convertible into
+    /// [`bytes::Bytes`].
     ///
     /// This constructor is infallible and always returns `Ok`.
     #[inline]
     pub fn try_new(value: impl Into<bytes::Bytes>) -> Result<Self, PayloadError> {
         let value = value.into();
         if value.len() > u64::MAX as usize {
-            // This check should never fail in practice since sizeof(u64) == sizeof(usize) on
-            // basically all platforms, but we include it for completeness.
+            // This check should never fail in practice since sizeof(u64) == sizeof(usize)
+            // on basically all platforms, but we include it for completeness.
             return Err(PayloadError);
         }
 
@@ -109,7 +109,8 @@ impl Payload {
         Ok(unsafe { Self::new_unchecked(value) })
     }
 
-    /// Constructs a [`Payload`] from any value convertible into [`bytes::Bytes`].
+    /// Constructs a [`Payload`] from any value convertible into
+    /// [`bytes::Bytes`].
     ///
     /// This constructor is infallible and never panics.
     #[inline]
@@ -121,8 +122,8 @@ impl Payload {
     ///
     /// # Safety
     ///
-    /// Callers must ensure `value` satisfies all invariants expected by downstream
-    /// protocol logic that consumes `Payload`.
+    /// Callers must ensure `value` satisfies all invariants expected by
+    /// downstream protocol logic that consumes `Payload`.
     #[inline]
     pub unsafe fn new_unchecked(value: bytes::Bytes) -> Self {
         Self(value)
@@ -136,7 +137,8 @@ impl Payload {
 }
 
 impl BinaryData {
-    /// Constructs a [`BinaryData`] from any value convertible into [`bytes::Bytes`].
+    /// Constructs a [`BinaryData`] from any value convertible into
+    /// [`bytes::Bytes`].
     ///
     /// Returns an error when the payload exceeds MQTT's 2-byte length limit.
     #[inline]
@@ -150,9 +152,11 @@ impl BinaryData {
         Ok(unsafe { Self::new_unchecked(value) })
     }
 
-    /// Constructs a [`BinaryData`] from any value convertible into [`bytes::Bytes`].
+    /// Constructs a [`BinaryData`] from any value convertible into
+    /// [`bytes::Bytes`].
     ///
-    /// Panics with `"BinaryData::new received invalid MQTT binary data"` when validation fails.
+    /// Panics with `"BinaryData::new received invalid MQTT binary data"` when
+    /// validation fails.
     #[inline]
     pub fn new(value: impl Into<bytes::Bytes>) -> Self {
         Self::try_new(value).expect("BinaryData::new received an invalid MQTT binary data")
@@ -176,10 +180,11 @@ impl BinaryData {
 }
 
 impl Utf8String {
-    /// Constructs a [`Utf8String`] from any value convertible into [`bytes::Bytes`].
+    /// Constructs a [`Utf8String`] from any value convertible into
+    /// [`bytes::Bytes`].
     ///
-    /// Returns an error when bytes are not valid UTF-8, exceed MQTT's 2-byte length limit,
-    /// or contain MQTT-disallowed characters.
+    /// Returns an error when bytes are not valid UTF-8, exceed MQTT's 2-byte
+    /// length limit, or contain MQTT-disallowed characters.
     #[inline]
     pub fn try_new(value: impl Into<bytes::Bytes>) -> Result<Self, Utf8StringError> {
         let value = value.into();
@@ -196,9 +201,11 @@ impl Utf8String {
         Ok(unsafe { Self::new_unchecked(value) })
     }
 
-    /// Constructs a [`Utf8String`] from any value convertible into [`bytes::Bytes`].
+    /// Constructs a [`Utf8String`] from any value convertible into
+    /// [`bytes::Bytes`].
     ///
-    /// Panics with `"Utf8String::new received invalid MQTT utf8 string"` when validation fails.
+    /// Panics with `"Utf8String::new received invalid MQTT utf8 string"` when
+    /// validation fails.
     #[inline]
     pub fn new(value: impl Into<bytes::Bytes>) -> Self {
         Self::try_new(value).expect("Utf8String::new received an invalid MQTT utf8 string")
@@ -208,8 +215,8 @@ impl Utf8String {
     ///
     /// # Safety
     ///
-    /// Callers must ensure `value` is valid UTF-8, has length at most `u16::MAX`,
-    /// and does not contain MQTT-disallowed characters.
+    /// Callers must ensure `value` is valid UTF-8, has length at most
+    /// `u16::MAX`, and does not contain MQTT-disallowed characters.
     #[inline]
     pub unsafe fn new_unchecked(value: bytes::Bytes) -> Self {
         Self(value)
@@ -227,8 +234,8 @@ impl Utf8String {
 impl Topic {
     /// Constructs a [`Topic`] from any value convertible into [`bytes::Bytes`].
     ///
-    /// Returns an error when the topic is not a valid MQTT UTF-8 string or contains
-    /// wildcard characters (`#` or `+`).
+    /// Returns an error when the topic is not a valid MQTT UTF-8 string or
+    /// contains wildcard characters (`#` or `+`).
     #[inline]
     pub fn try_new(value: impl Into<bytes::Bytes>) -> Result<Self, TopicError> {
         let utf8 = Utf8String::try_new(value).map_err(|_| TopicError)?;
@@ -237,7 +244,8 @@ impl Topic {
 
     /// Constructs a [`Topic`] from any value convertible into [`bytes::Bytes`].
     ///
-    /// Panics with `"Topic::new received invalid MQTT topic"` when validation fails.
+    /// Panics with `"Topic::new received invalid MQTT topic"` when validation
+    /// fails.
     #[inline]
     pub fn new(value: impl Into<bytes::Bytes>) -> Self {
         Self::try_new(value).expect("Topic::new received an invalid MQTT topic")
@@ -247,8 +255,8 @@ impl Topic {
     ///
     /// # Safety
     ///
-    /// Callers must ensure the inner value is a valid MQTT topic string and does
-    /// not contain `#` or `+` wildcard characters.
+    /// Callers must ensure the inner value is a valid MQTT topic string and
+    /// does not contain `#` or `+` wildcard characters.
     #[inline]
     pub unsafe fn new_unchecked(value: Utf8String) -> Self {
         Self(value)
@@ -406,7 +414,8 @@ impl core::fmt::Display for Topic {
 impl core::convert::AsRef<str> for Utf8String {
     #[inline]
     fn as_ref(&self) -> &str {
-        // SAFETY: The Utf8String is guaranteed to be valid UTF-8 as per the validation predicate.
+        // SAFETY: The Utf8String is guaranteed to be valid UTF-8 as per the validation
+        // predicate.
         unsafe { core::str::from_utf8_unchecked(self.as_bytes()) }
     }
 }

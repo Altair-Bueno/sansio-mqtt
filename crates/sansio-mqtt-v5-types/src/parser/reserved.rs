@@ -1,8 +1,8 @@
 use super::*;
 
 impl ReservedHeaderFlags {
-    /// Parses the 4-bit Fixed Header flags for the Reserved (0) Control Packet type
-    /// ([§2.1.2](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901022)).
+    /// Parses the 4-bit Fixed Header flags for the Reserved (0) Control Packet
+    /// type ([§2.1.2](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901022)).
     #[inline]
     pub fn parser<Input, Error>(input: &mut (Input, usize)) -> Result<Self, Error>
     where

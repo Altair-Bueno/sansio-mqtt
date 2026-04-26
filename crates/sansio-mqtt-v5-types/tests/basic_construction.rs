@@ -1,6 +1,10 @@
 use bytes::Bytes;
 use rstest::rstest;
-use sansio_mqtt_v5_types::{BinaryData, Payload, Topic, Utf8String, Utf8StringError};
+use sansio_mqtt_v5_types::BinaryData;
+use sansio_mqtt_v5_types::Payload;
+use sansio_mqtt_v5_types::Topic;
+use sansio_mqtt_v5_types::Utf8String;
+use sansio_mqtt_v5_types::Utf8StringError;
 
 #[rstest]
 #[case(vec![1_u8, 2, 3], vec![1_u8, 2, 3])]

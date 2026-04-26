@@ -44,7 +44,9 @@ impl Disconnect {
     {
         combinator::trace(
             type_name::<Self>(),
-            // The Reason Code and Property Length can be omitted if the Reason Code is 0x00 (Normal disconnection) and there are no Properties. In this case the DISCONNECT has a Remaining Length of 0
+            // The Reason Code and Property Length can be omitted if the Reason Code is 0x00
+            // (Normal disconnection) and there are no Properties. In this case the DISCONNECT has
+            // a Remaining Length of 0
             combinator::alt((
                 (
                     combinator::empty.default_value(),

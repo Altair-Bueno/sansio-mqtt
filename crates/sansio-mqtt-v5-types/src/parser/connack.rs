@@ -47,7 +47,8 @@ impl ConnAck {
                 combinator::eof,
             )
                 .verify_map(move |((session_present,), reason_code, properties, _)| {
-                    // If a Server sends a CONNACK packet containing a non-zero Reason Code it MUST set Session Present to 0 [MQTT-3.2.2-6].
+                    // If a Server sends a CONNACK packet containing a non-zero Reason Code it MUST
+                    // set Session Present to 0 [MQTT-3.2.2-6].
                     let kind = match (session_present, reason_code) {
                         (true, ConnackReasonCode::Success) => ConnAckKind::ResumePreviousSession,
                         (false, reason_code) => ConnAckKind::Other { reason_code },

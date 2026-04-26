@@ -47,7 +47,9 @@ impl PubComp {
             type_name::<Self>(),
             (
                 combinator::trace("Packet ID", two_byte_integer.try_map(TryInto::try_into)),
-                // The Reason Code and Property Length can be omitted if the Reason Code is 0x00 (Success) and there are no Properties. In this case the PUBREC has a Remaining Length of 2.
+                // The Reason Code and Property Length can be omitted if the Reason Code is 0x00
+                // (Success) and there are no Properties. In this case the PUBREC has a Remaining
+                // Length of 2.
                 combinator::alt((
                     (
                         combinator::empty.default_value(),

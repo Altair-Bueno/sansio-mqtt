@@ -608,7 +608,8 @@ fn assert_that_parsing_an_invalid_field_on_unsuback_fails(
         properties: PubAckProperties::default(),
     })
 )]
-// Note: The original test was not MQTT5 compliant because the properties and reason code were missing.
+// Note: The original test was not MQTT5 compliant because the properties and reason code were
+// missing.
 #[case::version_5_connack_1(
     vec! [
         32, 3, // Fixed Header (CONNACK, Remaining Length)
