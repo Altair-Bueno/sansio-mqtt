@@ -1,18 +1,22 @@
 use core::num::NonZero;
 
-use sansio_mqtt_v5_protocol::{
-    AuthPacket, BrokerMessage, DisconnectReasonCode, InboundMessageId, UserWriteOut,
-};
-use sansio_mqtt_v5_types::{PubAckReasonCode, PubCompReasonCode, PubRecReasonCode};
+use sansio_mqtt_v5_protocol::AuthPacket;
+use sansio_mqtt_v5_protocol::BrokerMessage;
+use sansio_mqtt_v5_protocol::DisconnectReasonCode;
+use sansio_mqtt_v5_protocol::InboundMessageId;
+use sansio_mqtt_v5_protocol::UserWriteOut;
+use sansio_mqtt_v5_types::PubAckReasonCode;
+use sansio_mqtt_v5_types::PubCompReasonCode;
+use sansio_mqtt_v5_types::PubRecReasonCode;
 
 #[derive(Debug)]
 pub enum Event {
     Connected,
     /// The connection has been closed.
     ///
-    /// `reason_code` is `Some` when the server initiated the DISCONNECT with a reason code,
-    /// and `None` when the client disconnected or the socket was closed without a server
-    /// DISCONNECT packet.
+    /// `reason_code` is `Some` when the server initiated the DISCONNECT with a
+    /// reason code, and `None` when the client disconnected or the socket
+    /// was closed without a server DISCONNECT packet.
     Disconnected(Option<DisconnectReasonCode>),
     Message(BrokerMessage),
     MessageWithRequiredAcknowledgement(InboundMessageId, BrokerMessage),
@@ -20,7 +24,8 @@ pub enum Event {
     PublishCompleted(NonZero<u16>, PubCompReasonCode),
     PublishDroppedDueToSessionNotResumed(NonZero<u16>),
     PublishDroppedDueToBrokerRejectedPubRec(NonZero<u16>, PubRecReasonCode),
-    /// [MQTT-4.12.0-2] The server has initiated re-authentication via an AUTH packet.
+    /// [MQTT-4.12.0-2] The server has initiated re-authentication via an AUTH
+    /// packet.
     Auth(AuthPacket),
 }
 

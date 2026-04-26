@@ -7,7 +7,10 @@ mod event;
 mod event_loop;
 
 pub use client::Client;
-pub use connect::{connect, ConnectOptions};
-pub use error::{ClientError, ConnectError, EventLoopError};
+pub use connect::connect;
+pub use connect::ConnectOptions;
+pub use error::ClientError;
+pub use error::ConnectError;
+pub use error::EventLoopError;
 pub use event::Event;
 pub use event_loop::EventLoop;

@@ -1,4 +1,7 @@
-use sansio_mqtt_v5_protocol::{ClientMessage, SubscribeOptions, UnsubscribeOptions, UserWriteIn};
+use sansio_mqtt_v5_protocol::ClientMessage;
+use sansio_mqtt_v5_protocol::SubscribeOptions;
+use sansio_mqtt_v5_protocol::UnsubscribeOptions;
+use sansio_mqtt_v5_protocol::UserWriteIn;
 use tokio::sync::mpsc;
 
 use crate::ClientError;

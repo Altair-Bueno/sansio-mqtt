@@ -1,12 +1,15 @@
 use sansio::Protocol;
-use sansio_mqtt_v5_protocol::{
-    Client as ProtocolClient, DriverEventIn, DriverEventOut, UserWriteIn,
-};
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use sansio_mqtt_v5_protocol::Client as ProtocolClient;
+use sansio_mqtt_v5_protocol::DriverEventIn;
+use sansio_mqtt_v5_protocol::DriverEventOut;
+use sansio_mqtt_v5_protocol::UserWriteIn;
+use tokio::io::AsyncReadExt;
+use tokio::io::AsyncWriteExt;
 use tokio::net::TcpStream;
 use tokio::sync::mpsc;
 
-use crate::{Event, EventLoopError};
+use crate::Event;
+use crate::EventLoopError;
 
 #[derive(Debug)]
 pub struct EventLoop {
@@ -83,8 +86,8 @@ impl EventLoop {
         }
     }
 
-    // [MQTT-3.1.2-22] Arm the keep-alive timer the moment Connected is delivered so the
-    // deadline is set before the next poll_timeout() call.
+    // [MQTT-3.1.2-22] Arm the keep-alive timer the moment Connected is delivered so
+    // the deadline is set before the next poll_timeout() call.
     fn try_deliver_event(&mut self) -> Option<Event> {
         let out = self.protocol.poll_read()?;
         let event = Event::from_protocol_output(out);

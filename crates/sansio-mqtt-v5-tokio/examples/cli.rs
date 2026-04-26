@@ -1,17 +1,32 @@
-//! A simple MQTT client that sends stdin lines to the broker and prints received messages to stdout.
+//! A simple MQTT client that sends stdin lines to the broker and prints
+//! received messages to stdout.
 //!
 //! The client is configured using environment variables:
-//! - `BROKER`: The address of the MQTT broker to connect to (default: `test.mosquitto.org:1883`)
-//! - `SUBSCRIPTION`: The subscription filter to subscribe to (default: `echo/#`)
+//! - `BROKER`: The address of the MQTT broker to connect to (default:
+//!   `test.mosquitto.org:1883`)
+//! - `SUBSCRIPTION`: The subscription filter to subscribe to (default:
+//!   `echo/#`)
 //! - `TOPIC`: The topic to publish to (default: `echo`)
-//! - `RUST_LOG`: The log level for the client (default: `info`). See the `tracing-subscriber` documentation for more details on log levels and configuration.
+//! - `RUST_LOG`: The log level for the client (default: `info`). See the
+//!   `tracing-subscriber` documentation for more details on log levels and
+//!   configuration.
 
 use std::net::ToSocketAddrs;
 
-use sansio_mqtt_v5_protocol::{ClientMessage, SubscribeOptions};
-use sansio_mqtt_v5_tokio::{connect, ConnectOptions, Event};
-use sansio_mqtt_v5_types::{Payload, Qos, RetainHandling, Subscription, Topic, Utf8String};
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+use sansio_mqtt_v5_protocol::ClientMessage;
+use sansio_mqtt_v5_protocol::SubscribeOptions;
+use sansio_mqtt_v5_tokio::connect;
+use sansio_mqtt_v5_tokio::ConnectOptions;
+use sansio_mqtt_v5_tokio::Event;
+use sansio_mqtt_v5_types::Payload;
+use sansio_mqtt_v5_types::Qos;
+use sansio_mqtt_v5_types::RetainHandling;
+use sansio_mqtt_v5_types::Subscription;
+use sansio_mqtt_v5_types::Topic;
+use sansio_mqtt_v5_types::Utf8String;
+use tokio::io::AsyncBufReadExt;
+use tokio::io::AsyncWriteExt;
+use tokio::io::BufReader;
 
 #[tokio::main(flavor = "current_thread")]
 #[tracing::instrument]

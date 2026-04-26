@@ -1,13 +1,17 @@
 use sansio::Protocol;
-use sansio_mqtt_v5_protocol::{
-    Client as ProtocolClient, ClientSettings, ConnectionOptions, DriverEventIn, DriverEventOut,
-    UserWriteIn,
-};
+use sansio_mqtt_v5_protocol::Client as ProtocolClient;
+use sansio_mqtt_v5_protocol::ClientSettings;
+use sansio_mqtt_v5_protocol::ConnectionOptions;
+use sansio_mqtt_v5_protocol::DriverEventIn;
+use sansio_mqtt_v5_protocol::DriverEventOut;
+use sansio_mqtt_v5_protocol::UserWriteIn;
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpStream;
 use tokio::sync::mpsc;
 
-use crate::{Client, ConnectError, EventLoop};
+use crate::Client;
+use crate::ConnectError;
+use crate::EventLoop;
 
 #[derive(Clone, Debug)]
 pub struct ConnectOptions {
