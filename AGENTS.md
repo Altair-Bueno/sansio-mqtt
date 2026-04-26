@@ -40,7 +40,8 @@
     the invariant the caller is required to uphold, not merely what the code
     does.
 - no_std-first: use `alloc` only when required.
-- Required formatting: `cargo fmt`.
+- Required formatting: `cargo +nightly fmt` (nightly required for `rustfmt.toml`
+  options).
 - Required linting: `cargo clippy`.
 - Documentation: update when API behavior or constraints change. Follow
   https://rust-lang.github.io/rfcs/1574-more-api-documentation-conventions.html
@@ -49,8 +50,17 @@
 ## Build and Tooling
 
 - Build system: Cargo.
+- Toolchain: **stable** (pinned in `rust-toolchain.toml`). Exception:
+  `cargo fmt` must be run with nightly because `rustfmt.toml` uses nightly-only
+  options (`imports_granularity`, `wrap_comments`). Use `cargo +nightly fmt`
+  locally.
 - Tests: for behavior changes follow the TDD checklist item; for non-behavior
   changes they are optional.
+- **Docker**: `crates/test-sansio-mqtt-v5-tokio-mosquitto/` contains
+  testcontainers-based integration tests that spin up a Mosquitto broker. They
+  require Docker to be running. If Docker is unavailable locally, skip that
+  crate (`--exclude test-sansio-mqtt-v5-tokio-mosquitto`) and let CI run the
+  full suite.
 - **rust-analyzer is REQUIRED**: at session start, verify rust-analyzer is
   available by running `rust-analyzer --version`. If the command fails, STOP all
   work and ask the user whether you should install it by running

@@ -41,14 +41,25 @@ jobs:
           npx prettier@3 --check
           '**/*.{md,js,ts,jsx,tsx,json,yml,yaml,css,scss,html}'
 
-  rust-checks:
-    name: rust checks
+  rust-fmt:
+    name: Cargo fmt (nightly)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: rustfmt
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+  rust-clippy:
+    name: Cargo clippy
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
         with:
-          components: rustfmt,clippy
+          components: clippy
       - uses: actions/cache@v5
         with:
           path: |
@@ -57,21 +68,12 @@ jobs:
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             target/
-          key: ${{ runner.os }}-cargo-checks-${{ hashFiles('**/Cargo.lock') }}
-      - uses: taiki-e/install-action@v2
-        with:
-          tool: cargo-nextest@0.9
-      - name: Check formatting
-        run: cargo fmt --all -- --check
+          key: ${{ runner.os }}-${{ github.job }}
       - name: Run clippy
         run: cargo clippy --all-targets -- -D warnings
-      - name: Run tests
-        run: cargo nextest run --all-targets
-      - name: Run doc tests
-        run: cargo test --doc
 
-  rust-msrv:
-    name: MSRV
+  rust-check-msrv:
+    name: Cargo check (MSRV)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -90,13 +92,12 @@ jobs:
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             target/
-          key: ${{ runner.os }}-cargo-msrv-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ runner.os }}-${{ github.job }}
       - name: Check MSRV
         run: cargo check --all-targets
 
-  coverage:
+  rust-coverage:
     name: coverage
-    needs: rust-checks
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -115,10 +116,8 @@ jobs:
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             target/
-          key: ${{ runner.os }}-cargo-coverage-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ runner.os }}-${{ github.job }}
       - name: Collect coverage data
-        env:
-          RUSTUP_TOOLCHAIN: nightly
         run: |
           cargo llvm-cov --no-report nextest
           cargo llvm-cov --no-report --doc
@@ -137,9 +136,10 @@ jobs:
       - typos
       - taplo-fmt
       - prettier-fmt
-      - rust-checks
-      - rust-msrv
-      - coverage
+      - rust-fmt
+      - rust-clippy
+      - rust-check-msrv
+      - rust-coverage
     runs-on: ubuntu-latest
     steps:
       - uses: re-actors/alls-green@v1.2.2
