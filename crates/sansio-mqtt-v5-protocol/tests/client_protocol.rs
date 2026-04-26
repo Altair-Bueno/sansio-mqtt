@@ -1,5 +1,6 @@
 use bytes::Bytes;
 use core::num::NonZero;
+use core::time::Duration;
 use encode::Encodable;
 use sansio::Protocol;
 use sansio_mqtt_v5_protocol::{
@@ -102,18 +103,18 @@ fn driver_events_are_pattern_matchable_without_equality() {
 
 #[test]
 fn client_new_uses_default_state_and_blank_scratchpad() {
-    let _client = Client::<u64>::with_settings(ClientSettings::default());
+    let _client = Client::<Duration>::with_settings(ClientSettings::default());
 }
 
 #[test]
 fn client_new_with_state_accepts_preloaded_state() {
     let state = sansio_mqtt_v5_protocol::ClientSession::default();
-    let _client = Client::<u64>::with_settings_and_session(ClientSettings::default(), state);
+    let _client = Client::<Duration>::with_settings_and_session(ClientSettings::default(), state);
 }
 
 #[test]
 fn clean_start_true_drops_preloaded_state() {
-    let mut client = Client::<u64>::with_settings_and_session(
+    let mut client = Client::<Duration>::with_settings_and_session(
         ClientSettings::default(),
         sansio_mqtt_v5_protocol::ClientSession::default(),
     );
@@ -135,7 +136,7 @@ fn clean_start_true_drops_preloaded_state() {
 
 #[test]
 fn clean_start_false_keeps_preloaded_state_until_session_rules_clear_it() {
-    let mut client = Client::<u64>::with_settings_and_session(
+    let mut client = Client::<Duration>::with_settings_and_session(
         ClientSettings::default(),
         sansio_mqtt_v5_protocol::ClientSession::default(),
     );
@@ -217,7 +218,7 @@ fn client_settings_default_includes_permissive_negotiation_policy() {
 
 #[test]
 fn socket_connected_emits_connect_bytes() {
-    let mut client = Client::<u64>::default();
+    let mut client = Client::<Duration>::default();
 
     let result = client.handle_event(DriverEventIn::SocketConnected);
 
@@ -233,7 +234,7 @@ fn socket_connected_emits_connect_bytes() {
 
 #[test]
 fn connect_encodes_receive_maximum_when_configured() {
-    let mut client = Client::<u64>::default();
+    let mut client = Client::<Duration>::default();
 
     assert_eq!(
         client.handle_write(UserWriteIn::Connect(ConnectionOptions {
@@ -264,7 +265,7 @@ fn connect_encodes_receive_maximum_when_configured() {
 
 #[test]
 fn connect_encodes_maximum_packet_size_when_configured() {
-    let mut client = Client::<u64>::default();
+    let mut client = Client::<Duration>::default();
 
     assert_eq!(
         client.handle_write(UserWriteIn::Connect(ConnectionOptions {
@@ -300,7 +301,7 @@ fn parser_uses_effective_client_limits_after_connect_policy_applied() {
         max_remaining_bytes: 2,
         ..ClientSettings::default()
     };
-    let mut client = Client::<u64>::with_settings(settings);
+    let mut client = Client::<Duration>::with_settings(settings);
 
     assert_eq!(
         client.handle_write(UserWriteIn::Connect(ConnectionOptions::default())),
@@ -346,7 +347,7 @@ fn connect_defaults_use_client_settings_when_connection_options_omit_values() {
         max_incoming_topic_alias_maximum: Some(3),
         ..ClientSettings::default()
     };
-    let mut client = Client::<u64>::with_settings(settings);
+    let mut client = Client::<Duration>::with_settings(settings);
 
     assert_eq!(
         client.handle_write(UserWriteIn::Connect(ConnectionOptions {
@@ -388,7 +389,7 @@ fn connect_topic_alias_defaults_to_client_settings_when_omitted() {
         max_incoming_topic_alias_maximum: Some(3),
         ..ClientSettings::default()
     };
-    let mut client = Client::<u64>::with_settings(settings);
+    let mut client = Client::<Duration>::with_settings(settings);
 
     assert_eq!(
         client.handle_write(UserWriteIn::Connect(ConnectionOptions::default())),
@@ -414,7 +415,7 @@ fn connect_topic_alias_defaults_to_client_settings_when_omitted() {
 
 #[test]
 fn socket_closed_emits_disconnected_event() {
-    let mut client = Client::<u64>::default();
+    let mut client = Client::<Duration>::default();
 
     let result = client.handle_event(DriverEventIn::SocketClosed);
 
@@ -427,7 +428,7 @@ fn socket_closed_emits_disconnected_event() {
 
 #[test]
 fn socket_connected_in_connecting_state_returns_invalid_transition() {
-    let mut client = Client::<u64>::default();
+    let mut client = Client::<Duration>::default();
 
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     let _ = client.poll_write().expect("connect frame expected");
@@ -440,7 +441,7 @@ fn socket_connected_in_connecting_state_returns_invalid_transition() {
 
 #[test]
 fn fragmented_packet_is_buffered_until_complete() {
-    let mut client = Client::<u64>::default();
+    let mut client = Client::<Duration>::default();
 
     let first_fragment = client.handle_read(Bytes::from_static(&[0xD0]));
 
@@ -463,7 +464,7 @@ fn fragmented_packet_is_buffered_until_complete() {
 
 #[test]
 fn malformed_packet_triggers_close_action() {
-    let mut client = Client::<u64>::default();
+    let mut client = Client::<Duration>::default();
 
     let result = client.handle_read(Bytes::from_static(&[0xD0, 0x01, 0x00]));
 
@@ -480,7 +481,7 @@ fn malformed_packet_triggers_close_action() {
 
 #[test]
 fn protocol_error_emits_disconnect_bytes_before_close_action_polling() {
-    let mut client = Client::<u64>::default();
+    let mut client = Client::<Duration>::default();
 
     let result = client.handle_read(Bytes::from_static(&[0xD0, 0x00]));
 
@@ -499,7 +500,7 @@ fn protocol_error_emits_disconnect_bytes_before_close_action_polling() {
 
 #[test]
 fn connack_transitions_to_connected_and_emits_connected() {
-    let mut client = Client::<u64>::default();
+    let mut client = Client::<Duration>::default();
 
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     let _ = client.poll_write().expect("connect frame expected");
@@ -517,7 +518,7 @@ fn connack_transitions_to_connected_and_emits_connected() {
 
 #[test]
 fn connack_rejected_reason_closes_without_connected_event() {
-    let mut client = Client::<u64>::default();
+    let mut client = Client::<Duration>::default();
 
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     let _ = client.poll_write().expect("connect frame expected");
@@ -542,7 +543,7 @@ fn connack_rejected_reason_closes_without_connected_event() {
 
 #[test]
 fn inbound_publish_qos0_is_forwarded_to_user_queue() {
-    let mut client = Client::<u64>::default();
+    let mut client = Client::<Duration>::default();
 
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     assert!(client.poll_write().is_some());
@@ -588,7 +589,7 @@ fn inbound_publish_qos0_is_forwarded_to_user_queue() {
 
 #[test]
 fn inbound_publish_multiple_subscription_identifiers_surface_to_user() {
-    let mut client = Client::<u64>::default();
+    let mut client = Client::<Duration>::default();
 
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     assert!(client.poll_write().is_some());
@@ -631,7 +632,7 @@ fn inbound_publish_multiple_subscription_identifiers_surface_to_user() {
 
 #[test]
 fn inbound_publish_registers_topic_alias_then_resolves_alias_only_publish() {
-    let mut client = Client::<u64>::default();
+    let mut client = Client::<Duration>::default();
 
     assert_eq!(
         client.handle_write(UserWriteIn::Connect(ConnectionOptions {
@@ -710,7 +711,7 @@ fn inbound_publish_registers_topic_alias_then_resolves_alias_only_publish() {
 
 #[test]
 fn inbound_publish_alias_only_unknown_alias_is_protocol_error() {
-    let mut client = Client::<u64>::default();
+    let mut client = Client::<Duration>::default();
 
     assert_eq!(
         client.handle_write(UserWriteIn::Connect(ConnectionOptions {
@@ -763,7 +764,7 @@ fn inbound_publish_alias_only_unknown_alias_is_protocol_error() {
 
 #[test]
 fn inbound_publish_empty_topic_without_alias_is_protocol_error() {
-    let mut client = Client::<u64>::default();
+    let mut client = Client::<Duration>::default();
 
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     assert!(client.poll_write().is_some());
@@ -798,7 +799,7 @@ fn inbound_publish_empty_topic_without_alias_is_protocol_error() {
 
 #[test]
 fn inbound_publish_alias_exceeds_client_alias_max_is_protocol_error() {
-    let mut client = Client::<u64>::default();
+    let mut client = Client::<Duration>::default();
 
     assert_eq!(
         client.handle_write(UserWriteIn::Connect(ConnectionOptions {
@@ -851,7 +852,7 @@ fn inbound_publish_alias_exceeds_client_alias_max_is_protocol_error() {
 
 #[test]
 fn inbound_qos1_publish_waits_for_app_ack_then_sends_puback() {
-    let mut client = Client::<u64>::default();
+    let mut client = Client::<Duration>::default();
 
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     assert!(client.poll_write().is_some());
@@ -909,7 +910,7 @@ fn inbound_qos1_publish_waits_for_app_ack_then_sends_puback() {
 
 #[test]
 fn inbound_qos1_publish_reject_sends_puback_failure_reason() {
-    let mut client = Client::<u64>::default();
+    let mut client = Client::<Duration>::default();
 
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     assert!(client.poll_write().is_some());
@@ -970,7 +971,7 @@ fn inbound_qos1_publish_reject_sends_puback_failure_reason() {
 
 #[test]
 fn inbound_qos2_publish_waits_for_app_ack_then_sends_pubrec_and_completes_on_pubrel() {
-    let mut client = Client::<u64>::default();
+    let mut client = Client::<Duration>::default();
 
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     assert!(client.poll_write().is_some());
@@ -1034,7 +1035,7 @@ fn inbound_qos2_publish_waits_for_app_ack_then_sends_pubrec_and_completes_on_pub
 
 #[test]
 fn inbound_qos2_publish_reject_sends_pubrec_failure_and_clears_state() {
-    let mut client = Client::<u64>::default();
+    let mut client = Client::<Duration>::default();
 
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     assert!(client.poll_write().is_some());
@@ -1101,7 +1102,7 @@ fn inbound_qos2_publish_reject_sends_pubrec_failure_and_clears_state() {
 
 #[test]
 fn inbound_packet_id_reuse_conflict_causes_protocol_error() {
-    let mut client = Client::<u64>::default();
+    let mut client = Client::<Duration>::default();
 
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     assert!(client.poll_write().is_some());
@@ -1165,7 +1166,7 @@ fn inbound_packet_id_reuse_conflict_causes_protocol_error() {
 
 #[test]
 fn duplicate_qos2_publish_after_reject_resends_same_failure_pubrec_without_redelivery() {
-    let mut client = Client::<u64>::default();
+    let mut client = Client::<Duration>::default();
 
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     assert!(client.poll_write().is_some());
@@ -1234,7 +1235,7 @@ fn duplicate_qos2_publish_after_reject_resends_same_failure_pubrec_without_redel
 
 #[test]
 fn manual_ack_sends_puback_success_for_pending_message_id() {
-    let mut client = Client::<u64>::default();
+    let mut client = Client::<Duration>::default();
 
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     assert!(client.poll_write().is_some());
@@ -1312,7 +1313,7 @@ fn reject_reason_maps_to_puback_failure_codes_for_qos1() {
     ];
 
     for (offset, (reject_reason, expected_reason_code)) in cases.iter().enumerate() {
-        let mut client = Client::<u64>::default();
+        let mut client = Client::<Duration>::default();
 
         assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
         assert!(client.poll_write().is_some());
@@ -1392,7 +1393,7 @@ fn reject_reason_maps_to_pubrec_failure_codes_for_qos2() {
     ];
 
     for (offset, (reject_reason, expected_reason_code)) in cases.iter().enumerate() {
-        let mut client = Client::<u64>::default();
+        let mut client = Client::<Duration>::default();
 
         assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
         assert!(client.poll_write().is_some());
@@ -1444,7 +1445,7 @@ fn reject_reason_maps_to_pubrec_failure_codes_for_qos2() {
 
 #[test]
 fn inbound_qos2_unknown_pubrel_sends_pubcomp_packet_identifier_not_found() {
-    let mut client = Client::<u64>::default();
+    let mut client = Client::<Duration>::default();
 
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     assert!(client.poll_write().is_some());
@@ -1478,7 +1479,7 @@ fn inbound_qos2_unknown_pubrel_sends_pubcomp_packet_identifier_not_found() {
 
 #[test]
 fn socket_closed_after_disconnect_does_not_duplicate_disconnected_event() {
-    let mut client = Client::<u64>::default();
+    let mut client = Client::<Duration>::default();
 
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     assert!(client.poll_write().is_some());
@@ -1512,7 +1513,7 @@ fn socket_closed_after_disconnect_does_not_duplicate_disconnected_event() {
 
 #[test]
 fn outbound_qos1_publish_emits_acknowledged_event_on_puback() {
-    let mut client = Client::<u64>::default();
+    let mut client = Client::<Duration>::default();
 
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     assert!(client.poll_write().is_some());
@@ -1570,7 +1571,7 @@ fn outbound_qos1_publish_emits_acknowledged_event_on_puback() {
 
 #[test]
 fn unexpected_puback_without_matching_qos1_transaction_triggers_protocol_error_close() {
-    let mut client = Client::<u64>::default();
+    let mut client = Client::<Duration>::default();
 
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     assert!(client.poll_write().is_some());
@@ -1607,7 +1608,7 @@ fn unexpected_puback_without_matching_qos1_transaction_triggers_protocol_error_c
 
 #[test]
 fn qos2_inflight_receiving_puback_triggers_protocol_error_close() {
-    let mut client = Client::<u64>::default();
+    let mut client = Client::<Duration>::default();
 
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     assert!(client.poll_write().is_some());
@@ -1660,7 +1661,7 @@ fn qos2_inflight_receiving_puback_triggers_protocol_error_close() {
 
 #[test]
 fn qos1_inflight_receiving_pubrec_triggers_protocol_error_close() {
-    let mut client = Client::<u64>::default();
+    let mut client = Client::<Duration>::default();
 
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     assert!(client.poll_write().is_some());
@@ -1713,7 +1714,7 @@ fn qos1_inflight_receiving_pubrec_triggers_protocol_error_close() {
 
 #[test]
 fn connack_receive_maximum_only_limits_broker_facing_publish_flow() {
-    let mut client = Client::<u64>::default();
+    let mut client = Client::<Duration>::default();
 
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     assert!(client.poll_write().is_some());
@@ -1827,7 +1828,7 @@ fn effective_limits_recompute_on_connect_socketconnected_connack_and_socketclose
         max_outgoing_qos: Some(MaximumQoS::AtMostOnce),
         ..ClientSettings::default()
     };
-    let mut client = Client::<u64>::with_settings(settings);
+    let mut client = Client::<Duration>::with_settings(settings);
 
     let topic = Topic::try_from(Utf8String::try_from("test/topic").expect("valid utf8"))
         .expect("valid topic");
@@ -1905,7 +1906,7 @@ fn effective_limits_recompute_on_connect_socketconnected_connack_and_socketclose
 
 #[test]
 fn effective_limits_recompute_on_connect_applies_pending_connect_options() {
-    let mut client = Client::<u64>::with_settings(ClientSettings {
+    let mut client = Client::<Duration>::with_settings(ClientSettings {
         max_outgoing_qos: None,
         ..ClientSettings::default()
     });
@@ -1947,7 +1948,7 @@ fn effective_limits_recompute_on_connect_applies_pending_connect_options() {
 
 #[test]
 fn effective_limits_recompute_on_connack_applies_broker_receive_maximum() {
-    let mut client = Client::<u64>::with_settings(ClientSettings::default());
+    let mut client = Client::<Duration>::with_settings(ClientSettings::default());
 
     assert_eq!(
         client.handle_write(UserWriteIn::Connect(ConnectionOptions::default())),
@@ -2002,7 +2003,7 @@ fn app_topic_alias_zero_disables_inbound_alias_even_if_connect_requests_more() {
         max_incoming_topic_alias_maximum: Some(0),
         ..ClientSettings::default()
     };
-    let mut client = Client::<u64>::with_settings(settings);
+    let mut client = Client::<Duration>::with_settings(settings);
 
     assert_eq!(
         client.handle_write(UserWriteIn::Connect(ConnectionOptions {
@@ -2059,7 +2060,7 @@ fn app_topic_alias_setting_is_applied_when_connect_option_omits_alias_limit() {
         max_incoming_topic_alias_maximum: Some(2),
         ..ClientSettings::default()
     };
-    let mut client = Client::<u64>::with_settings(settings);
+    let mut client = Client::<Duration>::with_settings(settings);
 
     assert_eq!(
         client.handle_write(UserWriteIn::Connect(ConnectionOptions::default())),
@@ -2122,7 +2123,7 @@ fn app_retain_policy_false_blocks_retain_publish_even_if_broker_allows() {
         allow_retain: false,
         ..ClientSettings::default()
     };
-    let mut client = Client::<u64>::with_settings(settings);
+    let mut client = Client::<Duration>::with_settings(settings);
 
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     assert!(client.poll_write().is_some());
@@ -2158,7 +2159,7 @@ fn app_subscription_policy_flags_override_broker_allowances() {
         allow_shared_subscriptions: false,
         ..ClientSettings::default()
     };
-    let mut client = Client::<u64>::with_settings(settings);
+    let mut client = Client::<Duration>::with_settings(settings);
 
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     assert!(client.poll_write().is_some());
@@ -2199,7 +2200,7 @@ fn app_subscription_policy_flags_override_broker_allowances() {
 
 #[test]
 fn outbound_qos2_publish_emits_completed_event_on_pubcomp() {
-    let mut client = Client::<u64>::default();
+    let mut client = Client::<Duration>::default();
 
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     assert!(client.poll_write().is_some());
@@ -2271,7 +2272,7 @@ fn outbound_qos2_publish_emits_completed_event_on_pubcomp() {
 
 #[test]
 fn unexpected_pubcomp_before_pubrec_transition_triggers_protocol_error_close() {
-    let mut client = Client::<u64>::default();
+    let mut client = Client::<Duration>::default();
 
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     assert!(client.poll_write().is_some());
@@ -2323,7 +2324,7 @@ fn unexpected_pubcomp_before_pubrec_transition_triggers_protocol_error_close() {
 
 #[test]
 fn receive_maximum_full_returns_immediate_error_for_new_qos2_publish() {
-    let mut client = Client::<u64>::default();
+    let mut client = Client::<Duration>::default();
 
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     assert!(client.poll_write().is_some());
@@ -2386,7 +2387,7 @@ fn receive_maximum_full_returns_immediate_error_for_new_qos2_publish() {
 
 #[test]
 fn duplicate_pubrec_in_qos2_await_pubcomp_resends_pubrel_without_disconnect() {
-    let mut client = Client::<u64>::default();
+    let mut client = Client::<Duration>::default();
 
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     assert!(client.poll_write().is_some());
@@ -2460,7 +2461,7 @@ fn duplicate_pubrec_in_qos2_await_pubcomp_resends_pubrel_without_disconnect() {
 
 #[test]
 fn qos2_pubrec_failure_reason_drops_inflight_without_pubrel() {
-    let mut client = Client::<u64>::default();
+    let mut client = Client::<Duration>::default();
 
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     assert!(client.poll_write().is_some());
@@ -2520,7 +2521,7 @@ fn qos2_pubrec_failure_reason_drops_inflight_without_pubrel() {
 
 #[test]
 fn publish_rejects_packet_exceeding_connack_maximum_packet_size() {
-    let mut client = Client::<u64>::default();
+    let mut client = Client::<Duration>::default();
 
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     assert!(client.poll_write().is_some());
@@ -2555,7 +2556,7 @@ fn publish_rejects_packet_exceeding_connack_maximum_packet_size() {
 
 #[test]
 fn subscribe_rejects_packet_exceeding_connack_maximum_packet_size() {
-    let mut client = Client::<u64>::default();
+    let mut client = Client::<Duration>::default();
 
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     assert!(client.poll_write().is_some());
@@ -2594,7 +2595,7 @@ fn subscribe_rejects_packet_exceeding_connack_maximum_packet_size() {
 
 #[test]
 fn repeated_connect_does_not_duplicate_open_socket_event() {
-    let mut client = Client::<u64>::default();
+    let mut client = Client::<Duration>::default();
 
     assert_eq!(
         client.handle_write(UserWriteIn::Connect(ConnectionOptions::default())),
@@ -2614,7 +2615,7 @@ fn repeated_connect_does_not_duplicate_open_socket_event() {
 
 #[test]
 fn rejected_connect_does_not_mutate_pending_connect_options() {
-    let mut client = Client::<u64>::default();
+    let mut client = Client::<Duration>::default();
 
     let initial_options = ConnectionOptions {
         client_identifier: Utf8String::try_from("initial-client").expect("valid utf8"),
@@ -2625,7 +2626,7 @@ fn rejected_connect_does_not_mutate_pending_connect_options() {
         ..ConnectionOptions::default()
     };
 
-    let mut rejected_connect_reference = Client::<u64>::default();
+    let mut rejected_connect_reference = Client::<Duration>::default();
     assert_eq!(
         rejected_connect_reference.handle_write(UserWriteIn::Connect(rejected_options.clone())),
         Ok(())
@@ -2661,7 +2662,7 @@ fn rejected_connect_does_not_mutate_pending_connect_options() {
 
 #[test]
 fn reconnect_ignores_previous_connack_maximum_packet_size_for_connect() {
-    let mut client = Client::<u64>::default();
+    let mut client = Client::<Duration>::default();
 
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     let first_connect = client.poll_write().expect("connect bytes are queued");
@@ -2695,7 +2696,7 @@ fn reconnect_ignores_previous_connack_maximum_packet_size_for_connect() {
 
 #[test]
 fn connack_resume_with_clean_start_is_protocol_error() {
-    let mut client = Client::<u64>::default();
+    let mut client = Client::<Duration>::default();
 
     assert_eq!(
         client.handle_write(UserWriteIn::Connect(ConnectionOptions {
@@ -2730,7 +2731,7 @@ fn connack_resume_with_clean_start_is_protocol_error() {
 
 #[test]
 fn connack_resume_without_local_state_is_accepted_when_clean_start_false() {
-    let mut client = Client::<u64>::default();
+    let mut client = Client::<Duration>::default();
 
     assert_eq!(
         client.handle_write(UserWriteIn::Connect(ConnectionOptions {
@@ -2759,7 +2760,7 @@ fn connack_resume_without_local_state_is_accepted_when_clean_start_false() {
 
 #[test]
 fn resumed_session_replays_outbound_qos_publish_with_dup_set() {
-    let mut client = Client::<u64>::default();
+    let mut client = Client::<Duration>::default();
 
     assert_eq!(
         client.handle_write(UserWriteIn::Connect(ConnectionOptions {
@@ -2856,7 +2857,7 @@ fn resumed_session_replays_outbound_qos_publish_with_dup_set() {
 
 #[test]
 fn resumed_session_replay_failure_does_not_emit_connected_and_closes() {
-    let mut client = Client::<u64>::default();
+    let mut client = Client::<Duration>::default();
 
     assert_eq!(
         client.handle_write(UserWriteIn::Connect(ConnectionOptions {
@@ -2940,7 +2941,7 @@ fn resumed_session_replay_failure_does_not_emit_connected_and_closes() {
 
 #[test]
 fn resumed_session_replays_unacknowledged_pubrel() {
-    let mut client = Client::<u64>::default();
+    let mut client = Client::<Duration>::default();
 
     assert_eq!(
         client.handle_write(UserWriteIn::Connect(ConnectionOptions {
@@ -3048,7 +3049,7 @@ fn resumed_session_replays_unacknowledged_pubrel() {
 
 #[test]
 fn non_resumed_session_drops_inflight_and_emits_publish_dropped_events() {
-    let mut client = Client::<u64>::default();
+    let mut client = Client::<Duration>::default();
 
     assert_eq!(
         client.handle_write(UserWriteIn::Connect(ConnectionOptions {
@@ -3196,7 +3197,7 @@ fn non_resumed_session_drops_inflight_and_emits_publish_dropped_events() {
 
 #[test]
 fn non_resumed_connack_discards_all_local_session_state() {
-    let mut client = Client::<u64>::default();
+    let mut client = Client::<Duration>::default();
 
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     assert!(client.poll_write().is_some());
@@ -3313,7 +3314,7 @@ fn non_resumed_connack_discards_all_local_session_state() {
         Some(sansio_mqtt_v5_protocol::DriverEventOut::CloseSocket)
     ));
 
-    let mut client = Client::<u64>::default();
+    let mut client = Client::<Duration>::default();
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     assert!(client.poll_write().is_some());
     assert_eq!(client.handle_read(encode_packet(&initial_connack)), Ok(()));
@@ -3359,7 +3360,7 @@ fn non_resumed_connack_discards_all_local_session_state() {
 
 #[test]
 fn stale_read_buffer_is_cleared_on_socket_closed() {
-    let mut client = Client::<u64>::default();
+    let mut client = Client::<Duration>::default();
 
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     assert!(client.poll_write().is_some());
@@ -3387,7 +3388,7 @@ fn stale_read_buffer_is_cleared_on_socket_closed() {
 
 #[test]
 fn stale_read_buffer_is_cleared_on_socket_error() {
-    let mut client = Client::<u64>::default();
+    let mut client = Client::<Duration>::default();
 
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     assert!(client.poll_write().is_some());
@@ -3418,7 +3419,7 @@ fn stale_read_buffer_is_cleared_on_socket_error() {
 
 #[test]
 fn stale_read_buffer_is_cleared_on_user_disconnect() {
-    let mut client = Client::<u64>::default();
+    let mut client = Client::<Duration>::default();
 
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     assert!(client.poll_write().is_some());
@@ -3450,7 +3451,7 @@ fn stale_read_buffer_is_cleared_on_user_disconnect() {
 
 #[test]
 fn stale_read_buffer_is_cleared_on_close() {
-    let mut client = Client::<u64>::default();
+    let mut client = Client::<Duration>::default();
 
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     assert!(client.poll_write().is_some());
@@ -3482,7 +3483,7 @@ fn stale_read_buffer_is_cleared_on_close() {
 
 #[test]
 fn timeout_in_connected_state_enqueues_pingreq() {
-    let mut client = Client::<u64>::default();
+    let mut client = Client::<Duration>::default();
 
     let options = ConnectionOptions {
         keep_alive: NonZero::new(10),
@@ -3505,16 +3506,16 @@ fn timeout_in_connected_state_enqueues_pingreq() {
     assert_eq!(client.handle_read(encode_packet(&connack)), Ok(()));
     assert!(matches!(client.poll_read(), Some(UserWriteOut::Connected)));
 
-    assert_eq!(client.handle_timeout(42), Ok(()));
+    assert_eq!(client.handle_timeout(Duration::from_secs(42)), Ok(()));
     assert_eq!(client.poll_write(), Some(Bytes::from_static(&[0xC0, 0x00])));
     // [MQTT-3.1.2-24] After PINGREQ the next deadline is now + interval/2 (= 42 + 5 = 47)
     // so total elapsed from last packet is 1.5× the keep-alive interval.
-    assert_eq!(client.poll_timeout(), Some(47));
+    assert_eq!(client.poll_timeout(), Some(Duration::from_secs(47)));
 }
 
 #[test]
 fn close_enqueues_disconnect_and_close_socket() {
-    let mut client = Client::<u64>::default();
+    let mut client = Client::<Duration>::default();
 
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     assert!(client.poll_write().is_some());
@@ -3546,7 +3547,7 @@ fn close_enqueues_disconnect_and_close_socket() {
 
 #[test]
 fn close_succeeds_even_when_disconnect_packet_exceeds_maximum_packet_size() {
-    let mut client = Client::<u64>::default();
+    let mut client = Client::<Duration>::default();
 
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     assert!(client.poll_write().is_some());
@@ -3581,7 +3582,7 @@ fn close_succeeds_even_when_disconnect_packet_exceeds_maximum_packet_size() {
 
 #[test]
 fn user_disconnect_succeeds_even_when_disconnect_packet_exceeds_maximum_packet_size() {
-    let mut client = Client::<u64>::default();
+    let mut client = Client::<Duration>::default();
 
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     assert!(client.poll_write().is_some());
@@ -3616,7 +3617,7 @@ fn user_disconnect_succeeds_even_when_disconnect_packet_exceeds_maximum_packet_s
 
 #[test]
 fn timeout_is_cleared_on_close() {
-    let mut close_client = Client::<u64>::default();
+    let mut close_client = Client::<Duration>::default();
 
     let options = ConnectionOptions {
         keep_alive: NonZero::new(10),
@@ -3648,14 +3649,14 @@ fn timeout_is_cleared_on_close() {
         Some(UserWriteOut::Connected)
     ));
 
-    assert_eq!(close_client.handle_timeout(42), Ok(()));
+    assert_eq!(close_client.handle_timeout(Duration::from_secs(42)), Ok(()));
     // [MQTT-3.1.2-24] After PINGREQ the next deadline is now + interval/2 (= 42 + 5 = 47).
-    assert_eq!(close_client.poll_timeout(), Some(47));
+    assert_eq!(close_client.poll_timeout(), Some(Duration::from_secs(47)));
 
     assert_eq!(close_client.close(), Ok(()));
     assert_eq!(close_client.poll_timeout(), None);
 
-    let mut socket_closed_client = Client::<u64>::default();
+    let mut socket_closed_client = Client::<Duration>::default();
 
     let options = ConnectionOptions {
         keep_alive: NonZero::new(10),
@@ -3683,9 +3684,9 @@ fn timeout_is_cleared_on_close() {
         Some(UserWriteOut::Connected)
     ));
 
-    assert_eq!(socket_closed_client.handle_timeout(99), Ok(()));
+    assert_eq!(socket_closed_client.handle_timeout(Duration::from_secs(99)), Ok(()));
     // [MQTT-3.1.2-24] After PINGREQ the next deadline is now + interval/2 (= 99 + 5 = 104).
-    assert_eq!(socket_closed_client.poll_timeout(), Some(104));
+    assert_eq!(socket_closed_client.poll_timeout(), Some(Duration::from_secs(104)));
 
     assert_eq!(
         socket_closed_client.handle_event(DriverEventIn::SocketClosed),
@@ -3696,7 +3697,7 @@ fn timeout_is_cleared_on_close() {
 
 #[test]
 fn connecting_accepts_auth_and_stays_open() {
-    let mut client = Client::<u64>::default();
+    let mut client = Client::<Duration>::default();
 
     assert_eq!(
         client.handle_write(UserWriteIn::Connect(ConnectionOptions {
@@ -3729,7 +3730,7 @@ fn connecting_accepts_auth_and_stays_open() {
 
 #[test]
 fn connecting_auth_then_connack_success_transitions_connected() {
-    let mut client = Client::<u64>::default();
+    let mut client = Client::<Duration>::default();
 
     assert_eq!(
         client.handle_write(UserWriteIn::Connect(ConnectionOptions {
@@ -3770,7 +3771,7 @@ fn connecting_auth_then_connack_success_transitions_connected() {
 
 #[test]
 fn connecting_auth_without_configured_authentication_is_protocol_error() {
-    let mut client = Client::<u64>::default();
+    let mut client = Client::<Duration>::default();
 
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     assert!(client.poll_write().is_some());
@@ -3791,7 +3792,7 @@ fn connecting_auth_without_configured_authentication_is_protocol_error() {
 
 #[test]
 fn connecting_auth_with_reason_other_than_continue_is_protocol_error() {
-    let mut client = Client::<u64>::default();
+    let mut client = Client::<Duration>::default();
 
     assert_eq!(
         client.handle_write(UserWriteIn::Connect(ConnectionOptions {
@@ -3830,7 +3831,7 @@ fn connecting_auth_with_reason_other_than_continue_is_protocol_error() {
 
 #[test]
 fn publish_qos_above_server_maximum_qos_is_rejected() {
-    let mut client = Client::<u64>::default();
+    let mut client = Client::<Duration>::default();
 
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     assert!(client.poll_write().is_some());
@@ -3864,7 +3865,7 @@ fn publish_qos_above_server_maximum_qos_is_rejected() {
 
 #[test]
 fn publish_retain_when_server_retain_not_available_is_rejected() {
-    let mut client = Client::<u64>::default();
+    let mut client = Client::<Duration>::default();
 
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     assert!(client.poll_write().is_some());
@@ -3900,7 +3901,7 @@ fn publish_retain_when_server_retain_not_available_is_rejected() {
 
 #[test]
 fn subscribe_shared_with_no_local_is_rejected() {
-    let mut client = Client::<u64>::default();
+    let mut client = Client::<Duration>::default();
 
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     assert!(client.poll_write().is_some());
@@ -3933,7 +3934,7 @@ fn subscribe_shared_with_no_local_is_rejected() {
 
 #[test]
 fn subscribe_wildcard_when_server_disallows_is_rejected() {
-    let mut client = Client::<u64>::default();
+    let mut client = Client::<Duration>::default();
 
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     assert!(client.poll_write().is_some());
@@ -3966,7 +3967,7 @@ fn subscribe_wildcard_when_server_disallows_is_rejected() {
 
 #[test]
 fn subscribe_shared_when_server_disallows_is_rejected() {
-    let mut client = Client::<u64>::default();
+    let mut client = Client::<Duration>::default();
 
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     assert!(client.poll_write().is_some());
@@ -3999,7 +4000,7 @@ fn subscribe_shared_when_server_disallows_is_rejected() {
 
 #[test]
 fn subscribe_identifier_when_server_disallows_is_rejected() {
-    let mut client = Client::<u64>::default();
+    let mut client = Client::<Duration>::default();
 
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     assert!(client.poll_write().is_some());
@@ -4032,7 +4033,7 @@ fn subscribe_identifier_when_server_disallows_is_rejected() {
 
 #[test]
 fn connecting_auth_continue_then_connack_success_connects() {
-    let mut client = Client::<u64>::default();
+    let mut client = Client::<Duration>::default();
 
     let options = ConnectionOptions {
         authentication: Some(sansio_mqtt_v5_types::AuthenticationKind::WithoutData {
@@ -4073,7 +4074,7 @@ fn connecting_auth_continue_then_connack_success_connects() {
 /// not treated as a protocol error. The application decides how to respond.
 #[test]
 fn auth_in_connected_state_is_forwarded_not_protocol_error() {
-    let mut client = Client::<u64>::default();
+    let mut client = Client::<Duration>::default();
 
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     assert!(client.poll_write().is_some());
@@ -4107,7 +4108,7 @@ fn auth_in_connected_state_is_forwarded_not_protocol_error() {
 
 #[test]
 fn keepalive_disabled_without_interval_no_pingreq() {
-    let mut client = Client::<u64>::default();
+    let mut client = Client::<Duration>::default();
 
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     assert!(client.poll_write().is_some());
@@ -4121,14 +4122,14 @@ fn keepalive_disabled_without_interval_no_pingreq() {
     assert_eq!(client.handle_read(encode_packet(&connack)), Ok(()));
     assert!(matches!(client.poll_read(), Some(UserWriteOut::Connected)));
 
-    assert_eq!(client.handle_timeout(1), Ok(()));
+    assert_eq!(client.handle_timeout(Duration::from_secs(1)), Ok(()));
     assert_eq!(client.poll_write(), None);
     assert_eq!(client.poll_timeout(), None);
 }
 
 #[test]
 fn connack_server_keep_alive_zero_disables_keepalive_without_panic() {
-    let mut client = Client::<u64>::default();
+    let mut client = Client::<Duration>::default();
 
     let options = ConnectionOptions {
         keep_alive: NonZero::new(10),
@@ -4154,14 +4155,14 @@ fn connack_server_keep_alive_zero_disables_keepalive_without_panic() {
     assert_eq!(client.handle_read(encode_packet(&connack)), Ok(()));
     assert!(matches!(client.poll_read(), Some(UserWriteOut::Connected)));
 
-    assert_eq!(client.handle_timeout(1), Ok(()));
+    assert_eq!(client.handle_timeout(Duration::from_secs(1)), Ok(()));
     assert_eq!(client.poll_write(), None);
     assert_eq!(client.poll_timeout(), None);
 }
 
 #[test]
 fn keepalive_timeout_without_pingresp_closes_connection() {
-    let mut client = Client::<u64>::default();
+    let mut client = Client::<Duration>::default();
 
     let options = ConnectionOptions {
         keep_alive: NonZero::new(10),
@@ -4184,10 +4185,10 @@ fn keepalive_timeout_without_pingresp_closes_connection() {
     assert_eq!(client.handle_read(encode_packet(&connack)), Ok(()));
     assert!(matches!(client.poll_read(), Some(UserWriteOut::Connected)));
 
-    assert_eq!(client.handle_timeout(1), Ok(()));
+    assert_eq!(client.handle_timeout(Duration::from_secs(1)), Ok(()));
     assert_eq!(client.poll_write(), Some(Bytes::from_static(&[0xC0, 0x00])));
 
-    assert_eq!(client.handle_timeout(2), Err(Error::ProtocolError));
+    assert_eq!(client.handle_timeout(Duration::from_secs(2)), Err(Error::ProtocolError));
     assert_eq!(
         client.poll_write(),
         Some(Bytes::from_static(&[0xE0, 0x02, 0x8D, 0x00]))
@@ -4204,11 +4205,11 @@ fn keepalive_timeout_without_pingresp_closes_connection() {
 /// treat the timeout as a connection-establishment timeout and close the socket.
 #[test]
 fn timeout_in_start_state_closes_connection_with_connect_timeout_error() {
-    let mut client = Client::<u64>::default();
+    let mut client = Client::<Duration>::default();
 
     // Start state: no CONNECT sent yet, no SocketConnected.
     assert_eq!(
-        client.handle_timeout(100u64),
+        client.handle_timeout(Duration::from_secs(100)),
         Err(Error::ConnectTimeout),
         "timeout in Start state must return ConnectTimeout"
     );
@@ -4226,7 +4227,7 @@ fn timeout_in_start_state_closes_connection_with_connect_timeout_error() {
 /// treat the timeout as a connection-establishment timeout and close the socket.
 #[test]
 fn timeout_in_connecting_state_closes_connection_with_connect_timeout_error() {
-    let mut client = Client::<u64>::default();
+    let mut client = Client::<Duration>::default();
 
     // Transition to Connecting state: write Connect + SocketConnected.
     assert_eq!(
@@ -4242,7 +4243,7 @@ fn timeout_in_connecting_state_closes_connection_with_connect_timeout_error() {
 
     // Now we are in Connecting state (post-CONNECT, pre-CONNACK).
     assert_eq!(
-        client.handle_timeout(100u64),
+        client.handle_timeout(Duration::from_secs(100)),
         Err(Error::ConnectTimeout),
         "timeout in Connecting state must return ConnectTimeout"
     );
@@ -4267,7 +4268,7 @@ fn timeout_in_connecting_state_closes_connection_with_connect_timeout_error() {
 ///      because inflight was already cleared at disconnect
 #[test]
 fn connack_session_expiry_zero_overrides_client_session_should_persist() {
-    let mut client = Client::<u64>::default();
+    let mut client = Client::<Duration>::default();
 
     // Client requests session persistence (session_expiry_interval = 60).
     assert_eq!(
@@ -4350,7 +4351,7 @@ fn connack_session_expiry_zero_overrides_client_session_should_persist() {
 /// reported as dropped on the next reconnect (when the session is not resumed).
 #[test]
 fn connack_session_expiry_nonzero_sets_session_should_persist() {
-    let mut client = Client::<u64>::default();
+    let mut client = Client::<Duration>::default();
 
     // Client requests NO persistence (session_expiry_interval = 0).
     assert_eq!(
@@ -4430,7 +4431,7 @@ fn connack_session_expiry_nonzero_sets_session_should_persist() {
 
 #[test]
 fn clean_start_true_clears_local_session_before_connect() {
-    let mut client = Client::<u64>::default();
+    let mut client = Client::<Duration>::default();
 
     let first_options = ConnectionOptions {
         session_expiry_interval: Some(30),
@@ -4514,7 +4515,7 @@ fn clean_start_true_clears_local_session_before_connect() {
 
 #[test]
 fn session_with_expiry_keeps_inflight_across_graceful_disconnect() {
-    let mut client = Client::<u64>::default();
+    let mut client = Client::<Duration>::default();
 
     let options = ConnectionOptions {
         session_expiry_interval: Some(30),
@@ -4578,7 +4579,7 @@ fn session_with_expiry_keeps_inflight_across_graceful_disconnect() {
 
 #[test]
 fn zero_session_expiry_clears_inflight_on_disconnect() {
-    let mut client = Client::<u64>::default();
+    let mut client = Client::<Duration>::default();
 
     let options = ConnectionOptions {
         session_expiry_interval: Some(0),
@@ -4640,7 +4641,7 @@ fn zero_session_expiry_clears_inflight_on_disconnect() {
 
 #[test]
 fn zero_session_expiry_clears_inflight_on_socket_closed() {
-    let mut client = Client::<u64>::default();
+    let mut client = Client::<Duration>::default();
 
     let options = ConnectionOptions {
         session_expiry_interval: Some(0),
@@ -4699,7 +4700,7 @@ fn zero_session_expiry_clears_inflight_on_socket_closed() {
 
 #[test]
 fn keepalive_timeout_with_session_expiry_preserves_inflight_for_resume() {
-    let mut client = Client::<u64>::default();
+    let mut client = Client::<Duration>::default();
 
     let options = ConnectionOptions {
         keep_alive: NonZero::new(10),
@@ -4738,13 +4739,13 @@ fn keepalive_timeout_with_session_expiry_preserves_inflight_for_resume() {
     );
     let first_publish = client.poll_write().expect("publish expected");
 
-    assert_eq!(client.handle_timeout(1), Ok(()));
+    assert_eq!(client.handle_timeout(Duration::from_secs(1)), Ok(()));
     assert_eq!(client.poll_write(), None);
 
-    assert_eq!(client.handle_timeout(2), Ok(()));
+    assert_eq!(client.handle_timeout(Duration::from_secs(2)), Ok(()));
     assert_eq!(client.poll_write(), Some(Bytes::from_static(&[0xC0, 0x00])));
 
-    assert_eq!(client.handle_timeout(3), Err(Error::ProtocolError));
+    assert_eq!(client.handle_timeout(Duration::from_secs(3)), Err(Error::ProtocolError));
     assert_eq!(
         client.poll_write(),
         Some(Bytes::from_static(&[0xE0, 0x02, 0x8D, 0x00]))
@@ -4772,7 +4773,7 @@ fn keepalive_timeout_with_session_expiry_preserves_inflight_for_resume() {
 
 #[test]
 fn subscribe_tracks_packet_id_until_suback() {
-    let mut client = Client::<u64>::default();
+    let mut client = Client::<Duration>::default();
 
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     assert!(client.poll_write().is_some());
@@ -4821,7 +4822,7 @@ fn subscribe_tracks_packet_id_until_suback() {
 
 #[test]
 fn unsubscribe_tracks_packet_id_until_unsuback() {
-    let mut client = Client::<u64>::default();
+    let mut client = Client::<Duration>::default();
 
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     assert!(client.poll_write().is_some());
@@ -4868,7 +4869,7 @@ fn unsubscribe_tracks_packet_id_until_unsuback() {
 
 #[test]
 fn unknown_suback_or_unsuback_is_protocol_error() {
-    let mut client = Client::<u64>::default();
+    let mut client = Client::<Duration>::default();
 
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     assert!(client.poll_write().is_some());
@@ -4895,7 +4896,7 @@ fn unknown_suback_or_unsuback_is_protocol_error() {
         Some(sansio_mqtt_v5_protocol::DriverEventOut::CloseSocket)
     ));
 
-    let mut client = Client::<u64>::default();
+    let mut client = Client::<Duration>::default();
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     assert!(client.poll_write().is_some());
     assert_eq!(client.handle_read(encode_packet(&connack)), Ok(()));
@@ -4922,7 +4923,7 @@ fn unknown_suback_or_unsuback_is_protocol_error() {
 /// forwarded to the application via `UserWriteOut::Disconnected(Some(reason_code))`.
 #[test]
 fn server_disconnect_with_reason_code_forwarded_to_application() {
-    let mut client = Client::<u64>::default();
+    let mut client = Client::<Duration>::default();
 
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     let _ = client.poll_write().expect("CONNECT frame expected");
@@ -4966,7 +4967,7 @@ fn server_disconnect_with_reason_code_forwarded_to_application() {
 /// Normal server DISCONNECT (NormalDisconnection) is also forwarded.
 #[test]
 fn server_normal_disconnect_reason_code_forwarded() {
-    let mut client = Client::<u64>::default();
+    let mut client = Client::<Duration>::default();
 
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     let _ = client.poll_write().expect("CONNECT frame expected");
@@ -5000,7 +5001,7 @@ fn server_normal_disconnect_reason_code_forwarded() {
 /// Client-initiated disconnect emits `Disconnected(None)` (no server reason code).
 #[test]
 fn client_initiated_disconnect_emits_disconnected_none() {
-    let mut client = Client::<u64>::default();
+    let mut client = Client::<Duration>::default();
 
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     let _ = client.poll_write().expect("CONNECT frame expected");
@@ -5028,7 +5029,7 @@ fn client_initiated_disconnect_emits_disconnected_none() {
 /// rather than triggering a protocol error.
 #[test]
 fn auth_packet_in_connected_state_forwarded_to_application() {
-    let mut client = Client::<u64>::default();
+    let mut client = Client::<Duration>::default();
 
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     let _ = client.poll_write().expect("CONNECT frame expected");
@@ -5066,8 +5067,8 @@ fn auth_packet_in_connected_state_forwarded_to_application() {
 
 /// Helper: bring a `Client<u64>` to the Connected state with the given keep-alive
 /// (in seconds). Returns the client with the Connected event already drained.
-fn make_connected_client_with_keep_alive(keep_alive_secs: Option<u16>) -> Client<u64> {
-    let mut client = Client::<u64>::default();
+fn make_connected_client_with_keep_alive(keep_alive_secs: Option<u16>) -> Client<Duration> {
+    let mut client = Client::<Duration>::default();
 
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     assert!(client.poll_write().is_some()); // drain CONNECT frame
@@ -5093,8 +5094,8 @@ fn keep_alive_timer_armed_after_arm_keep_alive_timer_when_keep_alive_configured(
 
     assert_eq!(client.poll_timeout(), None);
 
-    client.arm_keep_alive_timer(100u64);
-    assert_eq!(client.poll_timeout(), Some(130u64));
+    client.arm_keep_alive_timer(Duration::from_secs(100));
+    assert_eq!(client.poll_timeout(), Some(Duration::from_secs(130)));
 }
 
 #[test]
@@ -5102,7 +5103,7 @@ fn keep_alive_timer_not_armed_when_no_keep_alive_configured() {
     let mut client = make_connected_client_with_keep_alive(None);
 
     assert_eq!(client.poll_timeout(), None);
-    client.arm_keep_alive_timer(100u64);
+    client.arm_keep_alive_timer(Duration::from_secs(100));
     assert_eq!(client.poll_timeout(), None);
 }
 
@@ -5111,14 +5112,14 @@ fn handle_timeout_reschedules_deadline_to_now_plus_interval_when_activity_seen()
     let interval_secs: u64 = 30;
     let mut client = make_connected_client_with_keep_alive(Some(interval_secs as u16));
 
-    client.arm_keep_alive_timer(100u64);
-    assert_eq!(client.poll_timeout(), Some(130u64));
+    client.arm_keep_alive_timer(Duration::from_secs(100));
+    assert_eq!(client.poll_timeout(), Some(Duration::from_secs(130)));
 
     let pingresp = ControlPacket::PingResp(sansio_mqtt_v5_types::PingResp {});
     assert_eq!(client.handle_read(encode_packet(&pingresp)), Ok(()));
 
-    assert_eq!(client.handle_timeout(130u64), Ok(()));
-    assert_eq!(client.poll_timeout(), Some(160u64));
+    assert_eq!(client.handle_timeout(Duration::from_secs(130)), Ok(()));
+    assert_eq!(client.poll_timeout(), Some(Duration::from_secs(160)));
 }
 
 /// [MQTT-3.1.2-24] The server MUST close the connection if it receives no packet within
@@ -5131,11 +5132,11 @@ fn handle_timeout_sends_pingreq_and_reschedules_at_half_interval_per_mqtt_3_1_2_
     let interval_secs: u64 = 10;
     let mut client = make_connected_client_with_keep_alive(Some(interval_secs as u16));
 
-    client.arm_keep_alive_timer(0u64);
-    assert_eq!(client.poll_timeout(), Some(10u64));
+    client.arm_keep_alive_timer(Duration::ZERO);
+    assert_eq!(client.poll_timeout(), Some(Duration::from_secs(10)));
 
     // First timeout: no traffic → send PINGREQ, next deadline is now + interval/2 = 15.
-    assert_eq!(client.handle_timeout(10u64), Ok(()));
+    assert_eq!(client.handle_timeout(Duration::from_secs(10)), Ok(()));
     assert_eq!(
         client.poll_write(),
         Some(bytes::Bytes::from_static(&[0xC0, 0x00])),
@@ -5143,13 +5144,13 @@ fn handle_timeout_sends_pingreq_and_reschedules_at_half_interval_per_mqtt_3_1_2_
     );
     assert_eq!(
         client.poll_timeout(),
-        Some(15u64),
+        Some(Duration::from_secs(15)),
         "next deadline must be interval/2 after PINGREQ so total is 1.5× interval"
     );
 
     // Second timeout fires at t=15 (1.5× interval from t=0): no PINGRESP → close.
     assert_eq!(
-        client.handle_timeout(15u64),
+        client.handle_timeout(Duration::from_secs(15)),
         Err(Error::ProtocolError),
         "connection must be closed after 1.5× keep-alive interval without PINGRESP"
     );
@@ -5164,11 +5165,11 @@ fn handle_timeout_pingresp_before_half_interval_deadline_resets_ping_outstanding
     let interval_secs: u64 = 10;
     let mut client = make_connected_client_with_keep_alive(Some(interval_secs as u16));
 
-    client.arm_keep_alive_timer(0u64);
-    assert_eq!(client.poll_timeout(), Some(10u64));
+    client.arm_keep_alive_timer(Duration::ZERO);
+    assert_eq!(client.poll_timeout(), Some(Duration::from_secs(10)));
 
     // First timeout at t=10: no traffic → send PINGREQ.
-    assert_eq!(client.handle_timeout(10u64), Ok(()));
+    assert_eq!(client.handle_timeout(Duration::from_secs(10)), Ok(()));
     assert!(client.poll_write().is_some(), "PINGREQ must be sent");
 
     // Receive PINGRESP before the half-interval deadline at t=15.
@@ -5179,7 +5180,7 @@ fn handle_timeout_pingresp_before_half_interval_deadline_resets_ping_outstanding
     // Second timeout fires at t=15: ping_outstanding is false, network activity was seen
     // (PINGRESP) → just reschedule the timer (no PINGREQ needed, no close).
     assert_eq!(
-        client.handle_timeout(15u64),
+        client.handle_timeout(Duration::from_secs(15)),
         Ok(()),
         "connection must NOT close after PINGRESP was received"
     );
@@ -5191,7 +5192,7 @@ fn handle_timeout_pingresp_before_half_interval_deadline_resets_ping_outstanding
     // Timer is reset to now + full interval = 15 + 10 = 25.
     assert_eq!(
         client.poll_timeout(),
-        Some(25u64),
+        Some(Duration::from_secs(25)),
         "timer must be rescheduled to full interval after activity reset"
     );
 }
@@ -5206,7 +5207,7 @@ fn handle_timeout_pingresp_before_half_interval_deadline_resets_ping_outstanding
 /// user-configured limit was incorrectly rejected as a protocol error.
 #[test]
 fn socket_connected_preserves_connect_options_for_effective_limit_recomputation() {
-    let mut client = Client::<u64>::default();
+    let mut client = Client::<Duration>::default();
 
     // Configure a topic_alias_maximum of 10.
     assert_eq!(
@@ -5265,7 +5266,7 @@ fn socket_connected_preserves_connect_options_for_effective_limit_recomputation(
 /// covers the `Disconnected → SocketConnected` reconnect path in `disconnected.rs`.
 #[test]
 fn reconnect_from_disconnected_preserves_connect_options_for_effective_limit_recomputation() {
-    let mut client = Client::<u64>::default();
+    let mut client = Client::<Duration>::default();
 
     // Initial connect with topic_alias_maximum = 10.
     assert_eq!(
