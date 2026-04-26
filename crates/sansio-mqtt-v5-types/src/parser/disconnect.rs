@@ -5,6 +5,7 @@ use core::any::type_name;
 use core::num::TryFromIntError;
 use core::str::Utf8Error;
 use winnow::binary;
+use winnow::binary::bits;
 use winnow::combinator;
 use winnow::error::AddContext;
 use winnow::error::ErrorConvert;
@@ -33,7 +34,7 @@ use crate::TopicError;
 use crate::UnknownFormatIndicatorError;
 use crate::UnsupportedPropertyError;
 use crate::Utf8StringError;
-use winnow::binary::bits;
+
 impl DisconnectHeaderFlags {
     /// Parses the 4-bit Fixed Header flags for `DISCONNECT`
     /// ([§3.14.1](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901206),
