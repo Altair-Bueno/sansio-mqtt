@@ -14,6 +14,7 @@ pub use sansio_mqtt_v5_types::PubAckReasonCode;
 pub use sansio_mqtt_v5_types::PubCompReasonCode;
 pub use sansio_mqtt_v5_types::PubRecReasonCode;
 pub use sansio_mqtt_v5_types::Qos;
+pub use sansio_mqtt_v5_types::RetainHandling;
 pub use sansio_mqtt_v5_types::Subscription;
 pub use sansio_mqtt_v5_types::Topic;
 pub use sansio_mqtt_v5_types::Utf8String;

@@ -14,3 +14,4 @@ pub use error::ConnectError;
 pub use error::EventLoopError;
 pub use event::Event;
 pub use event_loop::EventLoop;
+pub use sansio_mqtt_v5_protocol::*;
