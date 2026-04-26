@@ -1,0 +1,20 @@
+[package]
+name = "test-sansio-mqtt-v5-tokio-mosquitto"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+
+[dependencies]
+sansio-mqtt-v5-tokio = { workspace = true }
+testcontainers = { workspace = true }
+tokio = { workspace = true, features = [
+  "macros",
+  "net",
+  "io-util",
+  "io-std",
+  "signal",
+  "rt-multi-thread",
+  "sync",
+  "time",
+] }
