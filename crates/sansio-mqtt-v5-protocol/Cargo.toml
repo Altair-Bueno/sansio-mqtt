@@ -12,4 +12,3 @@ bytes = { workspace = true }
 winnow = { workspace = true }
 tracing = { workspace = true, features = ["attributes"] }
 encode = { workspace = true }
-tokio = { workspace = true, optional = true, features = ["time"] }
