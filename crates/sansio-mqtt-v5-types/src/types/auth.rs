@@ -4,7 +4,10 @@
 //! Exchanges enhanced-authentication data between Client and Server.
 //! Conformance: `[MQTT-3.15.0-1]`, `[MQTT-3.15.1-1]`,
 //! `[MQTT-3.15.2-1]`.
-use super::*;
+use super::AuthReasonCode;
+use super::AuthenticationKind;
+use super::Utf8String;
+use alloc::vec::Vec;
 
 /// MQTT v5.0 `AUTH` packet
 /// ([§3.15](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901217)).

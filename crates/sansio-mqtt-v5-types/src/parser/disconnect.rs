@@ -1,4 +1,39 @@
-use super::*;
+use super::variable_byte_integer;
+use super::ParserSettings;
+use super::Property;
+use core::any::type_name;
+use core::num::TryFromIntError;
+use core::str::Utf8Error;
+use winnow::binary;
+use winnow::combinator;
+use winnow::error::AddContext;
+use winnow::error::ErrorConvert;
+use winnow::error::FromExternalError;
+use winnow::error::ParserError;
+use winnow::error::StrContext;
+use winnow::error::StrContextValue;
+use winnow::prelude::Parser;
+use winnow::stream::Stream;
+use winnow::stream::StreamIsPartial;
+use winnow::stream::UpdateSlice;
+
+use crate::BinaryDataError;
+use crate::Disconnect;
+use crate::DisconnectHeaderFlags;
+use crate::DisconnectProperties;
+use crate::DisconnectReasonCode;
+use crate::DuplicatedPropertyError;
+use crate::InvalidPropertyTypeError;
+use crate::InvalidQosError;
+use crate::InvalidReasonCode;
+use crate::PropertiesError;
+use crate::PropertyType;
+use crate::TooManyUserPropertiesError;
+use crate::TopicError;
+use crate::UnknownFormatIndicatorError;
+use crate::UnsupportedPropertyError;
+use crate::Utf8StringError;
+use winnow::binary::bits;
 impl DisconnectHeaderFlags {
     /// Parses the 4-bit Fixed Header flags for `DISCONNECT`
     /// ([§3.14.1](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901206),

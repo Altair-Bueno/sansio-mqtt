@@ -3,7 +3,10 @@
 //!
 //! The Server's acknowledgement to a [`Subscribe`]. Conformance:
 //! `[MQTT-3.9.0-1]`, `[MQTT-3.9.3-1]`, `[MQTT-3.9.3-2]`.
-use super::*;
+use super::SubAckReasonCode;
+use super::Utf8String;
+use alloc::vec::Vec;
+use core::num::NonZero;
 
 /// MQTT v5.0 `SUBACK` packet
 /// ([§3.9](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901171)).

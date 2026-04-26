@@ -3,7 +3,10 @@
 //!
 //! The Server's acknowledgement to [`Unsubscribe`]. Conformance:
 //! `[MQTT-3.11.0-1]`, `[MQTT-3.11.3-1]`, `[MQTT-3.11.3-2]`.
-use super::*;
+use super::UnsubAckReasonCode;
+use super::Utf8String;
+use alloc::vec::Vec;
+use core::num::NonZero;
 
 /// MQTT v5.0 `UNSUBACK` packet
 /// ([§3.11](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901187)).

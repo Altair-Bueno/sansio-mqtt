@@ -3,7 +3,10 @@
 //!
 //! Final acknowledgement in the QoS 2 flow. Conformance:
 //! `[MQTT-3.7.0-1]`.
-use super::*;
+use super::PubCompReasonCode;
+use super::Utf8String;
+use alloc::vec::Vec;
+use core::num::NonZero;
 
 /// MQTT v5.0 `PUBCOMP` packet
 /// ([§3.7](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901151)).

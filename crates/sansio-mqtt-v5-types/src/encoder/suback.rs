@@ -1,4 +1,14 @@
-use super::*;
+use encode::ByteEncoder;
+use encode::Encodable;
+
+use super::ControlPacketType;
+use super::EncodeError;
+use super::Property;
+use super::SubAck;
+use super::SubAckHeaderFlags;
+use super::SubAckProperties;
+use super::TwoByteInteger;
+use super::VariableByteInteger;
 
 impl<E> Encodable<E> for SubAckProperties
 where

@@ -5,7 +5,9 @@
 //! outcome of an operation. Each acknowledgement and control packet
 //! restricts the set of Reason Codes it may carry; the enums below
 //! model those per-packet subsets.
-use super::*;
+use strum::Display;
+use strum::EnumIter;
+use strum::IntoEnumIterator;
 
 /// Reason Code sent by a Server in `CONNACK` to summarise a `CONNECT`
 /// attempt ([§3.2.2.2](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901079)).

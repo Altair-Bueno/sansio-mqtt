@@ -1,4 +1,16 @@
-use super::*;
+use encode::ByteEncoder;
+use encode::Encodable;
+
+use super::ControlPacketType;
+use super::EncodeError;
+use super::Property;
+use super::Publish;
+use super::PublishHeaderFlags;
+use super::PublishHeaderFlagsKind;
+use super::PublishKind;
+use super::PublishProperties;
+use super::TwoByteInteger;
+use super::VariableByteInteger;
 
 impl<E> Encodable<E> for PublishProperties
 where

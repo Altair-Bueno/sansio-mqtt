@@ -1,4 +1,15 @@
-use super::*;
+use encode::ByteEncoder;
+use encode::Encodable;
+
+use super::ControlPacketType;
+use super::EncodeError;
+use super::Property;
+use super::PubComp;
+use super::PubCompHeaderFlags;
+use super::PubCompProperties;
+use super::PubCompReasonCode;
+use super::TwoByteInteger;
+use super::VariableByteInteger;
 
 impl<E> Encodable<E> for PubCompProperties
 where

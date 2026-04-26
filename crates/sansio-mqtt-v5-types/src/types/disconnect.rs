@@ -3,7 +3,9 @@
 //!
 //! Final packet exchanged by either peer to indicate the reason for
 //! closing the Network Connection. Conformance: `[MQTT-3.14.0-1]`.
-use super::*;
+use super::DisconnectReasonCode;
+use super::Utf8String;
+use alloc::vec::Vec;
 
 /// MQTT v5.0 `DISCONNECT` packet
 /// ([§3.14](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901205)).

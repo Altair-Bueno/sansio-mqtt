@@ -4,7 +4,9 @@
 //! Removes one or more existing subscriptions.
 //! Conformance: `[MQTT-3.10.0-1]`, `[MQTT-3.10.1-1]`,
 //! `[MQTT-3.10.3-1]`, `[MQTT-3.10.3-2]`.
-use super::*;
+use super::Utf8String;
+use alloc::vec::Vec;
+use core::num::NonZero;
 
 /// MQTT v5.0 `UNSUBSCRIBE` packet
 /// ([§3.10](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901179)).

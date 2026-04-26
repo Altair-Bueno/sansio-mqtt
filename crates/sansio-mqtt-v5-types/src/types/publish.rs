@@ -3,7 +3,14 @@
 //!
 //! Transports an Application Message. Conformance: `[MQTT-3.3.1-1]`,
 //! `[MQTT-3.3.1-2]`, `[MQTT-3.3.1-3]`, `[MQTT-3.3.1-4]`.
-use super::*;
+use super::BinaryData;
+use super::FormatIndicator;
+use super::GuaranteedQoS;
+use super::Payload;
+use super::Topic;
+use super::Utf8String;
+use alloc::vec::Vec;
+use core::num::NonZero;
 
 /// MQTT v5.0 `PUBLISH` packet
 /// ([§3.3](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901100)).

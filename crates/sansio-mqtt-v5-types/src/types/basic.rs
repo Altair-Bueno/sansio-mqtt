@@ -3,7 +3,11 @@
 //! These types model the basic data representations used throughout
 //! the MQTT v5.0 protocol, as defined in
 //! [§1.5 — Data representation](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901007).
-use super::*;
+use alloc::string::String;
+use alloc::vec::Vec;
+use strum::EnumIter;
+use strum::IntoEnumIterator;
+use thiserror::Error;
 
 /// Error returned when constructing a [`Payload`] from invalid data.
 ///

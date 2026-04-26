@@ -1,4 +1,45 @@
-use super::*;
+use super::two_byte_integer;
+use super::variable_byte_integer;
+use super::ParserSettings;
+use super::Property;
+use core::any::type_name;
+use core::num::TryFromIntError;
+use core::str::Utf8Error;
+use winnow::binary;
+use winnow::binary::bits;
+use winnow::combinator;
+use winnow::error::AddContext;
+use winnow::error::ErrorConvert;
+use winnow::error::FromExternalError;
+use winnow::error::ParserError;
+use winnow::error::StrContext;
+use winnow::error::StrContextValue;
+use winnow::prelude::Parser;
+use winnow::stream::Stream;
+use winnow::stream::StreamIsPartial;
+use winnow::stream::UpdateSlice;
+
+use crate::BinaryDataError;
+use crate::DuplicatedPropertyError;
+use crate::GuaranteedQoS;
+use crate::InvalidPropertyTypeError;
+use crate::InvalidQosError;
+use crate::Payload;
+use crate::PropertiesError;
+use crate::PropertyType;
+use crate::Publish;
+use crate::PublishHeaderFlags;
+use crate::PublishHeaderFlagsKind;
+use crate::PublishKind;
+use crate::PublishProperties;
+use crate::Qos;
+use crate::TooManySubscriptionIdentifiersError;
+use crate::TooManyUserPropertiesError;
+use crate::Topic;
+use crate::TopicError;
+use crate::UnknownFormatIndicatorError;
+use crate::UnsupportedPropertyError;
+use crate::Utf8StringError;
 
 impl PublishHeaderFlags {
     /// Parses the 4-bit Fixed Header flags for `PUBLISH`

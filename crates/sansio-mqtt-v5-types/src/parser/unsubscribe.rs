@@ -1,4 +1,39 @@
-use super::*;
+use super::two_byte_integer;
+use super::variable_byte_integer;
+use super::ParserSettings;
+use super::Property;
+use alloc::vec::Vec;
+use core::any::type_name;
+use core::num::TryFromIntError;
+use core::str::Utf8Error;
+use winnow::binary;
+use winnow::binary::bits;
+use winnow::combinator;
+use winnow::error::AddContext;
+use winnow::error::ErrorConvert;
+use winnow::error::FromExternalError;
+use winnow::error::ParserError;
+use winnow::error::StrContext;
+use winnow::error::StrContextValue;
+use winnow::prelude::Parser;
+use winnow::stream::Stream;
+use winnow::stream::StreamIsPartial;
+use winnow::stream::UpdateSlice;
+
+use crate::BinaryDataError;
+use crate::InvalidPropertyTypeError;
+use crate::InvalidQosError;
+use crate::PropertiesError;
+use crate::PropertyType;
+use crate::TooManyUserPropertiesError;
+use crate::TopicError;
+use crate::UnknownFormatIndicatorError;
+use crate::Unsubscribe;
+use crate::UnsubscribeHeaderFlags;
+use crate::UnsubscribeProperties;
+use crate::UnsupportedPropertyError;
+use crate::Utf8String;
+use crate::Utf8StringError;
 
 impl UnsubscribeHeaderFlags {
     /// Parses the 4-bit Fixed Header flags for `UNSUBSCRIBE`

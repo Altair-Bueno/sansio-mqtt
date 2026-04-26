@@ -4,7 +4,11 @@
 //! Sent from Client to Server to create or modify subscriptions.
 //! Conformance: `[MQTT-3.8.0-1]`, `[MQTT-3.8.1-1]`, `[MQTT-3.8.3-1]`,
 //! `[MQTT-3.8.3-2]`, `[MQTT-3.8.3-3]`.
-use super::*;
+use super::Qos;
+use super::RetainHandling;
+use super::Utf8String;
+use alloc::vec::Vec;
+use core::num::NonZero;
 
 /// MQTT v5.0 `SUBSCRIBE` packet
 /// ([§3.8](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901161)).

@@ -3,7 +3,10 @@
 //!
 //! Second response in the QoS 2 flow, sent by the originator of the
 //! `PUBLISH`. Conformance: `[MQTT-3.6.0-1]`.
-use super::*;
+use super::PubRelReasonCode;
+use super::Utf8String;
+use alloc::vec::Vec;
+use core::num::NonZero;
 
 /// MQTT v5.0 `PUBREL` packet
 /// ([§3.6](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901141)).

@@ -1,4 +1,15 @@
-use super::*;
+use encode::ByteEncoder;
+use encode::Encodable;
+
+use super::ControlPacketType;
+use super::EncodeError;
+use super::Property;
+use super::PubRel;
+use super::PubRelHeaderFlags;
+use super::PubRelProperties;
+use super::PubRelReasonCode;
+use super::TwoByteInteger;
+use super::VariableByteInteger;
 
 impl<E> Encodable<E> for PubRelProperties
 where

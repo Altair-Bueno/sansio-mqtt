@@ -5,7 +5,16 @@
 //! header introduced in v5.0. Each property is identified by a
 //! one-byte identifier and carries a typed value. Conformance:
 //! `[MQTT-2.2.2-1]`, `[MQTT-2.2.2-2]`.
-use super::*;
+use super::BinaryData;
+use super::FormatIndicator;
+use super::MaximumQoS;
+use super::Topic;
+use super::Utf8String;
+use core::num::NonZero;
+use strum::Display;
+use strum::EnumDiscriminants;
+use strum::EnumIter;
+use thiserror::Error;
 
 /// One MQTT v5.0 property
 /// ([§2.2.2.2 — Property](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901029)).

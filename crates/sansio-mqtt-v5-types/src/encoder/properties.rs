@@ -1,4 +1,15 @@
-use super::*;
+use encode::ByteEncoder;
+use encode::Encodable;
+
+use super::EncodeError;
+use super::FormatIndicator;
+use super::FourByteInteger;
+use super::Property;
+use super::PropertyType;
+use super::Topic;
+use super::TwoByteInteger;
+use super::Utf8String;
+use super::VariableByteInteger;
 
 impl<E: ByteEncoder> Encodable<E> for PropertyType
 where

@@ -1,4 +1,14 @@
-use super::*;
+use encode::ByteEncoder;
+use encode::Encodable;
+
+use super::ControlPacketType;
+use super::Disconnect;
+use super::DisconnectHeaderFlags;
+use super::DisconnectProperties;
+use super::DisconnectReasonCode;
+use super::EncodeError;
+use super::Property;
+use super::VariableByteInteger;
 
 impl<E> Encodable<E> for DisconnectProperties
 where

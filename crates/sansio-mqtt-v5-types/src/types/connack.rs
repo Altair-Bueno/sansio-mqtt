@@ -3,7 +3,12 @@
 //!
 //! The Server's response to a [`Connect`] packet. Conformance:
 //! `[MQTT-3.2.0-1]`, `[MQTT-3.2.0-2]`.
-use super::*;
+use super::AuthenticationKind;
+use super::ConnackReasonCode;
+use super::MaximumQoS;
+use super::Utf8String;
+use alloc::vec::Vec;
+use core::num::NonZero;
 
 /// MQTT v5.0 `CONNACK` packet
 /// ([§3.2](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901074)).

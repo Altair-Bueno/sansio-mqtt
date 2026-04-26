@@ -1,4 +1,15 @@
-use super::*;
+use encode::ByteEncoder;
+use encode::Encodable;
+
+use super::Auth;
+use super::AuthHeaderFlags;
+use super::AuthProperties;
+use super::AuthReasonCode;
+use super::AuthenticationKind;
+use super::ControlPacketType;
+use super::EncodeError;
+use super::Property;
+use super::VariableByteInteger;
 
 impl<E> Encodable<E> for AuthProperties
 where

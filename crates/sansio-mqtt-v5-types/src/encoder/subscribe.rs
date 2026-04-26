@@ -1,4 +1,14 @@
-use super::*;
+use encode::ByteEncoder;
+use encode::Encodable;
+
+use super::ControlPacketType;
+use super::EncodeError;
+use super::Property;
+use super::Subscribe;
+use super::SubscribeHeaderFlags;
+use super::SubscribeProperties;
+use super::TwoByteInteger;
+use super::VariableByteInteger;
 
 impl<E> Encodable<E> for SubscribeProperties
 where

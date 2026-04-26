@@ -12,7 +12,44 @@ where
     Ok((session_present,))
 }
 
-use super::*;
+use super::variable_byte_integer;
+use super::ParserSettings;
+use super::Property;
+use core::any::type_name;
+use core::num::TryFromIntError;
+use core::str::Utf8Error;
+use winnow::binary;
+use winnow::binary::bits;
+use winnow::combinator;
+use winnow::error::AddContext;
+use winnow::error::ErrorConvert;
+use winnow::error::FromExternalError;
+use winnow::error::ParserError;
+use winnow::error::StrContext;
+use winnow::error::StrContextValue;
+use winnow::prelude::Parser;
+use winnow::stream::Stream;
+use winnow::stream::StreamIsPartial;
+use winnow::stream::UpdateSlice;
+
+use crate::AuthenticationKind;
+use crate::BinaryDataError;
+use crate::ConnAck;
+use crate::ConnAckHeaderFlags;
+use crate::ConnAckKind;
+use crate::ConnAckProperties;
+use crate::ConnackReasonCode;
+use crate::DuplicatedPropertyError;
+use crate::InvalidPropertyTypeError;
+use crate::InvalidQosError;
+use crate::InvalidReasonCode;
+use crate::PropertiesError;
+use crate::PropertyType;
+use crate::TooManyUserPropertiesError;
+use crate::TopicError;
+use crate::UnknownFormatIndicatorError;
+use crate::UnsupportedPropertyError;
+use crate::Utf8StringError;
 
 impl ConnAck {
     /// Returns a parser for the body of a `CONNACK` packet

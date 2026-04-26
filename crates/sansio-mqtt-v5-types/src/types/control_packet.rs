@@ -4,7 +4,27 @@
 //! Wraps all v5 control packets into a single tagged enum and
 //! provides conversions between the tag and its one-byte wire
 //! representation.
-use super::*;
+use super::Auth;
+use super::ConnAck;
+use super::Connect;
+use super::Disconnect;
+use super::PingReq;
+use super::PingResp;
+use super::PubAck;
+use super::PubComp;
+use super::PubRec;
+use super::PubRel;
+use super::Publish;
+use super::Reserved;
+use super::SubAck;
+use super::Subscribe;
+use super::UnsubAck;
+use super::Unsubscribe;
+use strum::Display;
+use strum::EnumDiscriminants;
+use strum::EnumIter;
+use strum::IntoEnumIterator;
+use thiserror::Error;
 
 /// Tagged union over every MQTT v5.0 Control Packet type
 /// ([§2.1.2](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901022),

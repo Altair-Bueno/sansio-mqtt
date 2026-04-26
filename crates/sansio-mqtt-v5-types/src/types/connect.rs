@@ -4,7 +4,14 @@
 //! The first packet sent from Client to Server after the Network
 //! Connection is established. Conformance: `[MQTT-3.1.0-1]`,
 //! `[MQTT-3.1.0-2]`.
-use super::*;
+use super::AuthenticationKind;
+use super::BinaryData;
+use super::FormatIndicator;
+use super::Qos;
+use super::Topic;
+use super::Utf8String;
+use alloc::vec::Vec;
+use core::num::NonZero;
 
 /// MQTT v5.0 `CONNECT` packet
 /// ([§3.1](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901033)).

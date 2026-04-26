@@ -1,4 +1,16 @@
-use super::*;
+use encode::ByteEncoder;
+use encode::Encodable;
+
+use super::AuthenticationKind;
+use super::Connect;
+use super::ConnectHeaderFlags;
+use super::ConnectProperties;
+use super::ControlPacketType;
+use super::EncodeError;
+use super::Property;
+use super::TwoByteInteger;
+use super::VariableByteInteger;
+use super::WillProperties;
 
 impl<E> Encodable<E> for ConnectProperties
 where

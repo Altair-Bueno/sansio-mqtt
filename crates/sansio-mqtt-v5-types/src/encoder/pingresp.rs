@@ -1,4 +1,11 @@
-use super::*;
+use encode::ByteEncoder;
+use encode::Encodable;
+
+use super::ControlPacketType;
+use super::EncodeError;
+use super::PingResp;
+use super::PingRespHeaderFlags;
+use super::VariableByteInteger;
 
 impl<E: ByteEncoder> Encodable<E> for PingResp
 where

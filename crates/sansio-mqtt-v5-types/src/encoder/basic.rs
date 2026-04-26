@@ -1,6 +1,25 @@
 use encode::combinators::LengthPrefix;
+use encode::ByteEncoder;
+use encode::Encodable;
 
-use super::*;
+use super::AuthReasonCode;
+use super::BinaryData;
+use super::ConnackReasonCode;
+use super::ConnectReasonCode;
+use super::DisconnectReasonCode;
+use super::EncodeError;
+use super::FormatIndicator;
+use super::Payload;
+use super::PubAckReasonCode;
+use super::PubCompReasonCode;
+use super::PubRecReasonCode;
+use super::PubRelReasonCode;
+use super::PublishReasonCode;
+use super::SubAckReasonCode;
+use super::Subscription;
+use super::Topic;
+use super::UnsubAckReasonCode;
+use super::Utf8String;
 
 pub type TwoByteInteger = encode::combinators::BE<u16>;
 pub type FourByteInteger = encode::combinators::BE<u32>;

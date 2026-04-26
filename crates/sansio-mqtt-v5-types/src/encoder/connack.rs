@@ -1,4 +1,16 @@
-use super::*;
+use encode::ByteEncoder;
+use encode::Encodable;
+
+use super::AuthenticationKind;
+use super::ConnAck;
+use super::ConnAckHeaderFlags;
+use super::ConnAckKind;
+use super::ConnAckProperties;
+use super::ConnackReasonCode;
+use super::ControlPacketType;
+use super::EncodeError;
+use super::Property;
+use super::VariableByteInteger;
 
 impl<E> Encodable<E> for ConnAckProperties
 where

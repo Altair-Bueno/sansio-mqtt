@@ -1,4 +1,8 @@
-use super::*;
+use encode::ByteEncoder;
+use encode::Encodable;
+
+use super::ControlPacket;
+use super::EncodeError;
 
 impl<E> Encodable<E> for ControlPacket
 where
