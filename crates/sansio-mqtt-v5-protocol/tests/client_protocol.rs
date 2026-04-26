@@ -3,18 +3,53 @@ use core::num::NonZero;
 use core::time::Duration;
 use encode::Encodable;
 use sansio::Protocol;
-use sansio_mqtt_v5_protocol::{
-    BrokerMessage, Client, ClientMessage, ClientSettings, ConnectionOptions, DriverEventIn,
-    DriverEventOut, Error, IncomingRejectReason, SubscribeOptions, UserWriteIn, UserWriteOut,
-};
-use sansio_mqtt_v5_types::{
-    Auth, AuthProperties, AuthReasonCode, ConnAck, ConnAckKind, ConnAckProperties,
-    ConnackReasonCode, ControlPacket, Disconnect, DisconnectProperties, DisconnectReasonCode,
-    GuaranteedQoS, MaximumQoS, ParserSettings, Payload, PubAck, PubAckProperties, PubAckReasonCode,
-    PubComp, PubCompProperties, PubCompReasonCode, PubRec, PubRecProperties, PubRecReasonCode,
-    PubRel, PubRelProperties, PubRelReasonCode, Publish, PublishKind, PublishProperties, Qos,
-    RetainHandling, Subscription, Topic, Utf8String,
-};
+use sansio_mqtt_v5_protocol::BrokerMessage;
+use sansio_mqtt_v5_protocol::Client;
+use sansio_mqtt_v5_protocol::ClientMessage;
+use sansio_mqtt_v5_protocol::ClientSettings;
+use sansio_mqtt_v5_protocol::ConnectionOptions;
+use sansio_mqtt_v5_protocol::DriverEventIn;
+use sansio_mqtt_v5_protocol::DriverEventOut;
+use sansio_mqtt_v5_protocol::Error;
+use sansio_mqtt_v5_protocol::IncomingRejectReason;
+use sansio_mqtt_v5_protocol::SubscribeOptions;
+use sansio_mqtt_v5_protocol::UserWriteIn;
+use sansio_mqtt_v5_protocol::UserWriteOut;
+use sansio_mqtt_v5_types::Auth;
+use sansio_mqtt_v5_types::AuthProperties;
+use sansio_mqtt_v5_types::AuthReasonCode;
+use sansio_mqtt_v5_types::ConnAck;
+use sansio_mqtt_v5_types::ConnAckKind;
+use sansio_mqtt_v5_types::ConnAckProperties;
+use sansio_mqtt_v5_types::ConnackReasonCode;
+use sansio_mqtt_v5_types::ControlPacket;
+use sansio_mqtt_v5_types::Disconnect;
+use sansio_mqtt_v5_types::DisconnectProperties;
+use sansio_mqtt_v5_types::DisconnectReasonCode;
+use sansio_mqtt_v5_types::GuaranteedQoS;
+use sansio_mqtt_v5_types::MaximumQoS;
+use sansio_mqtt_v5_types::ParserSettings;
+use sansio_mqtt_v5_types::Payload;
+use sansio_mqtt_v5_types::PubAck;
+use sansio_mqtt_v5_types::PubAckProperties;
+use sansio_mqtt_v5_types::PubAckReasonCode;
+use sansio_mqtt_v5_types::PubComp;
+use sansio_mqtt_v5_types::PubCompProperties;
+use sansio_mqtt_v5_types::PubCompReasonCode;
+use sansio_mqtt_v5_types::PubRec;
+use sansio_mqtt_v5_types::PubRecProperties;
+use sansio_mqtt_v5_types::PubRecReasonCode;
+use sansio_mqtt_v5_types::PubRel;
+use sansio_mqtt_v5_types::PubRelProperties;
+use sansio_mqtt_v5_types::PubRelReasonCode;
+use sansio_mqtt_v5_types::Publish;
+use sansio_mqtt_v5_types::PublishKind;
+use sansio_mqtt_v5_types::PublishProperties;
+use sansio_mqtt_v5_types::Qos;
+use sansio_mqtt_v5_types::RetainHandling;
+use sansio_mqtt_v5_types::Subscription;
+use sansio_mqtt_v5_types::Topic;
+use sansio_mqtt_v5_types::Utf8String;
 use winnow::error::ContextError;
 use winnow::Parser;
 
@@ -3508,8 +3543,8 @@ fn timeout_in_connected_state_enqueues_pingreq() {
 
     assert_eq!(client.handle_timeout(Duration::from_secs(42)), Ok(()));
     assert_eq!(client.poll_write(), Some(Bytes::from_static(&[0xC0, 0x00])));
-    // [MQTT-3.1.2-24] After PINGREQ the next deadline is now + interval/2 (= 42 + 5 = 47)
-    // so total elapsed from last packet is 1.5× the keep-alive interval.
+    // [MQTT-3.1.2-24] After PINGREQ the next deadline is now + interval/2 (= 42 + 5
+    // = 47) so total elapsed from last packet is 1.5× the keep-alive interval.
     assert_eq!(client.poll_timeout(), Some(Duration::from_secs(47)));
 }
 
@@ -3650,7 +3685,8 @@ fn timeout_is_cleared_on_close() {
     ));
 
     assert_eq!(close_client.handle_timeout(Duration::from_secs(42)), Ok(()));
-    // [MQTT-3.1.2-24] After PINGREQ the next deadline is now + interval/2 (= 42 + 5 = 47).
+    // [MQTT-3.1.2-24] After PINGREQ the next deadline is now + interval/2 (= 42 + 5
+    // = 47).
     assert_eq!(close_client.poll_timeout(), Some(Duration::from_secs(47)));
 
     assert_eq!(close_client.close(), Ok(()));
@@ -3684,9 +3720,16 @@ fn timeout_is_cleared_on_close() {
         Some(UserWriteOut::Connected)
     ));
 
-    assert_eq!(socket_closed_client.handle_timeout(Duration::from_secs(99)), Ok(()));
-    // [MQTT-3.1.2-24] After PINGREQ the next deadline is now + interval/2 (= 99 + 5 = 104).
-    assert_eq!(socket_closed_client.poll_timeout(), Some(Duration::from_secs(104)));
+    assert_eq!(
+        socket_closed_client.handle_timeout(Duration::from_secs(99)),
+        Ok(())
+    );
+    // [MQTT-3.1.2-24] After PINGREQ the next deadline is now + interval/2 (= 99 + 5
+    // = 104).
+    assert_eq!(
+        socket_closed_client.poll_timeout(),
+        Some(Duration::from_secs(104))
+    );
 
     assert_eq!(
         socket_closed_client.handle_event(DriverEventIn::SocketClosed),
@@ -4070,8 +4113,9 @@ fn connecting_auth_continue_then_connack_success_connects() {
     assert!(matches!(client.poll_read(), Some(UserWriteOut::Connected)));
 }
 
-/// [MQTT-4.12.0-2] AUTH in the Connected state must be forwarded to the application,
-/// not treated as a protocol error. The application decides how to respond.
+/// [MQTT-4.12.0-2] AUTH in the Connected state must be forwarded to the
+/// application, not treated as a protocol error. The application decides how to
+/// respond.
 #[test]
 fn auth_in_connected_state_is_forwarded_not_protocol_error() {
     let mut client = Client::<Duration>::default();
@@ -4188,7 +4232,10 @@ fn keepalive_timeout_without_pingresp_closes_connection() {
     assert_eq!(client.handle_timeout(Duration::from_secs(1)), Ok(()));
     assert_eq!(client.poll_write(), Some(Bytes::from_static(&[0xC0, 0x00])));
 
-    assert_eq!(client.handle_timeout(Duration::from_secs(2)), Err(Error::ProtocolError));
+    assert_eq!(
+        client.handle_timeout(Duration::from_secs(2)),
+        Err(Error::ProtocolError)
+    );
     assert_eq!(
         client.poll_write(),
         Some(Bytes::from_static(&[0xE0, 0x02, 0x8D, 0x00]))
@@ -4199,10 +4246,11 @@ fn keepalive_timeout_without_pingresp_closes_connection() {
     ));
 }
 
-/// [MQTT-3.1.4-5] If a Client does not receive a CONNACK packet from the Server within a
-/// reasonable amount of time, the Client SHOULD close the Network Connection.
-/// When handle_timeout fires in the Start state (before CONNECT is sent), it should
-/// treat the timeout as a connection-establishment timeout and close the socket.
+/// [MQTT-3.1.4-5] If a Client does not receive a CONNACK packet from the Server
+/// within a reasonable amount of time, the Client SHOULD close the Network
+/// Connection. When handle_timeout fires in the Start state (before CONNECT is
+/// sent), it should treat the timeout as a connection-establishment timeout and
+/// close the socket.
 #[test]
 fn timeout_in_start_state_closes_connection_with_connect_timeout_error() {
     let mut client = Client::<Duration>::default();
@@ -4221,10 +4269,11 @@ fn timeout_in_start_state_closes_connection_with_connect_timeout_error() {
     assert!(client.poll_read().is_none());
 }
 
-/// [MQTT-3.1.4-5] If a Client does not receive a CONNACK packet from the Server within a
-/// reasonable amount of time, the Client SHOULD close the Network Connection.
-/// When handle_timeout fires in the Connecting state (after CONNECT, before CONNACK), it should
-/// treat the timeout as a connection-establishment timeout and close the socket.
+/// [MQTT-3.1.4-5] If a Client does not receive a CONNACK packet from the Server
+/// within a reasonable amount of time, the Client SHOULD close the Network
+/// Connection. When handle_timeout fires in the Connecting state (after
+/// CONNECT, before CONNACK), it should treat the timeout as a
+/// connection-establishment timeout and close the socket.
 #[test]
 fn timeout_in_connecting_state_closes_connection_with_connect_timeout_error() {
     let mut client = Client::<Duration>::default();
@@ -4255,17 +4304,19 @@ fn timeout_in_connecting_state_closes_connection_with_connect_timeout_error() {
     assert!(client.poll_read().is_none());
 }
 
-/// [MQTT-3.1.2-4] The server may override the session expiry interval in CONNACK properties.
-/// When the server returns session_expiry_interval=0, session_should_persist must be false,
-/// so inflight messages are discarded on disconnect and NOT re-queued on the next reconnect.
+/// [MQTT-3.1.2-4] The server may override the session expiry interval in
+/// CONNACK properties. When the server returns session_expiry_interval=0,
+/// session_should_persist must be false, so inflight messages are discarded on
+/// disconnect and NOT re-queued on the next reconnect.
 ///
 /// The sequence:
 ///   1. Connect with session_expiry=60 (client wants persistence)
-///   2. CONNACK with server session_expiry=0 (server overrides to no persistence)
+///   2. CONNACK with server session_expiry=0 (server overrides to no
+///      persistence)
 ///   3. Send QoS1 PUBLISH → inflight created
 ///   4. SocketClosed → inflight cleared because session_should_persist=false
-///   5. Reconnect + CONNACK Success → NO PublishDroppedDueToSessionNotResumed event
-///      because inflight was already cleared at disconnect
+///   5. Reconnect + CONNACK Success → NO PublishDroppedDueToSessionNotResumed
+///      event because inflight was already cleared at disconnect
 #[test]
 fn connack_session_expiry_zero_overrides_client_session_should_persist() {
     let mut client = Client::<Duration>::default();
@@ -4286,7 +4337,8 @@ fn connack_session_expiry_zero_overrides_client_session_should_persist() {
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     let _ = client.poll_write().expect("connect frame expected");
 
-    // Server responds with session_expiry_interval=0, overriding the client's value.
+    // Server responds with session_expiry_interval=0, overriding the client's
+    // value.
     let connack_no_persist = ControlPacket::ConnAck(ConnAck {
         kind: ConnAckKind::Other {
             reason_code: ConnackReasonCode::Success,
@@ -4316,8 +4368,9 @@ fn connack_session_expiry_zero_overrides_client_session_should_persist() {
     );
     assert!(client.poll_write().is_some(), "PUBLISH must be sent");
 
-    // Disconnect via SocketClosed. Since session_should_persist=false (server overrode to 0),
-    // the inflight QoS1 must be discarded silently at this point (no drop event at disconnect).
+    // Disconnect via SocketClosed. Since session_should_persist=false (server
+    // overrode to 0), the inflight QoS1 must be discarded silently at this
+    // point (no drop event at disconnect).
     assert_eq!(client.handle_event(DriverEventIn::SocketClosed), Ok(()));
     assert!(matches!(
         client.poll_read(),
@@ -4325,8 +4378,9 @@ fn connack_session_expiry_zero_overrides_client_session_should_persist() {
     ));
     assert!(client.poll_read().is_none(), "no drop event at disconnect");
 
-    // Reconnect. CONNACK Success (non-resume) should NOT emit PublishDroppedDueToSessionNotResumed
-    // because the inflight was already cleared at disconnect.
+    // Reconnect. CONNACK Success (non-resume) should NOT emit
+    // PublishDroppedDueToSessionNotResumed because the inflight was already
+    // cleared at disconnect.
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     let _ = client
         .poll_write()
@@ -4347,8 +4401,9 @@ fn connack_session_expiry_zero_overrides_client_session_should_persist() {
 }
 
 /// [MQTT-3.1.2-4] When the server sets session_expiry_interval > 0 in CONNACK,
-/// session_should_persist must be true: inflight messages survive the disconnect and are
-/// reported as dropped on the next reconnect (when the session is not resumed).
+/// session_should_persist must be true: inflight messages survive the
+/// disconnect and are reported as dropped on the next reconnect (when the
+/// session is not resumed).
 #[test]
 fn connack_session_expiry_nonzero_sets_session_should_persist() {
     let mut client = Client::<Duration>::default();
@@ -4396,8 +4451,8 @@ fn connack_session_expiry_nonzero_sets_session_should_persist() {
     );
     assert!(client.poll_write().is_some(), "PUBLISH must be sent");
 
-    // Disconnect via SocketClosed. Since session_should_persist=true (server overrode to 120),
-    // the inflight QoS1 message must NOT be cleared.
+    // Disconnect via SocketClosed. Since session_should_persist=true (server
+    // overrode to 120), the inflight QoS1 message must NOT be cleared.
     assert_eq!(client.handle_event(DriverEventIn::SocketClosed), Ok(()));
     assert!(matches!(
         client.poll_read(),
@@ -4745,7 +4800,10 @@ fn keepalive_timeout_with_session_expiry_preserves_inflight_for_resume() {
     assert_eq!(client.handle_timeout(Duration::from_secs(2)), Ok(()));
     assert_eq!(client.poll_write(), Some(Bytes::from_static(&[0xC0, 0x00])));
 
-    assert_eq!(client.handle_timeout(Duration::from_secs(3)), Err(Error::ProtocolError));
+    assert_eq!(
+        client.handle_timeout(Duration::from_secs(3)),
+        Err(Error::ProtocolError)
+    );
     assert_eq!(
         client.poll_write(),
         Some(Bytes::from_static(&[0xE0, 0x02, 0x8D, 0x00]))
@@ -4919,8 +4977,9 @@ fn unknown_suback_or_unsuback_is_protocol_error() {
 
 // ── D1: Server-initiated DISCONNECT reason code ─────────────────────────────
 
-/// [MQTT-4.13.0-1] When the server sends a DISCONNECT packet, the reason code must be
-/// forwarded to the application via `UserWriteOut::Disconnected(Some(reason_code))`.
+/// [MQTT-4.13.0-1] When the server sends a DISCONNECT packet, the reason code
+/// must be forwarded to the application via
+/// `UserWriteOut::Disconnected(Some(reason_code))`.
 #[test]
 fn server_disconnect_with_reason_code_forwarded_to_application() {
     let mut client = Client::<Duration>::default();
@@ -4998,7 +5057,8 @@ fn server_normal_disconnect_reason_code_forwarded() {
     }
 }
 
-/// Client-initiated disconnect emits `Disconnected(None)` (no server reason code).
+/// Client-initiated disconnect emits `Disconnected(None)` (no server reason
+/// code).
 #[test]
 fn client_initiated_disconnect_emits_disconnected_none() {
     let mut client = Client::<Duration>::default();
@@ -5024,9 +5084,9 @@ fn client_initiated_disconnect_emits_disconnected_none() {
 
 // ── D2: AUTH packet forwarded in Connected state ─────────────────────────────
 
-/// [MQTT-4.12.0-2] [MQTT-4.12.0-4] When the server sends AUTH during an established
-/// Connected session, it must be forwarded to the application as `UserWriteOut::Auth`
-/// rather than triggering a protocol error.
+/// [MQTT-4.12.0-2] [MQTT-4.12.0-4] When the server sends AUTH during an
+/// established Connected session, it must be forwarded to the application as
+/// `UserWriteOut::Auth` rather than triggering a protocol error.
 #[test]
 fn auth_packet_in_connected_state_forwarded_to_application() {
     let mut client = Client::<Duration>::default();
@@ -5065,8 +5125,9 @@ fn auth_packet_in_connected_state_forwarded_to_application() {
 
 // ── Keep-alive timer tests ──────────────────────────────────────────────────
 
-/// Helper: bring a `Client<u64>` to the Connected state with the given keep-alive
-/// (in seconds). Returns the client with the Connected event already drained.
+/// Helper: bring a `Client<u64>` to the Connected state with the given
+/// keep-alive (in seconds). Returns the client with the Connected event already
+/// drained.
 fn make_connected_client_with_keep_alive(keep_alive_secs: Option<u16>) -> Client<Duration> {
     let mut client = Client::<Duration>::default();
 
@@ -5122,10 +5183,11 @@ fn handle_timeout_reschedules_deadline_to_now_plus_interval_when_activity_seen()
     assert_eq!(client.poll_timeout(), Some(Duration::from_secs(160)));
 }
 
-/// [MQTT-3.1.2-24] The server MUST close the connection if it receives no packet within
-/// 1.5× the keep-alive interval. This test verifies:
+/// [MQTT-3.1.2-24] The server MUST close the connection if it receives no
+/// packet within 1.5× the keep-alive interval. This test verifies:
 ///   - t=0  → timer armed at t=interval (10)
-///   - t=10 → no traffic, PINGREQ sent, next deadline set to t=10 + interval/2 = 15
+///   - t=10 → no traffic, PINGREQ sent, next deadline set to t=10 + interval/2
+///     = 15
 ///   - t=15 → no PINGRESP, connection closed (total elapsed = 1.5× interval)
 #[test]
 fn handle_timeout_sends_pingreq_and_reschedules_at_half_interval_per_mqtt_3_1_2_24() {
@@ -5135,7 +5197,8 @@ fn handle_timeout_sends_pingreq_and_reschedules_at_half_interval_per_mqtt_3_1_2_
     client.arm_keep_alive_timer(Duration::ZERO);
     assert_eq!(client.poll_timeout(), Some(Duration::from_secs(10)));
 
-    // First timeout: no traffic → send PINGREQ, next deadline is now + interval/2 = 15.
+    // First timeout: no traffic → send PINGREQ, next deadline is now + interval/2 =
+    // 15.
     assert_eq!(client.handle_timeout(Duration::from_secs(10)), Ok(()));
     assert_eq!(
         client.poll_write(),
@@ -5156,10 +5219,10 @@ fn handle_timeout_sends_pingreq_and_reschedules_at_half_interval_per_mqtt_3_1_2_
     );
 }
 
-/// PINGRESP received between PINGREQ and the half-interval deadline must reset the
-/// ping-outstanding flag so the connection is NOT closed.
-/// After PINGRESP, the next timeout sees network activity (from PINGRESP) and resets
-/// the timer without sending a new PINGREQ.
+/// PINGRESP received between PINGREQ and the half-interval deadline must reset
+/// the ping-outstanding flag so the connection is NOT closed.
+/// After PINGRESP, the next timeout sees network activity (from PINGRESP) and
+/// resets the timer without sending a new PINGREQ.
 #[test]
 fn handle_timeout_pingresp_before_half_interval_deadline_resets_ping_outstanding() {
     let interval_secs: u64 = 10;
@@ -5173,12 +5236,14 @@ fn handle_timeout_pingresp_before_half_interval_deadline_resets_ping_outstanding
     assert!(client.poll_write().is_some(), "PINGREQ must be sent");
 
     // Receive PINGRESP before the half-interval deadline at t=15.
-    // PINGRESP clears ping_outstanding and sets keep_alive_saw_network_activity=true.
+    // PINGRESP clears ping_outstanding and sets
+    // keep_alive_saw_network_activity=true.
     let pingresp = ControlPacket::PingResp(sansio_mqtt_v5_types::PingResp {});
     assert_eq!(client.handle_read(encode_packet(&pingresp)), Ok(()));
 
-    // Second timeout fires at t=15: ping_outstanding is false, network activity was seen
-    // (PINGRESP) → just reschedule the timer (no PINGREQ needed, no close).
+    // Second timeout fires at t=15: ping_outstanding is false, network activity was
+    // seen (PINGRESP) → just reschedule the timer (no PINGREQ needed, no
+    // close).
     assert_eq!(
         client.handle_timeout(Duration::from_secs(15)),
         Ok(()),
@@ -5197,14 +5262,16 @@ fn handle_timeout_pingresp_before_half_interval_deadline_resets_ping_outstanding
     );
 }
 
-/// Regression test: `handle_event(SocketConnected)` must preserve `pending_connect_options`
-/// in the scratchpad so that `reset_negotiated_limits` → `recompute_effective_limits` reads
+/// Regression test: `handle_event(SocketConnected)` must preserve
+/// `pending_connect_options` in the scratchpad so that
+/// `reset_negotiated_limits` → `recompute_effective_limits` reads
 /// the user-supplied values rather than defaults.
 ///
 /// Previously `core::mem::take` moved the options out before the call, causing
-/// `effective_client_topic_alias_maximum` (and similar fields) to be recomputed as 0
-/// (the default when no options are set), so a PUBLISH with a topic alias within the
-/// user-configured limit was incorrectly rejected as a protocol error.
+/// `effective_client_topic_alias_maximum` (and similar fields) to be recomputed
+/// as 0 (the default when no options are set), so a PUBLISH with a topic alias
+/// within the user-configured limit was incorrectly rejected as a protocol
+/// error.
 #[test]
 fn socket_connected_preserves_connect_options_for_effective_limit_recomputation() {
     let mut client = Client::<Duration>::default();
@@ -5262,8 +5329,10 @@ fn socket_connected_preserves_connect_options_for_effective_limit_recomputation(
     ));
 }
 
-/// Companion to `socket_connected_preserves_connect_options_for_effective_limit_recomputation`:
-/// covers the `Disconnected → SocketConnected` reconnect path in `disconnected.rs`.
+/// Companion to
+/// `socket_connected_preserves_connect_options_for_effective_limit_recomputation`:
+/// covers the `Disconnected → SocketConnected` reconnect path in
+/// `disconnected.rs`.
 #[test]
 fn reconnect_from_disconnected_preserves_connect_options_for_effective_limit_recomputation() {
     let mut client = Client::<Duration>::default();
@@ -5312,7 +5381,8 @@ fn reconnect_from_disconnected_preserves_connect_options_for_effective_limit_rec
         Some(DriverEventOut::OpenSocket)
     ));
 
-    // Disconnected::handle_event(SocketConnected) must not erase pending_connect_options.
+    // Disconnected::handle_event(SocketConnected) must not erase
+    // pending_connect_options.
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     let _ = client
         .poll_write()

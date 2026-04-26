@@ -5,11 +5,15 @@ use crate::session::ClientSession;
 use crate::session_ops;
 use crate::state::connected::Connected;
 use crate::state::disconnected::Disconnected;
-use crate::state::{ClientState, StateHandler};
-use crate::types::{
-    ClientSettings, ConnectionOptions, DriverEventIn, DriverEventOut, Error, UserWriteIn,
-    UserWriteOut,
-};
+use crate::state::ClientState;
+use crate::state::StateHandler;
+use crate::types::ClientSettings;
+use crate::types::ConnectionOptions;
+use crate::types::DriverEventIn;
+use crate::types::DriverEventOut;
+use crate::types::Error;
+use crate::types::UserWriteIn;
+use crate::types::UserWriteOut;
 use core::num::NonZero;
 use core::ops::Add;
 use core::time::Duration;
@@ -29,8 +33,9 @@ use sansio_mqtt_v5_types::WillProperties;
 #[derive(Debug)]
 pub(crate) struct Connecting {
     pub(crate) pending_connect_options: ConnectionOptions,
-    /// Set to `true` after the CONNECT packet has been sent (i.e., after SocketConnected fires
-    /// and the CONNECT is enqueued). Used to reject a second SocketConnected in Connecting state.
+    /// Set to `true` after the CONNECT packet has been sent (i.e., after
+    /// SocketConnected fires and the CONNECT is enqueued). Used to reject a
+    /// second SocketConnected in Connecting state.
     pub(crate) connect_sent: bool,
 }
 
@@ -80,14 +85,20 @@ fn build_connect(settings: &ClientSettings, options: &ConnectionOptions) -> Resu
         keep_alive: options.keep_alive.or(settings.default_keep_alive),
         properties: ConnectProperties {
             session_expiry_interval: options.session_expiry_interval,
-            receive_maximum: [options.receive_maximum, settings.max_incoming_receive_maximum]
-                .into_iter()
-                .flatten()
-                .min(),
-            maximum_packet_size: [options.maximum_packet_size, settings.max_incoming_packet_size]
-                .into_iter()
-                .flatten()
-                .min(),
+            receive_maximum: [
+                options.receive_maximum,
+                settings.max_incoming_receive_maximum,
+            ]
+            .into_iter()
+            .flatten()
+            .min(),
+            maximum_packet_size: [
+                options.maximum_packet_size,
+                settings.max_incoming_packet_size,
+            ]
+            .into_iter()
+            .flatten()
+            .min(),
             topic_alias_maximum: options
                 .topic_alias_maximum
                 .or(settings.max_incoming_topic_alias_maximum)
@@ -144,10 +155,12 @@ where
     }
 }
 
-/// Handles `SocketClosed` or `SocketError` events while in the Connecting state.
+/// Handles `SocketClosed` or `SocketError` events while in the Connecting
+/// state.
 ///
-/// Clears the read buffer, resets keepalive, negotiated limits, and session state,
-/// then emits `Disconnected`. On error, also enqueues `CloseSocket` and returns `ProtocolError`.
+/// Clears the read buffer, resets keepalive, negotiated limits, and session
+/// state, then emits `Disconnected`. On error, also enqueues `CloseSocket` and
+/// returns `ProtocolError`.
 fn on_socket_closed_or_error<Time>(
     settings: &ClientSettings,
     session: &mut ClientSession,
@@ -217,9 +230,9 @@ where
     scratchpad.pending_connect_options = connecting.pending_connect_options;
     limits::recompute_effective_limits(settings, scratchpad);
 
-    // [MQTT-3.1.2-4] The server may override the session expiry interval in CONNACK.
-    // Update session_should_persist based on the server's negotiated value:
-    // Some(0) or None → do not persist; Some(n > 0) → persist.
+    // [MQTT-3.1.2-4] The server may override the session expiry interval in
+    // CONNACK. Update session_should_persist based on the server's negotiated
+    // value: Some(0) or None → do not persist; Some(n > 0) → persist.
     scratchpad.session_should_persist = match connack.properties.session_expiry_interval {
         Some(0) => false,
         Some(_) => true,
@@ -232,8 +245,9 @@ where
         }
     };
 
-    // [MQTT-3.1.2-22] If the server specifies a keep-alive of 0 in CONNACK, it disables
-    // keep-alive for this connection. The client MUST use the server's value when present.
+    // [MQTT-3.1.2-22] If the server specifies a keep-alive of 0 in CONNACK, it
+    // disables keep-alive for this connection. The client MUST use the server's
+    // value when present.
     scratchpad.keep_alive_interval_secs = match scratchpad.negotiated_server_keep_alive {
         Some(server_keep_alive) => NonZero::new(server_keep_alive),
         None => scratchpad.pending_connect_options.keep_alive,
@@ -245,7 +259,8 @@ where
 
     match connack.kind {
         ConnAckKind::ResumePreviousSession => {
-            // [MQTT-3.2.2-2] Session Present=1 is only valid when CONNECT had Clean Start=0.
+            // [MQTT-3.2.2-2] Session Present=1 is only valid when CONNECT had Clean
+            // Start=0.
             if scratchpad.pending_connect_options.clean_start {
                 let _ = queues::fail_protocol_and_disconnect(
                     settings,
@@ -258,7 +273,8 @@ where
                     Err(Error::ProtocolError),
                 );
             }
-            // [MQTT-4.4.0-1] [MQTT-4.4.0-2] Session Present=1 resumes in-flight QoS transactions and replay path.
+            // [MQTT-4.4.0-1] [MQTT-4.4.0-2] Session Present=1 resumes in-flight QoS
+            // transactions and replay path.
             if session_ops::replay_outbound_inflight_with_dup(session, scratchpad).is_err() {
                 let _ = queues::fail_protocol_and_disconnect(
                     settings,
@@ -444,8 +460,9 @@ where
         scratchpad: &mut ClientScratchpad<Time>,
         _now: Time,
     ) -> (ClientState, Result<(), Error>) {
-        // [MQTT-3.1.4-5] A timeout in the Connecting state means the server did not respond
-        // with CONNACK within the caller-imposed deadline. Close the socket and signal the error.
+        // [MQTT-3.1.4-5] A timeout in the Connecting state means the server did not
+        // respond with CONNACK within the caller-imposed deadline. Close the
+        // socket and signal the error.
         scratchpad.pending_connect_options = self.pending_connect_options;
         scratchpad
             .action_queue

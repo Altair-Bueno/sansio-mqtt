@@ -13,7 +13,10 @@ use sansio_mqtt_v5_types::ControlPacket;
 
 use crate::scratchpad::ClientScratchpad;
 use crate::session::ClientSession;
-use crate::types::{ClientSettings, DriverEventIn, Error, UserWriteIn};
+use crate::types::ClientSettings;
+use crate::types::DriverEventIn;
+use crate::types::Error;
+use crate::types::UserWriteIn;
 
 /// The MQTT client lifecycle as a type-state FSM.
 ///

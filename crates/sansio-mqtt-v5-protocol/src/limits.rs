@@ -1,8 +1,11 @@
 use crate::scratchpad::ClientScratchpad;
 use crate::session::ClientSession;
-use crate::types::{ClientMessage, ClientSettings, Error};
+use crate::types::ClientMessage;
+use crate::types::ClientSettings;
+use crate::types::Error;
 use core::num::NonZero;
-use sansio_mqtt_v5_types::{MaximumQoS, Publish};
+use sansio_mqtt_v5_types::MaximumQoS;
+use sansio_mqtt_v5_types::Publish;
 
 pub(crate) fn recompute_effective_limits<Time>(
     settings: &ClientSettings,
@@ -74,9 +77,9 @@ pub(crate) fn reset_negotiated_limits<Time>(
     scratchpad.negotiated_wildcard_subscription_available = true;
     scratchpad.negotiated_shared_subscription_available = true;
     scratchpad.negotiated_subscription_identifiers_available = true;
-    // [MQTT-3.8.2-1] Topic Aliases are scoped to a single Network Connection and MUST NOT
-    // be carried over to a new connection. Clear them here so every reconnection starts
-    // with a fresh, empty alias mapping.
+    // [MQTT-3.8.2-1] Topic Aliases are scoped to a single Network Connection and
+    // MUST NOT be carried over to a new connection. Clear them here so every
+    // reconnection starts with a fresh, empty alias mapping.
     session.inbound_topic_aliases.clear();
     recompute_effective_limits(settings, scratchpad);
 }
@@ -85,7 +88,8 @@ pub(crate) fn ensure_outbound_receive_maximum_capacity<Time>(
     session: &ClientSession,
     scratchpad: &ClientScratchpad<Time>,
 ) -> Result<(), Error> {
-    // [MQTT-4.9.0-2] [MQTT-4.9.0-3] Sender enforces peer Receive Maximum by limiting concurrent QoS>0 in-flight PUBLISH packets.
+    // [MQTT-4.9.0-2] [MQTT-4.9.0-3] Sender enforces peer Receive Maximum by
+    // limiting concurrent QoS>0 in-flight PUBLISH packets.
     if session.on_flight_sent.len()
         >= usize::from(scratchpad.effective_broker_receive_maximum.get())
     {

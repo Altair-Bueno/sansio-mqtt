@@ -1,6 +1,8 @@
 use alloc::collections::btree_map::BTreeMap;
 use core::num::NonZero;
-use sansio_mqtt_v5_types::{PubRecReasonCode, Publish, Topic};
+use sansio_mqtt_v5_types::PubRecReasonCode;
+use sansio_mqtt_v5_types::Publish;
+use sansio_mqtt_v5_types::Topic;
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum OutboundInflightState {
@@ -21,11 +23,12 @@ pub(crate) enum InboundInflightState {
 ///
 /// # Message ordering
 ///
-/// [MQTT-4.6.0-2] Per-topic ordering is preserved implicitly by the single-threaded
-/// FSM: messages on the same topic are processed in the order they arrive from the
-/// network. Cross-topic ordering is intentionally not guaranteed and is not required
-/// by the spec; the `on_flight_sent` map preserves per-stream QoS ordering but makes
-/// no promises across distinct topics.
+/// [MQTT-4.6.0-2] Per-topic ordering is preserved implicitly by the
+/// single-threaded FSM: messages on the same topic are processed in the order
+/// they arrive from the network. Cross-topic ordering is intentionally not
+/// guaranteed and is not required by the spec; the `on_flight_sent` map
+/// preserves per-stream QoS ordering but makes no promises across distinct
+/// topics.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ClientSession {
     pub(crate) on_flight_sent: BTreeMap<NonZero<u16>, OutboundInflightState>,

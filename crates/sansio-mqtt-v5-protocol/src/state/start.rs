@@ -5,11 +5,15 @@ use crate::session::ClientSession;
 use crate::session_ops;
 use crate::state::connecting::Connecting;
 use crate::state::disconnected::Disconnected;
-use crate::state::{ClientState, StateHandler};
-use crate::types::{
-    ClientSettings, ConnectionOptions, DriverEventIn, DriverEventOut, Error, UserWriteIn,
-    UserWriteOut,
-};
+use crate::state::ClientState;
+use crate::state::StateHandler;
+use crate::types::ClientSettings;
+use crate::types::ConnectionOptions;
+use crate::types::DriverEventIn;
+use crate::types::DriverEventOut;
+use crate::types::Error;
+use crate::types::UserWriteIn;
+use crate::types::UserWriteOut;
 use core::ops::Add;
 use core::time::Duration;
 use sansio_mqtt_v5_types::ControlPacket;
@@ -19,12 +23,14 @@ use sansio_mqtt_v5_types::DisconnectReasonCode;
 #[derive(Debug)]
 pub(crate) struct Start;
 
-/// Shared logic for handling a `UserWriteIn::Connect` in the Start or Disconnected state.
+/// Shared logic for handling a `UserWriteIn::Connect` in the Start or
+/// Disconnected state.
 ///
-/// Stores the connection options, recomputes effective limits, optionally clears session
-/// state for a clean start, marks the session persistence flag, enqueues `OpenSocket` if
-/// not already present, and stays in the caller's state (Start or Disconnected).
-/// The actual transition to Connecting happens when `SocketConnected` fires.
+/// Stores the connection options, recomputes effective limits, optionally
+/// clears session state for a clean start, marks the session persistence flag,
+/// enqueues `OpenSocket` if not already present, and stays in the caller's
+/// state (Start or Disconnected). The actual transition to Connecting happens
+/// when `SocketConnected` fires.
 ///
 /// [MQTT-3.1.2-4] Clean Start=1 starts a new Session.
 pub(crate) fn store_connect_options_and_enqueue_open_socket<Time>(
@@ -145,8 +151,9 @@ where
         scratchpad: &mut ClientScratchpad<Time>,
         _now: Time,
     ) -> (ClientState, Result<(), Error>) {
-        // [MQTT-3.1.4-5] A timeout in the Start state means no connection was established
-        // within the caller-imposed deadline. Close the socket and signal the error.
+        // [MQTT-3.1.4-5] A timeout in the Start state means no connection was
+        // established within the caller-imposed deadline. Close the socket and
+        // signal the error.
         scratchpad
             .action_queue
             .push_back(DriverEventOut::CloseSocket);

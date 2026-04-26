@@ -2,7 +2,8 @@ use crate::limits;
 use crate::queues;
 use crate::scratchpad::ClientScratchpad;
 use crate::session::ClientSession;
-use crate::state::{ClientState, StateHandler};
+use crate::state::ClientState;
+use crate::state::StateHandler;
 use crate::types::*;
 use bytes::Bytes;
 use bytes::BytesMut;
@@ -91,17 +92,17 @@ impl<Time> Client<Time>
 where
     Time: Ord + Add<Duration, Output = Time> + Copy,
 {
-    /// Arms the keep-alive timer so that the first deadline fires one keep-alive interval
-    /// after `now`.
+    /// Arms the keep-alive timer so that the first deadline fires one
+    /// keep-alive interval after `now`.
     ///
-    /// Call this immediately after observing [`UserWriteOut::Connected`] (i.e., after a
-    /// successful CONNACK) to start the keep-alive machinery.  If no keep-alive was
-    /// negotiated this is a no-op.
+    /// Call this immediately after observing [`UserWriteOut::Connected`] (i.e.,
+    /// after a successful CONNACK) to start the keep-alive machinery.  If
+    /// no keep-alive was negotiated this is a no-op.
     ///
     /// # Keep-alive specification
     ///
-    /// [MQTT-3.1.2-22] The Client MUST send a PINGREQ if no other packet has been sent
-    /// within the keep-alive period.
+    /// [MQTT-3.1.2-22] The Client MUST send a PINGREQ if no other packet has
+    /// been sent within the keep-alive period.
     pub fn arm_keep_alive_timer(&mut self, now: Time) {
         if let Some(interval_secs) = self.scratchpad.keep_alive_interval_secs {
             self.scratchpad.next_timeout =
@@ -151,7 +152,8 @@ where
                     break;
                 }
                 Err(ErrMode::Backtrack(_)) | Err(ErrMode::Cut(_)) => {
-                    // [MQTT-4.13.1-1] Malformed Control Packet is a protocol error and requires disconnect.
+                    // [MQTT-4.13.1-1] Malformed Control Packet is a protocol error and requires
+                    // disconnect.
                     self.dispatch(|_s, set, ses, sp| {
                         let _ = queues::fail_protocol_and_disconnect(
                             set,

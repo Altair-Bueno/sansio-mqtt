@@ -6,11 +6,18 @@ use crate::session::InboundInflightState;
 use crate::session::OutboundInflightState;
 use crate::session_ops;
 use crate::state::disconnected::Disconnected;
-use crate::state::{ClientState, StateHandler};
-use crate::types::{
-    BrokerMessage, ClientMessage, ClientSettings, DriverEventIn, DriverEventOut, Error,
-    InboundMessageId, IncomingRejectReason, UserWriteIn, UserWriteOut,
-};
+use crate::state::ClientState;
+use crate::state::StateHandler;
+use crate::types::BrokerMessage;
+use crate::types::ClientMessage;
+use crate::types::ClientSettings;
+use crate::types::DriverEventIn;
+use crate::types::DriverEventOut;
+use crate::types::Error;
+use crate::types::InboundMessageId;
+use crate::types::IncomingRejectReason;
+use crate::types::UserWriteIn;
+use crate::types::UserWriteOut;
 use alloc::vec::Vec;
 use core::ops::Add;
 use core::time::Duration;
@@ -372,7 +379,8 @@ where
 
                 match session.on_flight_sent.get(&packet_id) {
                     Some(OutboundInflightState::Qos1AwaitPubAck { .. }) => {
-                        // [MQTT-4.3.2-3] QoS1 sender keeps PUBLISH unacknowledged until matching PUBACK is received.
+                        // [MQTT-4.3.2-3] QoS1 sender keeps PUBLISH unacknowledged until matching
+                        // PUBACK is received.
                         let _ = session.on_flight_sent.remove(&packet_id);
                         scratchpad
                             .read_queue
@@ -399,7 +407,8 @@ where
 
                 match session.on_flight_sent.get(&packet_id).cloned() {
                     Some(OutboundInflightState::Qos2AwaitPubRec { .. }) => {
-                        // [MQTT-4.3.3-4] QoS2 sender sends PUBREL with the same Packet Identifier after PUBREC (Reason Code < 0x80).
+                        // [MQTT-4.3.3-4] QoS2 sender sends PUBREL with the same Packet Identifier
+                        // after PUBREC (Reason Code < 0x80).
                         if matches!(
                             reason_code,
                             PubRecReasonCode::Success | PubRecReasonCode::NoMatchingSubscribers
@@ -427,7 +436,8 @@ where
                         }
                     }
                     Some(OutboundInflightState::Qos2AwaitPubComp) => {
-                        // [MQTT-4.3.3-4] Repeated PUBREC still requires PUBREL with the same Packet Identifier.
+                        // [MQTT-4.3.3-4] Repeated PUBREC still requires PUBREL with the same Packet
+                        // Identifier.
                         match queues::enqueue_pubrel_or_fail_protocol(
                             settings, session, scratchpad, packet_id,
                         ) {
@@ -455,7 +465,8 @@ where
 
                 match session.on_flight_sent.get(&packet_id) {
                     Some(OutboundInflightState::Qos2AwaitPubComp) => {
-                        // [MQTT-4.3.3-5] QoS2 sender treats PUBREL as unacknowledged until matching PUBCOMP is received.
+                        // [MQTT-4.3.3-5] QoS2 sender treats PUBREL as unacknowledged until matching
+                        // PUBCOMP is received.
                         let _ = session.on_flight_sent.remove(&packet_id);
                         scratchpad
                             .read_queue
@@ -478,7 +489,8 @@ where
             }
             ControlPacket::PingResp(_) => (ClientState::Connected(self), Ok(())),
             ControlPacket::SubAck(suback) => {
-                // [MQTT-3.8.4-1] SUBACK MUST correspond to an outstanding SUBSCRIBE Packet Identifier.
+                // [MQTT-3.8.4-1] SUBACK MUST correspond to an outstanding SUBSCRIBE Packet
+                // Identifier.
                 if session
                     .pending_subscribe
                     .remove(&suback.packet_id)
@@ -498,7 +510,8 @@ where
                 (ClientState::Connected(self), Ok(()))
             }
             ControlPacket::UnsubAck(unsuback) => {
-                // [MQTT-3.10.4-1] UNSUBACK MUST correspond to an outstanding UNSUBSCRIBE Packet Identifier.
+                // [MQTT-3.10.4-1] UNSUBACK MUST correspond to an outstanding UNSUBSCRIBE Packet
+                // Identifier.
                 if session
                     .pending_unsubscribe
                     .remove(&unsuback.packet_id)
@@ -518,8 +531,9 @@ where
                 (ClientState::Connected(self), Ok(()))
             }
             ControlPacket::Disconnect(disconnect) => {
-                // [MQTT-4.13.0-1] Forward the server's DISCONNECT reason code to the application
-                // so it can distinguish normal server disconnects from error conditions.
+                // [MQTT-4.13.0-1] Forward the server's DISCONNECT reason code to the
+                // application so it can distinguish normal server disconnects
+                // from error conditions.
                 let reason_code = disconnect.reason_code;
                 session_ops::reset_keepalive(scratchpad);
                 limits::reset_negotiated_limits(settings, session, scratchpad);
@@ -852,9 +866,10 @@ where
         };
 
         if scratchpad.keep_alive_ping_outstanding {
-            // [MQTT-3.1.2-24] [MQTT-4.13.1-1] Keep Alive timeout closes the network connection.
-            // The timer was set to interval/2 after sending PINGREQ, so we have now waited
-            // a total of 1.5× the keep-alive interval since the last packet was received.
+            // [MQTT-3.1.2-24] [MQTT-4.13.1-1] Keep Alive timeout closes the network
+            // connection. The timer was set to interval/2 after sending
+            // PINGREQ, so we have now waited a total of 1.5× the keep-alive
+            // interval since the last packet was received.
             let _ = queues::fail_protocol_and_disconnect(
                 settings,
                 session,
@@ -877,12 +892,12 @@ where
             return (ClientState::Connected(self), Ok(()));
         }
 
-        // [MQTT-3.1.2-22] [MQTT-3.12.4-1] Send PINGREQ when Keep Alive elapses without traffic.
-        // [MQTT-3.1.2-24] After sending PINGREQ, set the next deadline to interval/2 from now
-        // so that the total wait from the last packet is 1.5× the keep-alive interval:
-        //   t=0:            last packet / timer start
-        //   t=interval:     no traffic → send PINGREQ, set deadline to t + interval/2
-        //   t=1.5×interval: no PINGRESP → close connection
+        // [MQTT-3.1.2-22] [MQTT-3.12.4-1] Send PINGREQ when Keep Alive elapses without
+        // traffic. [MQTT-3.1.2-24] After sending PINGREQ, set the next deadline
+        // to interval/2 from now so that the total wait from the last packet is
+        // 1.5× the keep-alive interval:   t=0:            last packet / timer
+        // start   t=interval:     no traffic → send PINGREQ, set deadline to t
+        // + interval/2   t=1.5×interval: no PINGRESP → close connection
         match queues::enqueue_packet(scratchpad, &ControlPacket::PingReq(PingReq {})) {
             Ok(()) => {
                 scratchpad.keep_alive_ping_outstanding = true;

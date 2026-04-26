@@ -1,6 +1,9 @@
-use crate::types::{ConnectionOptions, DriverEventOut, UserWriteOut};
+use crate::types::ConnectionOptions;
+use crate::types::DriverEventOut;
+use crate::types::UserWriteOut;
 use alloc::collections::vec_deque::VecDeque;
-use bytes::{Bytes, BytesMut};
+use bytes::Bytes;
+use bytes::BytesMut;
 use core::num::NonZero;
 use sansio_mqtt_v5_types::MaximumQoS;
 

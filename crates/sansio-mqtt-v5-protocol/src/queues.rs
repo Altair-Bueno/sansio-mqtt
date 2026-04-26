@@ -1,15 +1,29 @@
 use crate::scratchpad::ClientScratchpad;
 use crate::session::ClientSession;
-use crate::types::{ClientSettings, DriverEventOut, Error};
+use crate::types::ClientSettings;
+use crate::types::DriverEventOut;
+use crate::types::Error;
 use alloc::vec::Vec;
 use bytes::Bytes;
 use core::num::NonZero;
 use encode::Encodable;
-use sansio_mqtt_v5_types::{
-    ControlPacket, Disconnect, DisconnectProperties, DisconnectReasonCode, EncodeError, PubAck,
-    PubAckProperties, PubAckReasonCode, PubComp, PubCompProperties, PubCompReasonCode, PubRec,
-    PubRecProperties, PubRecReasonCode, PubRel, PubRelProperties, PubRelReasonCode,
-};
+use sansio_mqtt_v5_types::ControlPacket;
+use sansio_mqtt_v5_types::Disconnect;
+use sansio_mqtt_v5_types::DisconnectProperties;
+use sansio_mqtt_v5_types::DisconnectReasonCode;
+use sansio_mqtt_v5_types::EncodeError;
+use sansio_mqtt_v5_types::PubAck;
+use sansio_mqtt_v5_types::PubAckProperties;
+use sansio_mqtt_v5_types::PubAckReasonCode;
+use sansio_mqtt_v5_types::PubComp;
+use sansio_mqtt_v5_types::PubCompProperties;
+use sansio_mqtt_v5_types::PubCompReasonCode;
+use sansio_mqtt_v5_types::PubRec;
+use sansio_mqtt_v5_types::PubRecProperties;
+use sansio_mqtt_v5_types::PubRecReasonCode;
+use sansio_mqtt_v5_types::PubRel;
+use sansio_mqtt_v5_types::PubRelProperties;
+use sansio_mqtt_v5_types::PubRelReasonCode;
 
 pub(crate) fn encode_control_packet(packet: &ControlPacket) -> Result<Bytes, Error> {
     let mut encoded = Vec::new();
@@ -31,11 +45,12 @@ pub(crate) fn enqueue_packet<Time: 'static>(
     Ok(())
 }
 
-/// Enqueues DISCONNECT best-effort, closes socket, transitions lifecycle to Disconnected,
-/// and resets keepalive + negotiated limits + session state.
+/// Enqueues DISCONNECT best-effort, closes socket, transitions lifecycle to
+/// Disconnected, and resets keepalive + negotiated limits + session state.
 ///
-/// NOTE: During Tasks 4–11 this function still sets scratchpad.lifecycle_state directly.
-/// In Task 12 (FSM cutover) that line is removed and callers return ClientState::Disconnected.
+/// NOTE: During Tasks 4–11 this function still sets scratchpad.lifecycle_state
+/// directly. In Task 12 (FSM cutover) that line is removed and callers return
+/// ClientState::Disconnected.
 pub(crate) fn fail_protocol_and_disconnect<Time: 'static>(
     settings: &ClientSettings,
     session: &mut ClientSession,

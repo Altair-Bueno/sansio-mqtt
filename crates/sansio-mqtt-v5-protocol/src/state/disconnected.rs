@@ -1,8 +1,13 @@
 use crate::scratchpad::ClientScratchpad;
 use crate::session::ClientSession;
 use crate::state::connecting::Connecting;
-use crate::state::{ClientState, StateHandler};
-use crate::types::{ClientSettings, DriverEventIn, DriverEventOut, Error, UserWriteIn};
+use crate::state::ClientState;
+use crate::state::StateHandler;
+use crate::types::ClientSettings;
+use crate::types::DriverEventIn;
+use crate::types::DriverEventOut;
+use crate::types::Error;
+use crate::types::UserWriteIn;
 use core::ops::Add;
 use core::time::Duration;
 use sansio_mqtt_v5_types::ControlPacket;
