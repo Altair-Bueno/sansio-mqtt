@@ -57,7 +57,7 @@ pub(crate) trait StateHandler<Time>: Sized {
         settings: &ClientSettings,
         session: &mut ClientSession,
         scratchpad: &mut ClientScratchpad<Time>,
-        evt: DriverEventIn<Time>,
+        evt: DriverEventIn,
     ) -> (ClientState, Result<(), Error>);
 
     fn handle_timeout(
@@ -123,7 +123,7 @@ where
         settings: &ClientSettings,
         session: &mut ClientSession,
         scratchpad: &mut ClientScratchpad<Time>,
-        evt: DriverEventIn<Time>,
+        evt: DriverEventIn,
     ) -> (ClientState, Result<(), Error>) {
         match self {
             ClientState::Transitioning => unreachable!("FSM observed mid-transition"),

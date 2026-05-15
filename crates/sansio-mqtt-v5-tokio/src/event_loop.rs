@@ -81,20 +81,7 @@ impl EventLoop {
         let Some(out) = self.protocol.poll_read() else {
             return Ok(None);
         };
-        let event = Event::from_protocol_output(out);
-        if matches!(event, Event::Connected) {
-            // [MQTT-3.1.2-22] Arm the keep-alive timer the moment Connected is
-            // delivered so the deadline is set before the next poll_timeout() call.
-            //
-            // `UserWriteOut::Connected` is only ever enqueued in the Connecting
-            // state on a successful CONNACK, which atomically transitions the
-            // protocol to Connected.  Therefore `handle_event(Connected(_))`
-            // here is always called while in the Connected state and cannot
-            // return InvalidStateTransition.
-            self.protocol
-                .handle_event(DriverEventIn::Connected(tokio::time::Instant::now()))?;
-        }
-        Ok(Some(event))
+        Ok(Some(Event::from_protocol_output(out)))
     }
 
     fn handle_read_result(&mut self, result: std::io::Result<usize>) -> Result<(), EventLoopError> {

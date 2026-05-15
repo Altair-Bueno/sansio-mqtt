@@ -242,19 +242,10 @@ pub enum UserWriteIn {
 
 // Driver events to the protocol
 #[derive(Debug)]
-pub enum DriverEventIn<Time> {
+pub enum DriverEventIn {
     SocketClosed,
     SocketConnected,
     SocketError,
-    /// Passed by the driver immediately after observing
-    /// [`UserWriteOut::Connected`] so the protocol can arm the keep-alive
-    /// timer with the current wall time.
-    ///
-    /// [MQTT-3.1.2-22] The Client MUST send a PINGREQ if no other packet has
-    /// been sent within the keep-alive period. Passing `now` here lets the
-    /// protocol compute the first deadline without needing to know the time
-    /// at which the CONNACK arrived.
-    Connected(Time),
 }
 
 // Actions that the protocol wants to perform on the driver

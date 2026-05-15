@@ -144,7 +144,7 @@ fn user_write_out_exposes_qos_delivery_events_with_packet_id() {
 
 #[test]
 fn driver_events_are_pattern_matchable_without_equality() {
-    let incoming: DriverEventIn<Duration> = DriverEventIn::SocketConnected;
+    let incoming: DriverEventIn = DriverEventIn::SocketConnected;
     let outgoing = DriverEventOut::OpenSocket;
 
     assert!(matches!(incoming, DriverEventIn::SocketConnected));
@@ -5223,11 +5223,9 @@ fn auth_packet_in_connected_state_forwarded_to_application() {
 
 /// Helper: bring a `Client<Duration>` to the Connected state with the given
 /// keep-alive (in seconds). Returns the client with the Connected event already
-/// drained.
-///
-/// The keep-alive timer is intentionally NOT armed here: tests call
-/// `handle_event(DriverEventIn::Connected(now))` explicitly so they control
-/// the value of `now` and can make precise deadline assertions.
+/// drained. The CONNACK is delivered with `received_at = Duration::ZERO`, so
+/// when keep-alive is configured the timer is armed at
+/// `Duration::from_secs(keep_alive)`.
 fn make_connected_client_with_keep_alive(keep_alive_secs: Option<u16>) -> Client<Duration> {
     let mut client = Client::<Duration>::default();
 
@@ -5250,27 +5248,39 @@ fn make_connected_client_with_keep_alive(keep_alive_secs: Option<u16>) -> Client
 }
 
 #[test]
-fn keep_alive_timer_armed_after_connected_event_when_keep_alive_configured() {
+fn keep_alive_timer_armed_after_connack_when_keep_alive_configured() {
+    // CONNACK received at t=0 with interval=30 → timer = 0 + 30 = 30.
     let mut client = make_connected_client_with_keep_alive(Some(30));
+    assert_eq!(client.poll_timeout(), Some(Duration::from_secs(30)));
+}
 
-    assert_eq!(client.poll_timeout(), None);
-
+#[test]
+fn keep_alive_timer_armed_after_connack_uses_received_at_timestamp() {
+    // Build client manually so we control the CONNACK received_at.
+    let mut client = Client::<Duration>::default();
+    assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
+    assert!(client.poll_write().is_some());
+    let connack = ControlPacket::ConnAck(ConnAck {
+        kind: ConnAckKind::Other {
+            reason_code: ConnackReasonCode::Success,
+        },
+        properties: ConnAckProperties {
+            server_keep_alive: Some(30),
+            ..ConnAckProperties::default()
+        },
+    });
     assert_eq!(
-        client.handle_event(DriverEventIn::Connected(Duration::from_secs(100))),
+        client.handle_read(recv_at(encode_packet(&connack), Duration::from_secs(100))),
         Ok(())
     );
+    assert!(matches!(client.poll_read(), Some(UserWriteOut::Connected)));
+    // Timer = received_at + interval = 100 + 30 = 130.
     assert_eq!(client.poll_timeout(), Some(Duration::from_secs(130)));
 }
 
 #[test]
 fn keep_alive_timer_not_armed_when_no_keep_alive_configured() {
     let mut client = make_connected_client_with_keep_alive(None);
-
-    assert_eq!(client.poll_timeout(), None);
-    assert_eq!(
-        client.handle_event(DriverEventIn::Connected(Duration::from_secs(100))),
-        Ok(())
-    );
     assert_eq!(client.poll_timeout(), None);
 }
 
@@ -5281,12 +5291,8 @@ fn keep_alive_timer_not_armed_when_no_keep_alive_configured() {
 fn handle_timeout_reschedules_deadline_to_now_plus_interval_when_outgoing_packet_sent() {
     let interval_secs: u64 = 30;
     let mut client = make_connected_client_with_keep_alive(Some(interval_secs as u16));
-
-    assert_eq!(
-        client.handle_event(DriverEventIn::Connected(Duration::from_secs(100))),
-        Ok(())
-    );
-    assert_eq!(client.poll_timeout(), Some(Duration::from_secs(130)));
+    // Timer armed at CONNACK received_at=0 → deadline = 30.
+    assert_eq!(client.poll_timeout(), Some(Duration::from_secs(30)));
 
     // Application sends a QoS 0 PUBLISH (outgoing packet) → sets the flag.
     assert_eq!(
@@ -5299,44 +5305,20 @@ fn handle_timeout_reschedules_deadline_to_now_plus_interval_when_outgoing_packet
     );
     let _ = client.poll_write(); // drain PUBLISH frame
 
-    // Deadline fires at t=130: outgoing packet flag is set → reschedule without
+    // Deadline fires at t=30: outgoing packet flag is set → reschedule without
     // PINGREQ.
-    assert_eq!(client.handle_timeout(Duration::from_secs(130)), Ok(()));
+    assert_eq!(client.handle_timeout(Duration::from_secs(30)), Ok(()));
     assert_eq!(
         client.poll_write(),
         None,
         "no PINGREQ when outgoing packet was sent"
     );
-    assert_eq!(client.poll_timeout(), Some(Duration::from_secs(160)));
-}
-
-/// An incoming packet directly updates next_timeout to received_at + interval,
-/// bypassing the next handle_timeout call entirely.
-#[test]
-fn incoming_packet_directly_updates_keep_alive_deadline_from_received_at() {
-    let interval_secs: u64 = 30;
-    let mut client = make_connected_client_with_keep_alive(Some(interval_secs as u16));
-
-    assert_eq!(
-        client.handle_event(DriverEventIn::Connected(Duration::from_secs(100))),
-        Ok(())
-    );
-    assert_eq!(client.poll_timeout(), Some(Duration::from_secs(130)));
-
-    // Broker sends a PINGRESP arriving at t=120.
-    let pingresp = ControlPacket::PingResp(sansio_mqtt_v5_types::PingResp {});
-    assert_eq!(
-        client.handle_read(recv_at(encode_packet(&pingresp), Duration::from_secs(120))),
-        Ok(())
-    );
-
-    // Deadline updated immediately to received_at + interval = 120 + 30 = 150.
-    assert_eq!(client.poll_timeout(), Some(Duration::from_secs(150)));
+    assert_eq!(client.poll_timeout(), Some(Duration::from_secs(60)));
 }
 
 /// [MQTT-3.1.2-24] The server MUST close the connection if it receives no
 /// packet within 1.5× the keep-alive interval. This test verifies:
-///   - t=0  → timer armed at t=interval (10)
+///   - t=0  → CONNACK received, timer armed at t=interval (10)
 ///   - t=10 → no traffic, PINGREQ sent, next deadline set to t=10 + interval/2
 ///     = 15
 ///   - t=15 → no PINGRESP, connection closed (total elapsed = 1.5× interval)
@@ -5344,11 +5326,7 @@ fn incoming_packet_directly_updates_keep_alive_deadline_from_received_at() {
 fn handle_timeout_sends_pingreq_and_reschedules_at_half_interval_per_mqtt_3_1_2_24() {
     let interval_secs: u64 = 10;
     let mut client = make_connected_client_with_keep_alive(Some(interval_secs as u16));
-
-    assert_eq!(
-        client.handle_event(DriverEventIn::Connected(Duration::ZERO)),
-        Ok(())
-    );
+    // Timer armed at CONNACK received_at=0 → deadline = 10.
     assert_eq!(client.poll_timeout(), Some(Duration::from_secs(10)));
 
     // First timeout: no traffic → send PINGREQ, next deadline is now + interval/2 =
@@ -5373,29 +5351,23 @@ fn handle_timeout_sends_pingreq_and_reschedules_at_half_interval_per_mqtt_3_1_2_
     );
 }
 
-/// PINGRESP received between PINGREQ and the half-interval deadline must:
-/// 1. Clear ping_outstanding so the connection is NOT closed at the old
-///    deadline.
-/// 2. Update next_timeout to received_at + interval, pushing the deadline past
-///    the half-interval boundary so the event loop does not fire handle_timeout
-///    at the stale t=15 deadline.
+/// PINGRESP received between PINGREQ and the half-interval deadline must clear
+/// ping_outstanding so the connection is NOT closed at the half-interval
+/// deadline. The keep-alive timer is NOT updated by incoming packets — only
+/// outgoing application traffic or a PINGREQ send advances the deadline.
 #[test]
 fn handle_timeout_pingresp_before_half_interval_deadline_resets_ping_outstanding() {
     let interval_secs: u64 = 10;
     let mut client = make_connected_client_with_keep_alive(Some(interval_secs as u16));
-
-    assert_eq!(
-        client.handle_event(DriverEventIn::Connected(Duration::ZERO)),
-        Ok(())
-    );
+    // Timer armed at CONNACK received_at=0 → deadline = 10.
     assert_eq!(client.poll_timeout(), Some(Duration::from_secs(10)));
 
     // First timeout at t=10: no traffic → send PINGREQ, deadline = 15.
     assert_eq!(client.handle_timeout(Duration::from_secs(10)), Ok(()));
     assert!(client.poll_write().is_some(), "PINGREQ must be sent");
+    assert_eq!(client.poll_timeout(), Some(Duration::from_secs(15)));
 
-    // Receive PINGRESP at t=12: clears ping_outstanding and updates deadline to
-    // received_at + interval = 12 + 10 = 22, pushing it past the stale t=15 mark.
+    // Receive PINGRESP at t=12: clears ping_outstanding. Timer stays at t=15.
     let pingresp = ControlPacket::PingResp(sansio_mqtt_v5_types::PingResp {});
     assert_eq!(
         client.handle_read(recv_at(encode_packet(&pingresp), Duration::from_secs(12))),
@@ -5403,24 +5375,23 @@ fn handle_timeout_pingresp_before_half_interval_deadline_resets_ping_outstanding
     );
     assert_eq!(
         client.poll_timeout(),
-        Some(Duration::from_secs(22)),
-        "deadline must advance to received_at + interval after PINGRESP"
+        Some(Duration::from_secs(15)),
+        "timer stays at half-interval deadline; incoming packets do not move it"
     );
 
-    // At t=22: ping_outstanding is cleared (PINGRESP received), no outgoing packet
-    // was sent → send a new PINGREQ to keep the connection alive. Connection is
-    // NOT closed.
+    // At t=15: ping_outstanding is cleared → connection NOT closed. No outgoing
+    // traffic since PINGREQ → send another PINGREQ.
     assert_eq!(
-        client.handle_timeout(Duration::from_secs(22)),
+        client.handle_timeout(Duration::from_secs(15)),
         Ok(()),
         "connection must NOT close after PINGRESP was received"
     );
     assert!(
         client.poll_write().is_some(),
-        "PINGREQ sent — no outgoing traffic since last check"
+        "PINGREQ sent — no outgoing traffic"
     );
-    // Next deadline = now + interval/2 = 22 + 5 = 27.
-    assert_eq!(client.poll_timeout(), Some(Duration::from_secs(27)),);
+    // Next deadline = 15 + interval/2 = 15 + 5 = 20.
+    assert_eq!(client.poll_timeout(), Some(Duration::from_secs(20)));
 }
 
 /// Regression test: `handle_event(SocketConnected)` must preserve
@@ -5575,40 +5546,4 @@ fn reconnect_from_disconnected_preserves_connect_options_for_effective_limit_rec
         client.poll_read(),
         Some(UserWriteOut::ReceivedMessage(_))
     ));
-}
-
-// ── DriverEventIn::Connected wrong-state rejection tests ────────────────────
-
-#[test]
-fn connected_event_in_start_state_returns_invalid_state_transition() {
-    let mut client = Client::<Duration>::default();
-    // Client is in Start state (no SocketConnected yet).
-    assert_eq!(
-        client.handle_event(DriverEventIn::Connected(Duration::ZERO)),
-        Err(Error::InvalidStateTransition),
-    );
-}
-
-#[test]
-fn connected_event_in_connecting_state_returns_invalid_state_transition() {
-    let mut client = Client::<Duration>::default();
-    assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
-    // Client is now in Connecting state (CONNECT sent, awaiting CONNACK).
-    assert_eq!(
-        client.handle_event(DriverEventIn::Connected(Duration::ZERO)),
-        Err(Error::InvalidStateTransition),
-    );
-}
-
-#[test]
-fn connected_event_in_disconnected_state_returns_invalid_state_transition() {
-    let mut client = Client::<Duration>::default();
-    assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
-    assert!(client.poll_write().is_some()); // drain CONNECT frame
-    assert_eq!(client.handle_event(DriverEventIn::SocketClosed), Ok(()));
-    // Client is now in Disconnected state.
-    assert_eq!(
-        client.handle_event(DriverEventIn::Connected(Duration::ZERO)),
-        Err(Error::InvalidStateTransition),
-    );
 }

@@ -93,7 +93,7 @@ impl<Time> Client<Time> {
     }
 }
 
-impl<Time> Protocol<IncomingData<Time>, UserWriteIn, DriverEventIn<Time>> for Client<Time>
+impl<Time> Protocol<IncomingData<Time>, UserWriteIn, DriverEventIn> for Client<Time>
 where
     Time: Ord + Add<Duration, Output = Time> + Copy,
 {
@@ -128,12 +128,13 @@ where
                     if matches!(packet, ControlPacket::PingResp(_)) {
                         self.scratchpad.keep_alive_ping_outstanding = false;
                     }
+                    let is_connack = matches!(packet, ControlPacket::ConnAck(_));
                     self.dispatch(|s, set, ses, sp| s.handle_control_packet(set, ses, sp, packet))?;
-                    // Update the keep-alive deadline from the exact packet arrival time.
-                    // Only when the timer is already armed (next_timeout is Some) to avoid
-                    // prematurely starting it before handle_event(Connected) fires.
-                    if let Some(interval_secs) = self.scratchpad.keep_alive_interval_secs {
-                        if self.scratchpad.next_timeout.is_some() {
+                    // [MQTT-3.1.2-22] Arm the keep-alive timer on CONNACK using the
+                    // exact packet arrival time so the first deadline fires one interval
+                    // after the session was established without a separate driver event.
+                    if is_connack {
+                        if let Some(interval_secs) = self.scratchpad.keep_alive_interval_secs {
                             self.scratchpad.next_timeout =
                                 Some(received_at + Duration::from_secs(interval_secs.get() as u64));
                         }
@@ -179,7 +180,7 @@ where
     }
 
     #[tracing::instrument(skip_all)]
-    fn handle_event(&mut self, evt: DriverEventIn<Time>) -> Result<(), Self::Error> {
+    fn handle_event(&mut self, evt: DriverEventIn) -> Result<(), Self::Error> {
         self.dispatch(|s, set, ses, sp| s.handle_event(set, ses, sp, evt))
     }
 
