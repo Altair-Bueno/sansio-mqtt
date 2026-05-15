@@ -236,7 +236,8 @@ async fn session_expiry_drops_queued_messages() {
         .expect("publish");
     let _ = tokio::time::timeout(Duration::from_secs(3), el_pub.poll()).await;
 
-    // Reconnect without clean_start — session was dropped on disconnect, no queued messages
+    // Reconnect without clean_start — session was dropped on disconnect, no queued
+    // messages
     let opts_resume = ConnectOptions {
         addr: format!("127.0.0.1:{port}").parse().expect("addr"),
         connection: ConnectionOptions {
