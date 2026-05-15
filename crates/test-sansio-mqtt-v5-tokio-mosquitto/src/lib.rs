@@ -15,7 +15,7 @@ const MOSQUITTO_PORT: u16 = 1883;
 pub async fn anonymous_broker() -> (ContainerAsync<GenericImage>, u16) {
     let container = GenericImage::new(MOSQUITTO_IMAGE, MOSQUITTO_TAG)
         .with_exposed_port(MOSQUITTO_PORT.tcp())
-        .with_wait_for(WaitFor::message_on_stdout("mosquitto version"))
+        .with_wait_for(WaitFor::message_on_stdout("running"))
         .with_copy_to(
             "/mosquitto/config/mosquitto.conf",
             b"listener 1883\nallow_anonymous true\nlog_dest stdout\n".to_vec(),
@@ -43,7 +43,7 @@ pub async fn authenticated_broker() -> (ContainerAsync<GenericImage>, u16) {
     // then creates the passwd file with 0600 before Mosquitto is exec'd.
     let container = GenericImage::new(MOSQUITTO_IMAGE, MOSQUITTO_TAG)
         .with_exposed_port(MOSQUITTO_PORT.tcp())
-        .with_wait_for(WaitFor::message_on_stdout("mosquitto version"))
+        .with_wait_for(WaitFor::message_on_stdout("running"))
         .with_entrypoint("/bin/sh")
         .with_copy_to(
             "/mosquitto/config/mosquitto.conf",
