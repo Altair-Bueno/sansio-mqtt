@@ -1,12 +1,20 @@
 # Integration Test Expansion Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use
+> superpowers:subagent-driven-development (recommended) or
+> superpowers:executing-plans to implement this plan task-by-task. Steps use
+> checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Expand `test-sansio-mqtt-v5-tokio-mosquitto` from 11 to ~60 integration tests covering all gaps in `docs/review-tests.md`.
+**Goal:** Expand `test-sansio-mqtt-v5-tokio-mosquitto` from 11 to ~60
+integration tests covering all gaps in `docs/review-tests.md`.
 
-**Architecture:** Nine new test files, one per MQTT feature area, plus three helpers added to `lib.rs`. All tests run against a real Mosquitto 2 container via testcontainers. No existing files are modified. Each task is one self-contained test file commit.
+**Architecture:** Nine new test files, one per MQTT feature area, plus three
+helpers added to `lib.rs`. All tests run against a real Mosquitto 2 container
+via testcontainers. No existing files are modified. Each task is one
+self-contained test file commit.
 
-**Tech Stack:** Rust, tokio, testcontainers, eclipse-mosquitto:2, sansio-mqtt-v5-tokio
+**Tech Stack:** Rust, tokio, testcontainers, eclipse-mosquitto:2,
+sansio-mqtt-v5-tokio
 
 ---
 
@@ -63,7 +71,8 @@ git worktree add ../sansio-mqtt-integration-tests -b feat/integration-test-expan
 cd ../sansio-mqtt-integration-tests
 ```
 
-Expected: new directory `../sansio-mqtt-integration-tests` on branch `feat/integration-test-expansion` at latest master HEAD.
+Expected: new directory `../sansio-mqtt-integration-tests` on branch
+`feat/integration-test-expansion` at latest master HEAD.
 
 - [ ] **Step 2: Verify rust-analyzer is available**
 
@@ -71,7 +80,8 @@ Expected: new directory `../sansio-mqtt-integration-tests` on branch `feat/integ
 rust-analyzer --version
 ```
 
-Expected: version string printed. If command fails, run `rustup component add rust-analyzer` before proceeding.
+Expected: version string printed. If command fails, run
+`rustup component add rust-analyzer` before proceeding.
 
 - [ ] **Step 3: Confirm workspace builds**
 
@@ -86,6 +96,7 @@ Expected: `Finished` line with no errors.
 ## Task 1: Add helpers to `lib.rs`
 
 **Files:**
+
 - Modify: `crates/test-sansio-mqtt-v5-tokio-mosquitto/src/lib.rs`
 
 - [ ] **Step 1: Append the three new helpers**
@@ -163,6 +174,7 @@ git commit -m "test: add will_connect_options, sub_with_options, msg_retain help
 ## Task 2: `will_messages.rs` — 8 tests
 
 **Files:**
+
 - Create: `crates/test-sansio-mqtt-v5-tokio-mosquitto/tests/will_messages.rs`
 
 - [ ] **Step 1: Create the file**
@@ -467,7 +479,8 @@ Expected: `Finished` with no errors.
 cargo clippy -p test-sansio-mqtt-v5-tokio-mosquitto 2>&1 | tail -10
 ```
 
-Expected: no errors (warnings about unused variables for `_c` patterns are acceptable).
+Expected: no errors (warnings about unused variables for `_c` patterns are
+acceptable).
 
 - [ ] **Step 4: Commit**
 
@@ -481,6 +494,7 @@ git commit -m "test: add will_messages integration tests (8 tests)"
 ## Task 3: `retain.rs` — 7 tests
 
 **Files:**
+
 - Create: `crates/test-sansio-mqtt-v5-tokio-mosquitto/tests/retain.rs`
 
 - [ ] **Step 1: Create the file**
@@ -760,6 +774,7 @@ git commit -m "test: add retain integration tests (7 tests)"
 ## Task 4: `topic_filters.rs` — 7 tests
 
 **Files:**
+
 - Create: `crates/test-sansio-mqtt-v5-tokio-mosquitto/tests/topic_filters.rs`
 
 - [ ] **Step 1: Create the file**
@@ -998,6 +1013,7 @@ git commit -m "test: add topic_filters integration tests (7 tests)"
 ## Task 5: `session_advanced.rs` — 5 tests
 
 **Files:**
+
 - Create: `crates/test-sansio-mqtt-v5-tokio-mosquitto/tests/session_advanced.rs`
 
 - [ ] **Step 1: Create the file**
@@ -1218,6 +1234,7 @@ git commit -m "test: add session_advanced integration tests (5 tests)"
 ## Task 6: `subscriptions.rs` — 8 tests
 
 **Files:**
+
 - Create: `crates/test-sansio-mqtt-v5-tokio-mosquitto/tests/subscriptions.rs`
 
 - [ ] **Step 1: Create the file**
@@ -1494,7 +1511,9 @@ git commit -m "test: add subscriptions integration tests (8 tests)"
 ## Task 7: `message_properties.rs` — 6 tests
 
 **Files:**
-- Create: `crates/test-sansio-mqtt-v5-tokio-mosquitto/tests/message_properties.rs`
+
+- Create:
+  `crates/test-sansio-mqtt-v5-tokio-mosquitto/tests/message_properties.rs`
 
 - [ ] **Step 1: Create the file**
 
@@ -1756,6 +1775,7 @@ git commit -m "test: add message_properties integration tests (6 tests)"
 ## Task 8: `qos2_advanced.rs` — 3 tests
 
 **Files:**
+
 - Create: `crates/test-sansio-mqtt-v5-tokio-mosquitto/tests/qos2_advanced.rs`
 
 - [ ] **Step 1: Create the file**
@@ -1892,7 +1912,9 @@ git commit -m "test: add qos2_advanced integration tests (3 tests)"
 ## Task 9: `server_disconnect.rs` — 2 tests
 
 **Files:**
-- Create: `crates/test-sansio-mqtt-v5-tokio-mosquitto/tests/server_disconnect.rs`
+
+- Create:
+  `crates/test-sansio-mqtt-v5-tokio-mosquitto/tests/server_disconnect.rs`
 
 - [ ] **Step 1: Create the file**
 
@@ -1953,7 +1975,9 @@ git commit -m "test: add server_disconnect integration tests (2 tests)"
 ## Task 10: `keep_alive_advanced.rs` — 2 tests
 
 **Files:**
-- Create: `crates/test-sansio-mqtt-v5-tokio-mosquitto/tests/keep_alive_advanced.rs`
+
+- Create:
+  `crates/test-sansio-mqtt-v5-tokio-mosquitto/tests/keep_alive_advanced.rs`
 
 - [ ] **Step 1: Create the file**
 
@@ -2050,7 +2074,8 @@ cargo +nightly fmt
 cargo clippy -p test-sansio-mqtt-v5-tokio-mosquitto 2>&1 | grep -E "^error" | head -20
 ```
 
-Expected: no `error` lines. Warnings about unused `_` bindings from `let (_c, port)` patterns are expected and acceptable.
+Expected: no `error` lines. Warnings about unused `_` bindings from
+`let (_c, port)` patterns are expected and acceptable.
 
 - [ ] **Step 3: Commit format fixes (if any)**
 
@@ -2071,18 +2096,26 @@ git push -u origin feat/integration-test-expansion
 
 All 49 tests from the spec are accounted for:
 
-| File | Tests in plan | Tests in spec |
-|------|--------------|---------------|
-| `will_messages.rs` | 8 | 8 |
-| `retain.rs` | 7 | 7 |
-| `topic_filters.rs` | 7 | 7 |
-| `session_advanced.rs` | 5 | 5 |
-| `subscriptions.rs` | 8 | 8 |
-| `message_properties.rs` | 6 | 6 |
-| `qos2_advanced.rs` | 3 | 4 (qos2_inbound_across_reconnect dropped — no Client::acknowledge) |
-| `server_disconnect.rs` | 2 | 2 |
-| `keep_alive_advanced.rs` | 2 | 2 |
+| File                     | Tests in plan | Tests in spec                                                      |
+| ------------------------ | ------------- | ------------------------------------------------------------------ |
+| `will_messages.rs`       | 8             | 8                                                                  |
+| `retain.rs`              | 7             | 7                                                                  |
+| `topic_filters.rs`       | 7             | 7                                                                  |
+| `session_advanced.rs`    | 5             | 5                                                                  |
+| `subscriptions.rs`       | 8             | 8                                                                  |
+| `message_properties.rs`  | 6             | 6                                                                  |
+| `qos2_advanced.rs`       | 3             | 4 (qos2_inbound_across_reconnect dropped — no Client::acknowledge) |
+| `server_disconnect.rs`   | 2             | 2                                                                  |
+| `keep_alive_advanced.rs` | 2             | 2                                                                  |
 
-**Known deviation:** `qos2_inbound_across_reconnect` was removed because `Client` has no `acknowledge` method, making it impossible to complete the inbound QoS 2 handshake from the application layer. Replaced with `qos2_beyond_receive_maximum_queues_without_error`.
+**Known deviation:** `qos2_inbound_across_reconnect` was removed because
+`Client` has no `acknowledge` method, making it impossible to complete the
+inbound QoS 2 handshake from the application layer. Replaced with
+`qos2_beyond_receive_maximum_queues_without_error`.
 
-**Type consistency verified:** All types used (`Will`, `ClientMessage`, `BrokerMessage`, `RetainHandling`, `FormatIndicator`, `UnsubscribeOptions`, `SubscribeOptions`, `Subscription`, `DisconnectReasonCode::SessionTakenOver`) match the source definitions read from the codebase. `Topic::try_new(&'static str)` confirmed valid. `BinaryData::new(impl Into<bytes::Bytes>)` confirmed infallible.
+**Type consistency verified:** All types used (`Will`, `ClientMessage`,
+`BrokerMessage`, `RetainHandling`, `FormatIndicator`, `UnsubscribeOptions`,
+`SubscribeOptions`, `Subscription`, `DisconnectReasonCode::SessionTakenOver`)
+match the source definitions read from the codebase.
+`Topic::try_new(&'static str)` confirmed valid.
+`BinaryData::new(impl Into<bytes::Bytes>)` confirmed infallible.

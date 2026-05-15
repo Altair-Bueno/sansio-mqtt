@@ -43,7 +43,7 @@ async fn multiple_inflight_qos1_all_delivered_after_reconnect() {
     for i in 0..3 {
         let ev = tokio::time::timeout(Duration::from_secs(5), el2.poll())
             .await
-            .expect(&format!("message {i} within 5s"))
+            .unwrap_or_else(|_| panic!("message {i} within 5s"))
             .expect("event");
         assert!(
             matches!(ev, Event::MessageWithRequiredAcknowledgement(_, _)),
@@ -109,7 +109,7 @@ async fn multiple_inflight_qos2_all_delivered_after_reconnect() {
     for i in 0..2 {
         let ev = tokio::time::timeout(Duration::from_secs(5), el2.poll())
             .await
-            .expect(&format!("qos2 message {i} within 5s"))
+            .unwrap_or_else(|_| panic!("qos2 message {i} within 5s"))
             .expect("event");
         assert!(
             matches!(ev, Event::MessageWithRequiredAcknowledgement(_, _)),
@@ -157,7 +157,7 @@ async fn queued_inbound_messages_arrive_after_connack() {
     for i in 0..3 {
         let ev = tokio::time::timeout(Duration::from_secs(5), el2.poll())
             .await
-            .expect(&format!("queued msg {i} within 5s"))
+            .unwrap_or_else(|_| panic!("queued msg {i} within 5s"))
             .expect("event");
         assert!(
             matches!(ev, Event::MessageWithRequiredAcknowledgement(_, _)),

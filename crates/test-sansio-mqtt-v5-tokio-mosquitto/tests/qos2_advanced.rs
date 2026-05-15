@@ -39,7 +39,7 @@ async fn concurrent_qos2_publishes_all_complete() {
     for i in 0..5 {
         let ev = tokio::time::timeout(Duration::from_secs(5), el_pub.poll())
             .await
-            .expect(&format!("PublishCompleted {i} within 5s"))
+            .unwrap_or_else(|_| panic!("PublishCompleted {i} within 5s"))
             .expect("event");
         assert!(
             matches!(ev, Event::PublishCompleted(_, _)),
@@ -51,7 +51,7 @@ async fn concurrent_qos2_publishes_all_complete() {
     for i in 0..5 {
         let ev = tokio::time::timeout(Duration::from_secs(5), el_sub.poll())
             .await
-            .expect(&format!("subscriber message {i} within 5s"))
+            .unwrap_or_else(|_| panic!("subscriber message {i} within 5s"))
             .expect("event");
         assert!(
             matches!(ev, Event::Message(_)),
@@ -162,7 +162,7 @@ async fn qos2_beyond_receive_maximum_queues_without_error() {
     for i in 0..10 {
         let ev = tokio::time::timeout(Duration::from_secs(10), el_pub.poll())
             .await
-            .expect(&format!("PublishCompleted {i} within 10s"))
+            .unwrap_or_else(|_| panic!("PublishCompleted {i} within 10s"))
             .expect("event");
         assert!(
             matches!(ev, Event::PublishCompleted(_, _)),

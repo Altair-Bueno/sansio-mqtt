@@ -318,7 +318,7 @@ async fn multiple_subscriptions_one_call() {
             .expect("publish");
         let ev = tokio::time::timeout(Duration::from_secs(3), el_sub.poll())
             .await
-            .expect(&format!("{topic} within 3s"))
+            .unwrap_or_else(|_| panic!("{topic} within 3s"))
             .expect("event");
         assert!(
             matches!(ev, Event::Message(_)),
