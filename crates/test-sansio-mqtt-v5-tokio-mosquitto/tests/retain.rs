@@ -20,6 +20,7 @@ async fn retained_message_delivered_to_new_subscriber() {
         ))
         .await
         .expect("publish retained");
+    let _ = tokio::time::timeout(Duration::from_millis(200), el_pub.poll()).await;
     tokio::time::sleep(Duration::from_millis(150)).await;
 
     let (sub_c, mut el_sub) = connect(connect_options(port, "ret-basic-sub"))
@@ -59,12 +60,14 @@ async fn clear_retained_message() {
         .publish(msg_retain("test/retain/clear", b"first", Qos::AtMostOnce))
         .await
         .expect("publish retained");
+    let _ = tokio::time::timeout(Duration::from_millis(200), el_pub.poll()).await;
     tokio::time::sleep(Duration::from_millis(100)).await;
 
     pub_c
         .publish(msg_retain("test/retain/clear", b"", Qos::AtMostOnce))
         .await
         .expect("clear retained");
+    let _ = tokio::time::timeout(Duration::from_millis(200), el_pub.poll()).await;
     tokio::time::sleep(Duration::from_millis(150)).await;
 
     let (sub_c, mut el_sub) = connect(connect_options(port, "ret-clear-sub"))
@@ -101,11 +104,13 @@ async fn retained_message_is_latest_value() {
         .publish(msg_retain("test/retain/latest", b"first", Qos::AtMostOnce))
         .await
         .expect("publish first");
+    let _ = tokio::time::timeout(Duration::from_millis(200), el_pub.poll()).await;
     tokio::time::sleep(Duration::from_millis(50)).await;
     pub_c
         .publish(msg_retain("test/retain/latest", b"second", Qos::AtMostOnce))
         .await
         .expect("publish second");
+    let _ = tokio::time::timeout(Duration::from_millis(200), el_pub.poll()).await;
     tokio::time::sleep(Duration::from_millis(150)).await;
 
     let (sub_c, mut el_sub) = connect(connect_options(port, "ret-latest-sub"))
@@ -155,6 +160,7 @@ async fn retain_handling_send_on_subscribe() {
         .publish(msg_retain("test/retain/sos", b"value", Qos::AtMostOnce))
         .await
         .expect("publish retained");
+    let _ = tokio::time::timeout(Duration::from_millis(200), el_pub.poll()).await;
     tokio::time::sleep(Duration::from_millis(150)).await;
 
     let (sub_c, mut el_sub) = connect(connect_options(port, "rh-sos-sub"))
@@ -236,6 +242,7 @@ async fn retain_handling_send_only_on_new_subscribe() {
         .publish(msg_retain("test/retain/new", b"value", Qos::AtMostOnce))
         .await
         .expect("publish retained");
+    let _ = tokio::time::timeout(Duration::from_millis(200), el_pub.poll()).await;
     tokio::time::sleep(Duration::from_millis(150)).await;
 
     let (sub_c, mut el_sub) = connect(connect_options(port, "rh-new-sub"))
@@ -304,6 +311,7 @@ async fn retain_handling_do_not_send() {
         .publish(msg_retain("test/retain/dns", b"value", Qos::AtMostOnce))
         .await
         .expect("publish retained");
+    let _ = tokio::time::timeout(Duration::from_millis(200), el_pub.poll()).await;
     tokio::time::sleep(Duration::from_millis(150)).await;
 
     let (sub_c, mut el_sub) = connect(connect_options(port, "rh-dns-sub"))
@@ -335,6 +343,7 @@ async fn retain_handling_do_not_send() {
         .publish(msg("test/retain/dns", b"live", Qos::AtMostOnce))
         .await
         .expect("publish live");
+    let _ = tokio::time::timeout(Duration::from_millis(200), el_pub.poll()).await;
     let ev = tokio::time::timeout(Duration::from_secs(3), el_sub.poll())
         .await
         .expect("live message within 3s")
@@ -380,12 +389,14 @@ async fn retain_as_published_preserves_retain_flag() {
         ))
         .await
         .expect("subscribe");
+    let _ = tokio::time::timeout(Duration::from_millis(500), el_sub.poll()).await;
     tokio::time::sleep(Duration::from_millis(150)).await;
 
     pub_c
         .publish(msg_retain("test/retain/rap", b"value", Qos::AtMostOnce))
         .await
         .expect("publish retained");
+    let _ = tokio::time::timeout(Duration::from_millis(200), el_pub.poll()).await;
 
     let ev = tokio::time::timeout(Duration::from_secs(3), el_sub.poll())
         .await

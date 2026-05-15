@@ -18,6 +18,7 @@ async fn concurrent_qos2_publishes_all_complete() {
         .subscribe(sub("qos2/concurrent"))
         .await
         .expect("subscribe");
+    let _ = tokio::time::timeout(Duration::from_millis(500), el_sub.poll()).await;
     tokio::time::sleep(Duration::from_millis(150)).await;
 
     let (pub_c, mut el_pub) = connect(connect_options(port, "cq2-pub"))

@@ -59,6 +59,7 @@ async fn subscription_identifier_delivered_with_message() {
         ))
         .await
         .expect("subscribe");
+    let _ = tokio::time::timeout(Duration::from_millis(500), el_sub.poll()).await;
     tokio::time::sleep(Duration::from_millis(150)).await;
 
     let (pub_c, mut el_pub) = connect(connect_options(port, "sid-pub"))
@@ -72,6 +73,7 @@ async fn subscription_identifier_delivered_with_message() {
         .publish(msg("sid/topic", b"v", Qos::AtMostOnce))
         .await
         .expect("publish");
+    let _ = tokio::time::timeout(Duration::from_millis(200), el_pub.poll()).await;
 
     let ev = tokio::time::timeout(Duration::from_secs(3), el_sub.poll())
         .await
@@ -113,6 +115,7 @@ async fn subscription_identifier_on_wildcard_subscription() {
         ))
         .await
         .expect("subscribe");
+    let _ = tokio::time::timeout(Duration::from_millis(500), el_sub.poll()).await;
     tokio::time::sleep(Duration::from_millis(150)).await;
 
     let (pub_c, mut el_pub) = connect(connect_options(port, "sidw-pub"))
@@ -128,6 +131,7 @@ async fn subscription_identifier_on_wildcard_subscription() {
             .publish(msg(topic, b"v", Qos::AtMostOnce))
             .await
             .expect("publish");
+        let _ = tokio::time::timeout(Duration::from_millis(200), el_pub.poll()).await;
         let ev = tokio::time::timeout(Duration::from_secs(3), el_sub.poll())
             .await
             .expect("within 3s")
@@ -156,6 +160,7 @@ async fn unsubscribe_stops_delivery() {
         Event::Connected
     ));
     sub_c.subscribe(sub("us/topic")).await.expect("subscribe");
+    let _ = tokio::time::timeout(Duration::from_millis(500), el_sub.poll()).await;
     tokio::time::sleep(Duration::from_millis(150)).await;
 
     let (pub_c, mut el_pub) = connect(connect_options(port, "us-pub"))
@@ -169,6 +174,7 @@ async fn unsubscribe_stops_delivery() {
         .publish(msg("us/topic", b"before", Qos::AtMostOnce))
         .await
         .expect("publish before");
+    let _ = tokio::time::timeout(Duration::from_millis(200), el_pub.poll()).await;
     let ev = tokio::time::timeout(Duration::from_secs(3), el_sub.poll())
         .await
         .expect("within 3s")
@@ -186,12 +192,14 @@ async fn unsubscribe_stops_delivery() {
         })
         .await
         .expect("unsubscribe");
+    let _ = tokio::time::timeout(Duration::from_millis(500), el_sub.poll()).await;
     tokio::time::sleep(Duration::from_millis(150)).await;
 
     pub_c
         .publish(msg("us/topic", b"after", Qos::AtMostOnce))
         .await
         .expect("publish after");
+    let _ = tokio::time::timeout(Duration::from_millis(200), el_pub.poll()).await;
     let result = tokio::time::timeout(Duration::from_millis(500), el_sub.poll()).await;
     assert!(
         result.is_err(),
@@ -242,11 +250,13 @@ async fn resubscribe_downgrades_qos() {
         .subscribe(sub_qos1("rdq/topic"))
         .await
         .expect("subscribe QoS1");
+    let _ = tokio::time::timeout(Duration::from_millis(500), el_sub.poll()).await;
     tokio::time::sleep(Duration::from_millis(100)).await;
     sub_c
         .subscribe(sub("rdq/topic"))
         .await
         .expect("re-subscribe QoS0");
+    let _ = tokio::time::timeout(Duration::from_millis(500), el_sub.poll()).await;
     tokio::time::sleep(Duration::from_millis(100)).await;
 
     let (pub_c, mut el_pub) = connect(connect_options(port, "rdq-pub"))
@@ -301,6 +311,7 @@ async fn multiple_subscriptions_one_call() {
         })
         .await
         .expect("multi subscribe");
+    let _ = tokio::time::timeout(Duration::from_millis(500), el_sub.poll()).await;
     tokio::time::sleep(Duration::from_millis(150)).await;
 
     let (pub_c, mut el_pub) = connect(connect_options(port, "msoc-pub"))
@@ -316,6 +327,7 @@ async fn multiple_subscriptions_one_call() {
             .publish(msg(topic, b"v", Qos::AtMostOnce))
             .await
             .expect("publish");
+        let _ = tokio::time::timeout(Duration::from_millis(200), el_pub.poll()).await;
         let ev = tokio::time::timeout(Duration::from_secs(3), el_sub.poll())
             .await
             .unwrap_or_else(|_| panic!("{topic} within 3s"))
@@ -341,6 +353,7 @@ async fn shared_subscription_load_balancing() {
     s1.subscribe(sub("$share/grp/ss/topic"))
         .await
         .expect("subscribe 1");
+    let _ = tokio::time::timeout(Duration::from_millis(500), el1.poll()).await;
 
     let (s2, mut el2) = connect(connect_options(port, "ss-client2"))
         .await
@@ -349,6 +362,7 @@ async fn shared_subscription_load_balancing() {
     s2.subscribe(sub("$share/grp/ss/topic"))
         .await
         .expect("subscribe 2");
+    let _ = tokio::time::timeout(Duration::from_millis(500), el2.poll()).await;
     tokio::time::sleep(Duration::from_millis(150)).await;
 
     let (pub_c, mut el_pub) = connect(connect_options(port, "ss-pub"))
@@ -367,6 +381,7 @@ async fn shared_subscription_load_balancing() {
             .await
             .expect("publish");
     }
+    let _ = tokio::time::timeout(Duration::from_millis(500), el_pub.poll()).await;
 
     let mut total = 0u8;
     for _ in 0..4 {

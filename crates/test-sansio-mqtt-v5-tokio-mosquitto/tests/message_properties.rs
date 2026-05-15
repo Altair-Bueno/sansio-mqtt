@@ -18,6 +18,7 @@ async fn user_properties_preserved_end_to_end() {
         .subscribe(sub("mp/user-props"))
         .await
         .expect("subscribe");
+    let _ = tokio::time::timeout(Duration::from_millis(500), el_sub.poll()).await;
     tokio::time::sleep(Duration::from_millis(150)).await;
 
     let (pub_c, mut el_pub) = connect(connect_options(port, "up-pub"))
@@ -49,6 +50,7 @@ async fn user_properties_preserved_end_to_end() {
         })
         .await
         .expect("publish");
+    let _ = tokio::time::timeout(Duration::from_millis(200), el_pub.poll()).await;
 
     let ev = tokio::time::timeout(Duration::from_secs(3), el_sub.poll())
         .await
@@ -139,6 +141,7 @@ async fn response_topic_and_correlation_data_round_trip() {
         .subscribe(sub("mp/request"))
         .await
         .expect("subscribe request");
+    let _ = tokio::time::timeout(Duration::from_millis(500), el_resp.poll()).await;
     tokio::time::sleep(Duration::from_millis(150)).await;
 
     // Requester publishes with response_topic and correlation_data
@@ -153,6 +156,7 @@ async fn response_topic_and_correlation_data_round_trip() {
         .subscribe(sub("mp/response/rr-req"))
         .await
         .expect("subscribe response");
+    let _ = tokio::time::timeout(Duration::from_millis(500), el_req.poll()).await;
     tokio::time::sleep(Duration::from_millis(100)).await;
 
     req_c
@@ -168,6 +172,7 @@ async fn response_topic_and_correlation_data_round_trip() {
         })
         .await
         .expect("publish request");
+    let _ = tokio::time::timeout(Duration::from_millis(200), el_req.poll()).await;
 
     // Responder receives request, checks response_topic and correlation_data
     let req_ev = tokio::time::timeout(Duration::from_secs(3), el_resp.poll())
@@ -197,6 +202,7 @@ async fn response_topic_and_correlation_data_round_trip() {
         })
         .await
         .expect("publish response");
+    let _ = tokio::time::timeout(Duration::from_millis(200), el_resp.poll()).await;
 
     let resp_ev = tokio::time::timeout(Duration::from_secs(3), el_req.poll())
         .await
@@ -229,6 +235,7 @@ async fn content_type_preserved() {
         Event::Connected
     ));
     sub_c.subscribe(sub("mp/ct")).await.expect("subscribe");
+    let _ = tokio::time::timeout(Duration::from_millis(500), el_sub.poll()).await;
     tokio::time::sleep(Duration::from_millis(150)).await;
 
     let (pub_c, mut el_pub) = connect(connect_options(port, "ct-pub"))
@@ -248,6 +255,7 @@ async fn content_type_preserved() {
         })
         .await
         .expect("publish");
+    let _ = tokio::time::timeout(Duration::from_millis(200), el_pub.poll()).await;
 
     let ev = tokio::time::timeout(Duration::from_secs(3), el_sub.poll())
         .await
@@ -278,6 +286,7 @@ async fn payload_format_indicator_preserved() {
         Event::Connected
     ));
     sub_c.subscribe(sub("mp/pfi")).await.expect("subscribe");
+    let _ = tokio::time::timeout(Duration::from_millis(500), el_sub.poll()).await;
     tokio::time::sleep(Duration::from_millis(150)).await;
 
     let (pub_c, mut el_pub) = connect(connect_options(port, "pfi-pub"))
@@ -297,6 +306,7 @@ async fn payload_format_indicator_preserved() {
         })
         .await
         .expect("publish");
+    let _ = tokio::time::timeout(Duration::from_millis(200), el_pub.poll()).await;
 
     let ev = tokio::time::timeout(Duration::from_secs(3), el_sub.poll())
         .await
@@ -326,6 +336,7 @@ async fn multiple_user_properties_duplicate_keys() {
         Event::Connected
     ));
     sub_c.subscribe(sub("mp/dupkeys")).await.expect("subscribe");
+    let _ = tokio::time::timeout(Duration::from_millis(500), el_sub.poll()).await;
     tokio::time::sleep(Duration::from_millis(150)).await;
 
     let (pub_c, mut el_pub) = connect(connect_options(port, "dupk-pub"))
@@ -349,6 +360,7 @@ async fn multiple_user_properties_duplicate_keys() {
         })
         .await
         .expect("publish");
+    let _ = tokio::time::timeout(Duration::from_millis(200), el_pub.poll()).await;
 
     let ev = tokio::time::timeout(Duration::from_secs(3), el_sub.poll())
         .await
