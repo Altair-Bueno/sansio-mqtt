@@ -37,8 +37,9 @@ pub async fn authenticated_broker() -> (ContainerAsync<GenericImage>, u16) {
     let config =
         "listener 1883\nallow_anonymous false\npassword_file /mosquitto/config/passwd\nlog_dest stdout\n";
 
-    // testcontainers copies files with 0644 permissions, but Mosquitto 2.0.18+ refuses
-    // world-readable passwd files. mosquitto_passwd creates the file with 0600 directly.
+    // testcontainers copies files with 0644 permissions, but Mosquitto 2.0.18+
+    // refuses world-readable passwd files. mosquitto_passwd creates the file
+    // with 0600 directly.
     let container = GenericImage::new(MOSQUITTO_IMAGE, MOSQUITTO_TAG)
         .with_exposed_port(MOSQUITTO_PORT.tcp())
         .with_wait_for(WaitFor::message_on_stdout("mosquitto version"))
