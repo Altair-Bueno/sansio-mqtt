@@ -3,7 +3,6 @@
 //!
 //! Keep-alive response sent by the Server. Conformance:
 //! `[MQTT-3.13.0-1]`.
-use super::*;
 
 /// MQTT v5.0 `PINGRESP` packet
 /// ([§3.13](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901200)).

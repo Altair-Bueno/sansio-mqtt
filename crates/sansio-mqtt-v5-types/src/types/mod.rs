@@ -11,8 +11,6 @@
 //!
 //! The submodules themselves are private; every publicly exposed item
 //! is re-exported from this module and surfaced at the crate root.
-#![allow(unused_imports)]
-
 mod auth;
 mod basic;
 mod connack;
@@ -57,8 +55,6 @@ pub use unsubscribe::*;
 
 use alloc::string::String;
 use alloc::vec::Vec;
-use bytes::Bytes;
-use core::borrow::Borrow;
 use core::num::NonZero;
 use strum::Display;
 use strum::EnumDiscriminants;
