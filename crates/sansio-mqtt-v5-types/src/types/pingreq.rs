@@ -3,7 +3,6 @@
 //!
 //! Keep-alive request from Client to Server. Conformance:
 //! `[MQTT-3.12.0-1]`.
-use super::*;
 
 /// MQTT v5.0 `PINGREQ` packet
 /// ([§3.12](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901195)).

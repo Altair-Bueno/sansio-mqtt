@@ -5,7 +5,6 @@
 //! Packet ([MQTT-2.1.3-1]). The struct exists so the parser can
 //! surface the value through the [`ControlPacket`] enum without
 //! crashing.
-use super::*;
 
 /// Placeholder for the reserved Control Packet Type 0
 /// ([§2.1.2](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901022)).

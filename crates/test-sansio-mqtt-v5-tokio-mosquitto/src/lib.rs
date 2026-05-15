@@ -15,7 +15,7 @@ const MOSQUITTO_PORT: u16 = 1883;
 pub async fn anonymous_broker() -> (ContainerAsync<GenericImage>, u16) {
     let container = GenericImage::new(MOSQUITTO_IMAGE, MOSQUITTO_TAG)
         .with_exposed_port(MOSQUITTO_PORT.tcp())
-        .with_wait_for(WaitFor::message_on_stdout("mosquitto version"))
+        .with_wait_for(WaitFor::message_on_stdout("running"))
         .with_copy_to(
             "/mosquitto/config/mosquitto.conf",
             b"listener 1883\nallow_anonymous true\nlog_dest stdout\n".to_vec(),
@@ -36,16 +36,29 @@ pub async fn anonymous_broker() -> (ContainerAsync<GenericImage>, u16) {
 pub async fn authenticated_broker() -> (ContainerAsync<GenericImage>, u16) {
     let config =
         "listener 1883\nallow_anonymous false\npassword_file /mosquitto/config/passwd\nlog_dest stdout\n";
-    let passwd = include_bytes!("passwd");
 
+    // testcontainers copies files with 0644 permissions, but Mosquitto 2.0.18+
+    // refuses world-readable passwd files. Override entrypoint to /bin/sh so
+    // the startup command runs as root (bypassing su-exec); mosquitto_passwd
+    // then creates the passwd file with 0600 before Mosquitto is exec'd.
     let container = GenericImage::new(MOSQUITTO_IMAGE, MOSQUITTO_TAG)
         .with_exposed_port(MOSQUITTO_PORT.tcp())
-        .with_wait_for(WaitFor::message_on_stdout("mosquitto version"))
+        .with_wait_for(WaitFor::message_on_stdout("running"))
+        .with_entrypoint("/bin/sh")
         .with_copy_to(
             "/mosquitto/config/mosquitto.conf",
             config.as_bytes().to_vec(),
         )
-        .with_copy_to("/mosquitto/config/passwd", passwd.to_vec())
+        .with_cmd([
+            "-c",
+            // Create passwd as root, then chown to uid/gid 1883 (mosquitto) before
+            // exec-ing into mosquitto. Mosquitto drops privileges to the mosquitto
+            // user before opening the passwd file, so the file must be owned by that
+            // user; a root-owned 0600 file would cause "Unable to open pwfile".
+            "mosquitto_passwd -c -b /mosquitto/config/passwd testuser testpassword \
+             && chown 1883:1883 /mosquitto/config/passwd \
+             && exec /usr/sbin/mosquitto -c /mosquitto/config/mosquitto.conf",
+        ])
         .start()
         .await
         .expect("start authenticated mosquitto container");
