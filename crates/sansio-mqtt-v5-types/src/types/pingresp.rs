@@ -9,6 +9,8 @@
 ///
 /// Sent by the Server in response to a [`PingReq`]; has no variable
 /// header and no payload. Conformance: `[MQTT-3.13.0-1]`.
+///
+/// [`PingReq`]: crate::PingReq
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct PingResp {}
 
