@@ -7,13 +7,26 @@ use test_sansio_mqtt_v5_tokio_mosquitto::*;
 async fn user_properties_preserved_end_to_end() {
     let (_c, port) = anonymous_broker().await;
 
-    let (sub_c, mut el_sub) = connect(connect_options(port, "up-sub")).await.expect("connect");
-    assert!(matches!(el_sub.poll().await.expect("poll"), Event::Connected));
-    sub_c.subscribe(sub("mp/user-props")).await.expect("subscribe");
+    let (sub_c, mut el_sub) = connect(connect_options(port, "up-sub"))
+        .await
+        .expect("connect");
+    assert!(matches!(
+        el_sub.poll().await.expect("poll"),
+        Event::Connected
+    ));
+    sub_c
+        .subscribe(sub("mp/user-props"))
+        .await
+        .expect("subscribe");
     tokio::time::sleep(Duration::from_millis(150)).await;
 
-    let (pub_c, mut el_pub) = connect(connect_options(port, "up-pub")).await.expect("connect");
-    assert!(matches!(el_pub.poll().await.expect("poll"), Event::Connected));
+    let (pub_c, mut el_pub) = connect(connect_options(port, "up-pub"))
+        .await
+        .expect("connect");
+    assert!(matches!(
+        el_pub.poll().await.expect("poll"),
+        Event::Connected
+    ));
 
     let k1 = Utf8String::try_from("env").expect("valid");
     let v1 = Utf8String::try_from("test").expect("valid");
@@ -63,17 +76,24 @@ async fn message_expiry_interval_drops_stale_message() {
     let (_c, port) = anonymous_broker().await;
 
     // Persistent subscriber goes offline
-    let (sub1, mut el1) =
-        connect(persistent_connect_options(port, "mei-sub")).await.expect("connect");
+    let (sub1, mut el1) = connect(persistent_connect_options(port, "mei-sub"))
+        .await
+        .expect("connect");
     assert!(matches!(el1.poll().await.expect("poll"), Event::Connected));
-    sub1.subscribe(sub_qos1("mp/expiry")).await.expect("subscribe");
+    sub1.subscribe(sub_qos1("mp/expiry"))
+        .await
+        .expect("subscribe");
     tokio::time::sleep(Duration::from_millis(150)).await;
     sub1.disconnect().await.expect("disconnect");
     let _ = tokio::time::timeout(Duration::from_secs(1), el1.poll()).await;
 
-    let (pub_c, mut el_pub) =
-        connect(connect_options(port, "mei-pub")).await.expect("connect");
-    assert!(matches!(el_pub.poll().await.expect("poll"), Event::Connected));
+    let (pub_c, mut el_pub) = connect(connect_options(port, "mei-pub"))
+        .await
+        .expect("connect");
+    assert!(matches!(
+        el_pub.poll().await.expect("poll"),
+        Event::Connected
+    ));
 
     pub_c
         .publish(ClientMessage {
@@ -90,8 +110,9 @@ async fn message_expiry_interval_drops_stale_message() {
     // Wait for message to expire
     tokio::time::sleep(Duration::from_secs(2)).await;
 
-    let (_sub2, mut el2) =
-        connect(resume_connect_options(port, "mei-sub")).await.expect("reconnect");
+    let (_sub2, mut el2) = connect(resume_connect_options(port, "mei-sub"))
+        .await
+        .expect("reconnect");
     assert!(matches!(el2.poll().await.expect("poll"), Event::Connected));
 
     let result = tokio::time::timeout(Duration::from_millis(500), el2.poll()).await;
@@ -107,8 +128,9 @@ async fn response_topic_and_correlation_data_round_trip() {
     let (_c, port) = anonymous_broker().await;
 
     // Responder subscribes to the request topic
-    let (resp_c, mut el_resp) =
-        connect(connect_options(port, "rr-resp")).await.expect("connect");
+    let (resp_c, mut el_resp) = connect(connect_options(port, "rr-resp"))
+        .await
+        .expect("connect");
     assert!(matches!(
         el_resp.poll().await.expect("poll"),
         Event::Connected
@@ -120,8 +142,9 @@ async fn response_topic_and_correlation_data_round_trip() {
     tokio::time::sleep(Duration::from_millis(150)).await;
 
     // Requester publishes with response_topic and correlation_data
-    let (req_c, mut el_req) =
-        connect(connect_options(port, "rr-req")).await.expect("connect");
+    let (req_c, mut el_req) = connect(connect_options(port, "rr-req"))
+        .await
+        .expect("connect");
     assert!(matches!(
         el_req.poll().await.expect("poll"),
         Event::Connected
@@ -155,7 +178,9 @@ async fn response_topic_and_correlation_data_round_trip() {
         Event::Message(m) => m,
         other => panic!("expected request Message, got {other:?}"),
     };
-    let rt = req_msg.response_topic.expect("response_topic must be present");
+    let rt = req_msg
+        .response_topic
+        .expect("response_topic must be present");
     let cd = req_msg
         .correlation_data
         .expect("correlation_data must be present");
@@ -196,7 +221,9 @@ async fn response_topic_and_correlation_data_round_trip() {
 async fn content_type_preserved() {
     let (_c, port) = anonymous_broker().await;
 
-    let (sub_c, mut el_sub) = connect(connect_options(port, "ct-sub")).await.expect("connect");
+    let (sub_c, mut el_sub) = connect(connect_options(port, "ct-sub"))
+        .await
+        .expect("connect");
     assert!(matches!(
         el_sub.poll().await.expect("poll"),
         Event::Connected
@@ -204,7 +231,9 @@ async fn content_type_preserved() {
     sub_c.subscribe(sub("mp/ct")).await.expect("subscribe");
     tokio::time::sleep(Duration::from_millis(150)).await;
 
-    let (pub_c, mut el_pub) = connect(connect_options(port, "ct-pub")).await.expect("connect");
+    let (pub_c, mut el_pub) = connect(connect_options(port, "ct-pub"))
+        .await
+        .expect("connect");
     assert!(matches!(
         el_pub.poll().await.expect("poll"),
         Event::Connected
@@ -241,8 +270,9 @@ async fn content_type_preserved() {
 async fn payload_format_indicator_preserved() {
     let (_c, port) = anonymous_broker().await;
 
-    let (sub_c, mut el_sub) =
-        connect(connect_options(port, "pfi-sub")).await.expect("connect");
+    let (sub_c, mut el_sub) = connect(connect_options(port, "pfi-sub"))
+        .await
+        .expect("connect");
     assert!(matches!(
         el_sub.poll().await.expect("poll"),
         Event::Connected
@@ -250,8 +280,9 @@ async fn payload_format_indicator_preserved() {
     sub_c.subscribe(sub("mp/pfi")).await.expect("subscribe");
     tokio::time::sleep(Duration::from_millis(150)).await;
 
-    let (pub_c, mut el_pub) =
-        connect(connect_options(port, "pfi-pub")).await.expect("connect");
+    let (pub_c, mut el_pub) = connect(connect_options(port, "pfi-pub"))
+        .await
+        .expect("connect");
     assert!(matches!(
         el_pub.poll().await.expect("poll"),
         Event::Connected
@@ -287,8 +318,9 @@ async fn payload_format_indicator_preserved() {
 async fn multiple_user_properties_duplicate_keys() {
     let (_c, port) = anonymous_broker().await;
 
-    let (sub_c, mut el_sub) =
-        connect(connect_options(port, "dupk-sub")).await.expect("connect");
+    let (sub_c, mut el_sub) = connect(connect_options(port, "dupk-sub"))
+        .await
+        .expect("connect");
     assert!(matches!(
         el_sub.poll().await.expect("poll"),
         Event::Connected
@@ -296,8 +328,9 @@ async fn multiple_user_properties_duplicate_keys() {
     sub_c.subscribe(sub("mp/dupkeys")).await.expect("subscribe");
     tokio::time::sleep(Duration::from_millis(150)).await;
 
-    let (pub_c, mut el_pub) =
-        connect(connect_options(port, "dupk-pub")).await.expect("connect");
+    let (pub_c, mut el_pub) = connect(connect_options(port, "dupk-pub"))
+        .await
+        .expect("connect");
     assert!(matches!(
         el_pub.poll().await.expect("poll"),
         Event::Connected

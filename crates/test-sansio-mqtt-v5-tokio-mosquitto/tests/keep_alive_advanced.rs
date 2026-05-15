@@ -20,7 +20,8 @@ async fn zero_keep_alive_connection_stays_alive() {
     let (_client, mut el) = connect(opts).await.expect("connect");
     assert!(matches!(el.poll().await.expect("poll"), Event::Connected));
 
-    // Idle for 3s — connection must remain alive (no unexpected disconnect or error)
+    // Idle for 3s — connection must remain alive (no unexpected disconnect or
+    // error)
     let result = tokio::time::timeout(Duration::from_secs(3), el.poll()).await;
     match result {
         Err(_elapsed) => { /* success: still alive after 3s */ }
@@ -53,7 +54,10 @@ async fn traffic_resets_keep_alive_deadline() {
 
     // At t≈1.5s publish a message — this should reset the keep-alive deadline
     tokio::time::sleep(Duration::from_millis(1500)).await;
-    client.publish(msg("ka/reset", b"ping", Qos::AtMostOnce)).await.expect("publish");
+    client
+        .publish(msg("ka/reset", b"ping", Qos::AtMostOnce))
+        .await
+        .expect("publish");
 
     // Poll past the original 2s deadline — connection must still be alive
     let result = tokio::time::timeout(Duration::from_millis(800), el.poll()).await;
