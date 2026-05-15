@@ -2,6 +2,7 @@ use sansio::Protocol;
 use sansio_mqtt_v5_protocol::Client as ProtocolClient;
 use sansio_mqtt_v5_protocol::DriverEventIn;
 use sansio_mqtt_v5_protocol::DriverEventOut;
+use sansio_mqtt_v5_protocol::IncomingData;
 use sansio_mqtt_v5_protocol::UserWriteIn;
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
@@ -35,92 +36,65 @@ impl EventLoop {
 
     pub async fn poll(&mut self) -> Result<Event, EventLoopError> {
         loop {
-            if let Some(event) = self.try_deliver_event() {
-                return Ok(event);
+            if let Some(out) = self.protocol.poll_read() {
+                return Ok(Event::from_protocol_output(out));
             }
 
-            self.flush_protocol_writes().await?;
-            self.handle_protocol_actions().await?;
+            while let Some(frame) = self.protocol.poll_write() {
+                self.stream.write_all(&frame).await?;
+            }
 
-            if let Some(event) = self.try_deliver_event() {
-                return Ok(event);
+            while let Some(action) = self.protocol.poll_event() {
+                match action {
+                    DriverEventOut::CloseSocket => {
+                        self.stream.shutdown().await?;
+                        self.protocol.handle_event(DriverEventIn::SocketClosed)?;
+                    }
+                    DriverEventOut::Quit => {
+                        return Err(EventLoopError::ProtocolRequestedQuit);
+                    }
+                    DriverEventOut::OpenSocket => {
+                        return Err(EventLoopError::UnexpectedDriverAction(action));
+                    }
+                }
+            }
+
+            if let Some(out) = self.protocol.poll_read() {
+                return Ok(Event::from_protocol_output(out));
             }
 
             let timeout = self.protocol.poll_timeout();
-            if let Some(deadline) = timeout {
-                tokio::select! {
-                    read_result = self.stream.read(&mut self.read_buffer) => {
-                        let read = read_result?;
-                        if read == 0 {
-                            self.protocol.handle_event(DriverEventIn::SocketClosed)?;
-                        } else {
-                            self.protocol.handle_read(self.read_buffer[..read].to_vec().into())?;
+            tokio::select! {
+                read_result = self.stream.read(&mut self.read_buffer) => {
+                    match read_result {
+                        Ok(0) => self.protocol.handle_event(DriverEventIn::SocketClosed)?,
+                        Ok(n) => self.protocol.handle_read(IncomingData {
+                            bytes: self.read_buffer[..n].to_vec().into(),
+                            received_at: tokio::time::Instant::now(),
+                        })?,
+                        Err(e) => {
+                            _ = self.protocol.handle_event(DriverEventIn::SocketError);
+                            return Err(e.into());
                         }
-                    }
-                    command = self.command_rx.recv() => {
-                        if let Some(command) = command {
-                            self.protocol.handle_write(command)?;
-                        }
-                    }
-                    _ = tokio::time::sleep_until(deadline) => {
-                        self.protocol.handle_timeout(tokio::time::Instant::now())?;
                     }
                 }
-            } else {
-                tokio::select! {
-                    read_result = self.stream.read(&mut self.read_buffer) => {
-                        let read = read_result?;
-                        if read == 0 {
-                            self.protocol.handle_event(DriverEventIn::SocketClosed)?;
-                        } else {
-                            self.protocol.handle_read(self.read_buffer[..read].to_vec().into())?;
-                        }
+                command = self.command_rx.recv() => {
+                    if let Some(command) = command {
+                        self.protocol.handle_write(command)?;
                     }
-                    command = self.command_rx.recv() => {
-                        if let Some(command) = command {
-                            self.protocol.handle_write(command)?;
-                        }
-                    }
+                }
+                _ = maybe_sleep_until(timeout) => {
+                    self.protocol.handle_timeout(tokio::time::Instant::now())?;
                 }
             }
         }
     }
+}
 
-    // [MQTT-3.1.2-22] Arm the keep-alive timer the moment Connected is delivered so
-    // the deadline is set before the next poll_timeout() call.
-    fn try_deliver_event(&mut self) -> Option<Event> {
-        let out = self.protocol.poll_read()?;
-        let event = Event::from_protocol_output(out);
-        if matches!(event, Event::Connected) {
-            self.protocol
-                .arm_keep_alive_timer(tokio::time::Instant::now());
-        }
-        Some(event)
-    }
-
-    async fn flush_protocol_writes(&mut self) -> Result<(), EventLoopError> {
-        while let Some(frame) = self.protocol.poll_write() {
-            self.stream.write_all(&frame).await?;
-        }
-        Ok(())
-    }
-
-    async fn handle_protocol_actions(&mut self) -> Result<(), EventLoopError> {
-        while let Some(action) = self.protocol.poll_event() {
-            match action {
-                DriverEventOut::CloseSocket => {
-                    self.stream.shutdown().await?;
-                    self.protocol.handle_event(DriverEventIn::SocketClosed)?;
-                }
-                DriverEventOut::Quit => {
-                    return Err(EventLoopError::ProtocolRequestedQuit);
-                }
-                DriverEventOut::OpenSocket => {
-                    return Err(EventLoopError::UnexpectedDriverAction(action));
-                }
-            }
-        }
-
-        Ok(())
+async fn maybe_sleep_until(deadline: Option<tokio::time::Instant>) {
+    if let Some(deadline) = deadline {
+        tokio::time::sleep_until(deadline).await;
+    } else {
+        core::future::pending().await
     }
 }

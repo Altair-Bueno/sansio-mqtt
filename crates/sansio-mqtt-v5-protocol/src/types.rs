@@ -1,4 +1,5 @@
 use alloc::vec::Vec;
+use bytes::Bytes;
 use core::num::NonZero;
 use core::time::Duration;
 pub use sansio_mqtt_v5_types::Auth as AuthPacket;
@@ -18,6 +19,16 @@ pub use sansio_mqtt_v5_types::RetainHandling;
 pub use sansio_mqtt_v5_types::Subscription;
 pub use sansio_mqtt_v5_types::Topic;
 pub use sansio_mqtt_v5_types::Utf8String;
+
+/// A chunk of bytes received from the network together with the instant they
+/// arrived. Passing the arrival time lets the protocol update the keep-alive
+/// deadline precisely from the packet timestamp rather than from the next
+/// `handle_timeout` fire time.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct IncomingData<Time> {
+    pub bytes: Bytes,
+    pub received_at: Time,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ClientSettings {
