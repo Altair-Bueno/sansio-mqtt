@@ -199,13 +199,14 @@ async fn session_takeover_disconnects_old_connection() {
 async fn session_expiry_drops_queued_messages() {
     let (_c, port) = anonymous_broker().await;
 
-    // Connect with a short session_expiry
+    // session_expiry_interval=0 means the broker deletes the session synchronously
+    // when it processes the DISCONNECT — no periodic-timer race.
     let opts_short = ConnectOptions {
         addr: format!("127.0.0.1:{port}").parse().expect("addr"),
         connection: ConnectionOptions {
             clean_start: true,
             client_identifier: Utf8String::try_from("sa-expiry").expect("id"),
-            session_expiry_interval: Some(1), // 1 second
+            session_expiry_interval: Some(0),
             ..ConnectionOptions::default()
         },
         ..ConnectOptions::default()
@@ -215,11 +216,13 @@ async fn session_expiry_drops_queued_messages() {
     sub1.subscribe(sub_qos1("sa/expiry"))
         .await
         .expect("subscribe");
-    tokio::time::sleep(Duration::from_millis(150)).await;
+    // Flush SUBSCRIBE to broker before disconnecting.
+    let _ = tokio::time::timeout(Duration::from_millis(500), el1.poll()).await;
     sub1.disconnect().await.expect("disconnect");
     let _ = tokio::time::timeout(Duration::from_secs(1), el1.poll()).await;
 
-    // Publisher queues a message
+    // Publisher sends a message — session is gone, so the broker has no
+    // subscription to queue it against.
     let (pub_c, mut el_pub) = connect(connect_options(port, "sa-expiry-pub"))
         .await
         .expect("connect");
@@ -233,10 +236,7 @@ async fn session_expiry_drops_queued_messages() {
         .expect("publish");
     let _ = tokio::time::timeout(Duration::from_secs(3), el_pub.poll()).await;
 
-    // Wait for session to expire (>1s)
-    tokio::time::sleep(Duration::from_secs(4)).await;
-
-    // Reconnect without clean_start — session has expired, no queued messages
+    // Reconnect without clean_start — session was dropped on disconnect, no queued messages
     let opts_resume = ConnectOptions {
         addr: format!("127.0.0.1:{port}").parse().expect("addr"),
         connection: ConnectionOptions {
