@@ -51,7 +51,12 @@ pub async fn authenticated_broker() -> (ContainerAsync<GenericImage>, u16) {
         )
         .with_cmd([
             "-c",
+            // Create passwd as root, then chown to uid/gid 1883 (mosquitto) before
+            // exec-ing into mosquitto. Mosquitto drops privileges to the mosquitto
+            // user before opening the passwd file, so the file must be owned by that
+            // user; a root-owned 0600 file would cause "Unable to open pwfile".
             "mosquitto_passwd -c -b /mosquitto/config/passwd testuser testpassword \
+             && chown 1883:1883 /mosquitto/config/passwd \
              && exec /usr/sbin/mosquitto -c /mosquitto/config/mosquitto.conf",
         ])
         .start()
