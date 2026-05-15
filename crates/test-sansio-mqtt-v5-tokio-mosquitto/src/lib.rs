@@ -176,3 +176,52 @@ pub fn msg(topic: &str, payload: &[u8], qos: Qos) -> ClientMessage {
         ..ClientMessage::default()
     }
 }
+
+/// ConnectOptions pre-loaded with a [`Will`] message.
+pub fn will_connect_options(port: u16, client_id: &str, will: Will) -> ConnectOptions {
+    ConnectOptions {
+        addr: format!("127.0.0.1:{port}").parse().expect("valid addr"),
+        connection: ConnectionOptions {
+            clean_start: true,
+            client_identifier: Utf8String::try_from(client_id).expect("valid client id"),
+            will: Some(will),
+            ..ConnectionOptions::default()
+        },
+        ..ConnectOptions::default()
+    }
+}
+
+/// [`SubscribeOptions`] with full control over all subscription flags and an
+/// optional subscription identifier.
+pub fn sub_with_options(
+    topic: &str,
+    qos: Qos,
+    no_local: bool,
+    retain_as_published: bool,
+    retain_handling: RetainHandling,
+    subscription_identifier: Option<core::num::NonZero<u64>>,
+) -> SubscribeOptions {
+    SubscribeOptions {
+        subscription: Subscription {
+            topic_filter: Utf8String::try_from(topic).expect("valid topic filter"),
+            qos,
+            no_local,
+            retain_as_published,
+            retain_handling,
+        },
+        extra_subscriptions: vec![],
+        subscription_identifier,
+        user_properties: vec![],
+    }
+}
+
+/// [`ClientMessage`] with `retain = true`.
+pub fn msg_retain(topic: &str, payload: &[u8], qos: Qos) -> ClientMessage {
+    ClientMessage {
+        topic: Topic::try_new(topic.as_bytes().to_vec()).expect("valid topic"),
+        payload: Payload::from(payload),
+        qos,
+        retain: true,
+        ..ClientMessage::default()
+    }
+}
