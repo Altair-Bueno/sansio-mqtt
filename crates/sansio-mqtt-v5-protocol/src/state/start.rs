@@ -110,7 +110,7 @@ where
         settings: &ClientSettings,
         session: &mut ClientSession,
         scratchpad: &mut ClientScratchpad<Time>,
-        evt: DriverEventIn,
+        evt: DriverEventIn<Time>,
     ) -> (ClientState, Result<(), Error>) {
         match evt {
             DriverEventIn::SocketConnected => {
@@ -140,6 +140,9 @@ where
                     ClientState::Disconnected(Disconnected),
                     Err(Error::ProtocolError),
                 )
+            }
+            DriverEventIn::Connected(_) => {
+                (ClientState::Start(self), Err(Error::InvalidStateTransition))
             }
         }
     }

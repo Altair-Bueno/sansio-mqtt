@@ -2,6 +2,7 @@ use sansio::Protocol;
 use sansio_mqtt_v5_protocol::Client as ProtocolClient;
 use sansio_mqtt_v5_protocol::DriverEventIn;
 use sansio_mqtt_v5_protocol::DriverEventOut;
+use sansio_mqtt_v5_protocol::IncomingData;
 use sansio_mqtt_v5_protocol::UserWriteIn;
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
@@ -35,14 +36,14 @@ impl EventLoop {
 
     pub async fn poll(&mut self) -> Result<Event, EventLoopError> {
         loop {
-            if let Some(event) = self.try_deliver_event() {
+            if let Some(event) = self.try_deliver_event()? {
                 return Ok(event);
             }
 
             self.flush_protocol_writes().await?;
             self.handle_protocol_actions().await?;
 
-            if let Some(event) = self.try_deliver_event() {
+            if let Some(event) = self.try_deliver_event()? {
                 return Ok(event);
             }
 
@@ -50,12 +51,7 @@ impl EventLoop {
             if let Some(deadline) = timeout {
                 tokio::select! {
                     read_result = self.stream.read(&mut self.read_buffer) => {
-                        let read = read_result?;
-                        if read == 0 {
-                            self.protocol.handle_event(DriverEventIn::SocketClosed)?;
-                        } else {
-                            self.protocol.handle_read(self.read_buffer[..read].to_vec().into())?;
-                        }
+                        self.handle_read_result(read_result)?;
                     }
                     command = self.command_rx.recv() => {
                         if let Some(command) = command {
@@ -69,12 +65,7 @@ impl EventLoop {
             } else {
                 tokio::select! {
                     read_result = self.stream.read(&mut self.read_buffer) => {
-                        let read = read_result?;
-                        if read == 0 {
-                            self.protocol.handle_event(DriverEventIn::SocketClosed)?;
-                        } else {
-                            self.protocol.handle_read(self.read_buffer[..read].to_vec().into())?;
-                        }
+                        self.handle_read_result(read_result)?;
                     }
                     command = self.command_rx.recv() => {
                         if let Some(command) = command {
@@ -86,16 +77,41 @@ impl EventLoop {
         }
     }
 
-    // [MQTT-3.1.2-22] Arm the keep-alive timer the moment Connected is delivered so
-    // the deadline is set before the next poll_timeout() call.
-    fn try_deliver_event(&mut self) -> Option<Event> {
-        let out = self.protocol.poll_read()?;
+    fn try_deliver_event(&mut self) -> Result<Option<Event>, EventLoopError> {
+        let Some(out) = self.protocol.poll_read() else {
+            return Ok(None);
+        };
         let event = Event::from_protocol_output(out);
         if matches!(event, Event::Connected) {
+            // [MQTT-3.1.2-22] Arm the keep-alive timer the moment Connected is
+            // delivered so the deadline is set before the next poll_timeout() call.
+            //
+            // `UserWriteOut::Connected` is only ever enqueued in the Connecting
+            // state on a successful CONNACK, which atomically transitions the
+            // protocol to Connected.  Therefore `handle_event(Connected(_))`
+            // here is always called while in the Connected state and cannot
+            // return InvalidStateTransition.
             self.protocol
-                .arm_keep_alive_timer(tokio::time::Instant::now());
+                .handle_event(DriverEventIn::Connected(tokio::time::Instant::now()))?;
         }
-        Some(event)
+        Ok(Some(event))
+    }
+
+    fn handle_read_result(&mut self, result: std::io::Result<usize>) -> Result<(), EventLoopError> {
+        match result {
+            Ok(0) => self.protocol.handle_event(DriverEventIn::SocketClosed)?,
+            Ok(n) => self.protocol.handle_read(IncomingData {
+                bytes: self.read_buffer[..n].to_vec().into(),
+                received_at: tokio::time::Instant::now(),
+            })?,
+            Err(e) => {
+                // Notify the protocol so it transitions to a clean state before
+                // returning the IO error to the caller.
+                let _ = self.protocol.handle_event(DriverEventIn::SocketError);
+                return Err(e.into());
+            }
+        }
+        Ok(())
     }
 
     async fn flush_protocol_writes(&mut self) -> Result<(), EventLoopError> {

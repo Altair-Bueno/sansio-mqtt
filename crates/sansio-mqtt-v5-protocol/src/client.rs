@@ -4,8 +4,13 @@ use crate::scratchpad::ClientScratchpad;
 use crate::session::ClientSession;
 use crate::state::ClientState;
 use crate::state::StateHandler;
-use crate::types::*;
-use bytes::Bytes;
+use crate::types::ClientSettings;
+use crate::types::DriverEventIn;
+use crate::types::DriverEventOut;
+use crate::types::Error;
+use crate::types::IncomingData;
+use crate::types::UserWriteIn;
+use crate::types::UserWriteOut;
 use bytes::BytesMut;
 use core::ops::Add;
 use core::time::Duration;
@@ -88,46 +93,24 @@ impl<Time> Client<Time> {
     }
 }
 
-impl<Time> Client<Time>
-where
-    Time: Ord + Add<Duration, Output = Time> + Copy,
-{
-    /// Arms the keep-alive timer so that the first deadline fires one
-    /// keep-alive interval after `now`.
-    ///
-    /// Call this immediately after observing [`UserWriteOut::Connected`] (i.e.,
-    /// after a successful CONNACK) to start the keep-alive machinery.  If
-    /// no keep-alive was negotiated this is a no-op.
-    ///
-    /// # Keep-alive specification
-    ///
-    /// [MQTT-3.1.2-22] The Client MUST send a PINGREQ if no other packet has
-    /// been sent within the keep-alive period.
-    pub fn arm_keep_alive_timer(&mut self, now: Time) {
-        if let Some(interval_secs) = self.scratchpad.keep_alive_interval_secs {
-            self.scratchpad.next_timeout =
-                Some(now + Duration::from_secs(interval_secs.get() as u64));
-        }
-    }
-}
-
-impl<Time> Protocol<Bytes, UserWriteIn, DriverEventIn> for Client<Time>
+impl<Time> Protocol<IncomingData<Time>, UserWriteIn, DriverEventIn<Time>> for Client<Time>
 where
     Time: Ord + Add<Duration, Output = Time> + Copy,
 {
     type Rout = UserWriteOut;
-    type Wout = Bytes;
+    type Wout = bytes::Bytes;
     type Eout = DriverEventOut;
     type Error = Error;
     type Time = Time;
 
     #[tracing::instrument(skip_all)]
-    fn handle_read(&mut self, msg: Bytes) -> Result<(), Self::Error> {
+    fn handle_read(&mut self, msg: IncomingData<Time>) -> Result<(), Self::Error> {
+        let received_at = msg.received_at;
         let packet_bytes = if self.scratchpad.read_buffer.is_empty() {
-            msg
+            msg.bytes
         } else {
             let mut combined = core::mem::take(&mut self.scratchpad.read_buffer);
-            combined.extend_from_slice(&msg);
+            combined.extend_from_slice(&msg.bytes);
             combined.freeze()
         };
 
@@ -142,11 +125,19 @@ where
             {
                 Ok(packet) => {
                     slice = input.into_inner();
-                    self.scratchpad.keep_alive_saw_network_activity = true;
                     if matches!(packet, ControlPacket::PingResp(_)) {
                         self.scratchpad.keep_alive_ping_outstanding = false;
                     }
                     self.dispatch(|s, set, ses, sp| s.handle_control_packet(set, ses, sp, packet))?;
+                    // Update the keep-alive deadline from the exact packet arrival time.
+                    // Only when the timer is already armed (next_timeout is Some) to avoid
+                    // prematurely starting it before handle_event(Connected) fires.
+                    if let Some(interval_secs) = self.scratchpad.keep_alive_interval_secs {
+                        if self.scratchpad.next_timeout.is_some() {
+                            self.scratchpad.next_timeout =
+                                Some(received_at + Duration::from_secs(interval_secs.get() as u64));
+                        }
+                    }
                 }
                 Err(ErrMode::Incomplete(_)) => {
                     break;
@@ -178,11 +169,17 @@ where
 
     #[tracing::instrument(skip_all)]
     fn handle_write(&mut self, msg: UserWriteIn) -> Result<(), Self::Error> {
-        self.dispatch(|s, set, ses, sp| s.handle_write(set, ses, sp, msg))
+        let result = self.dispatch(|s, set, ses, sp| s.handle_write(set, ses, sp, msg));
+        if result.is_ok() {
+            // Any successful outgoing write resets the keep-alive idle flag so
+            // handle_timeout knows not to send a redundant PINGREQ.
+            self.scratchpad.keep_alive_saw_network_activity = true;
+        }
+        result
     }
 
     #[tracing::instrument(skip_all)]
-    fn handle_event(&mut self, evt: DriverEventIn) -> Result<(), Self::Error> {
+    fn handle_event(&mut self, evt: DriverEventIn<Time>) -> Result<(), Self::Error> {
         self.dispatch(|s, set, ses, sp| s.handle_event(set, ses, sp, evt))
     }
 

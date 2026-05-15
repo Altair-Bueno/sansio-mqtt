@@ -820,9 +820,18 @@ where
         settings: &ClientSettings,
         session: &mut ClientSession,
         scratchpad: &mut ClientScratchpad<Time>,
-        evt: DriverEventIn,
+        evt: DriverEventIn<Time>,
     ) -> (ClientState, Result<(), Error>) {
         match evt {
+            DriverEventIn::Connected(now) => {
+                // [MQTT-3.1.2-22] Arm the keep-alive timer so the first deadline
+                // fires one interval after the CONNACK was delivered.
+                if let Some(interval_secs) = scratchpad.keep_alive_interval_secs {
+                    scratchpad.next_timeout =
+                        Some(now + Duration::from_secs(interval_secs.get() as u64));
+                }
+                (ClientState::Connected(self), Ok(()))
+            }
             DriverEventIn::SocketConnected => (
                 ClientState::Connected(self),
                 Err(Error::InvalidStateTransition),

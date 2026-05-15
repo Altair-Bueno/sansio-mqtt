@@ -1,4 +1,5 @@
 use alloc::vec::Vec;
+use bytes::Bytes;
 use core::num::NonZero;
 use core::time::Duration;
 pub use sansio_mqtt_v5_types::Auth as AuthPacket;
@@ -18,6 +19,16 @@ pub use sansio_mqtt_v5_types::RetainHandling;
 pub use sansio_mqtt_v5_types::Subscription;
 pub use sansio_mqtt_v5_types::Topic;
 pub use sansio_mqtt_v5_types::Utf8String;
+
+/// A chunk of bytes received from the network together with the instant they
+/// arrived. Passing the arrival time lets the protocol update the keep-alive
+/// deadline precisely from the packet timestamp rather than from the next
+/// `handle_timeout` fire time.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct IncomingData<Time> {
+    pub bytes: Bytes,
+    pub received_at: Time,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ClientSettings {
@@ -231,10 +242,19 @@ pub enum UserWriteIn {
 
 // Driver events to the protocol
 #[derive(Debug)]
-pub enum DriverEventIn {
+pub enum DriverEventIn<Time> {
     SocketClosed,
     SocketConnected,
     SocketError,
+    /// Passed by the driver immediately after observing
+    /// [`UserWriteOut::Connected`] so the protocol can arm the keep-alive
+    /// timer with the current wall time.
+    ///
+    /// [MQTT-3.1.2-22] The Client MUST send a PINGREQ if no other packet has
+    /// been sent within the keep-alive period. Passing `now` here lets the
+    /// protocol compute the first deadline without needing to know the time
+    /// at which the CONNACK arrived.
+    Connected(Time),
 }
 
 // Actions that the protocol wants to perform on the driver

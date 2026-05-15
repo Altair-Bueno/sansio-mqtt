@@ -426,7 +426,7 @@ where
         settings: &ClientSettings,
         session: &mut ClientSession,
         scratchpad: &mut ClientScratchpad<Time>,
-        evt: DriverEventIn,
+        evt: DriverEventIn<Time>,
     ) -> (ClientState, Result<(), Error>) {
         match evt {
             DriverEventIn::SocketConnected => {
@@ -450,6 +450,10 @@ where
                 scratchpad.pending_connect_options = self.pending_connect_options;
                 on_socket_closed_or_error(settings, session, scratchpad, true)
             }
+            DriverEventIn::Connected(_) => (
+                ClientState::Connecting(self),
+                Err(Error::InvalidStateTransition),
+            ),
         }
     }
 
