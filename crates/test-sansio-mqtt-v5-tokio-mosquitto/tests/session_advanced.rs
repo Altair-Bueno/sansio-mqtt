@@ -220,6 +220,9 @@ async fn session_expiry_drops_queued_messages() {
     let _ = tokio::time::timeout(Duration::from_millis(500), el1.poll()).await;
     sub1.disconnect().await.expect("disconnect");
     let _ = tokio::time::timeout(Duration::from_secs(1), el1.poll()).await;
+    // Give the broker a moment to finish processing the DISCONNECT and delete
+    // the session before the publisher connects.
+    tokio::time::sleep(Duration::from_millis(500)).await;
 
     // Publisher sends a message — session is gone, so the broker has no
     // subscription to queue it against.
