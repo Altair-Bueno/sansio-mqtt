@@ -71,6 +71,12 @@ impl<Time> Client<Time> {
         }
     }
 
+    /// Returns the number of outbound QoS 1/2 messages currently in-flight
+    /// (i.e. waiting for PUBACK/PUBREC acknowledgement from the broker).
+    pub fn outbound_inflight_count(&self) -> usize {
+        self.session.on_flight_sent.len()
+    }
+
     #[inline(always)]
     fn dispatch<F>(&mut self, f: F) -> Result<(), Error>
     where
@@ -208,5 +214,17 @@ where
 
     fn poll_timeout(&mut self) -> Option<Self::Time> {
         self.scratchpad.next_timeout
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use core::time::Duration;
+
+    #[test]
+    fn outbound_inflight_count_starts_at_zero() {
+        let client = Client::<Duration>::default();
+        assert_eq!(client.outbound_inflight_count(), 0);
     }
 }

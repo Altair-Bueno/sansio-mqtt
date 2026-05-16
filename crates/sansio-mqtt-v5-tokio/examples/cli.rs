@@ -36,7 +36,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let topic = Topic::try_new(topic)?;
 
     tracing::info!(%broker_addr, "Connecting to address");
-    let (client, mut event_loop) = connect(ConnectOptions {
+    let mut conn = Connection::connect(ConnectOptions {
         addr: broker_addr,
         ..ConnectOptions::default()
     })
@@ -48,27 +48,25 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let mut connected = false;
     loop {
         tokio::select! {
-            event = event_loop.poll() => {
+            event = conn.poll() => {
                 match event? {
                     Event::Connected => {
                         tracing::info!("Connected to broker");
                         if !connected {
                             connected = true;
                             tracing::info!(%subscription_filter, "Subscribing to topic filter");
-                            client
-                                .subscribe(SubscribeOptions {
-                                    subscription: Subscription {
-                                        topic_filter: subscription_filter.clone(),
-                                        qos: Qos::AtLeastOnce,
-                                        no_local: true,
-                                        retain_as_published: false,
-                                        retain_handling: RetainHandling::SendRetained,
-                                    },
-                                    extra_subscriptions: Vec::new(),
-                                    subscription_identifier: None,
-                                    user_properties: Vec::new(),
-                                })
-                                .await?;
+                            conn.subscribe(SubscribeOptions {
+                                subscription: Subscription {
+                                    topic_filter: subscription_filter.clone(),
+                                    qos: Qos::AtLeastOnce,
+                                    no_local: true,
+                                    retain_as_published: false,
+                                    retain_handling: RetainHandling::SendRetained,
+                                },
+                                extra_subscriptions: Vec::new(),
+                                subscription_identifier: None,
+                                user_properties: Vec::new(),
+                            })?;
                         }
                     }
                     Event::Disconnected(reason_code) => {
@@ -100,7 +98,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             line = stdin_lines.next_line() => {
                 let Some(line) = line? else {
                     tracing::info!("STDIN was closed, disconnecting and exiting");
-                    let _ = client.disconnect().await;
+                    let _ = conn.disconnect();
                     break;
                 };
 
@@ -110,17 +108,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                 }
 
                 tracing::info!(len = line.len(), "Publishing line from stdin");
-                client.publish(ClientMessage {
+                conn.publish(ClientMessage {
                     topic: topic.clone(),
                     payload: Payload::try_new(line)?,
                     qos: Qos::AtLeastOnce,
                     ..Default::default()
-                }).await?;
+                })?;
             }
             signal_result = tokio::signal::ctrl_c() => {
                 signal_result?;
                 tracing::info!("Received Ctrl+C, disconnecting and exiting");
-                let _ = client.disconnect().await;
+                let _ = conn.disconnect();
                 break;
             }
         }

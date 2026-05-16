@@ -7,54 +7,52 @@ use test_sansio_mqtt_v5_tokio_mosquitto::*;
 async fn clean_start_clears_session() {
     let (_container, port) = anonymous_broker().await;
 
-    let (client1, mut el1) = connect(persistent_connect_options(port, "clean-start-client"))
+    let mut conn1 = Connection::connect(persistent_connect_options(port, "clean-start-client"))
         .await
         .expect("connect phase 1");
     assert!(
         matches!(
-            el1.poll().await.expect("connected phase 1"),
+            conn1.poll().await.expect("connected phase 1"),
             Event::Connected
         ),
         "expected Connected"
     );
-    client1
+    conn1
         .subscribe(sub_qos1("test/clean-start"))
-        .await
         .expect("subscribe");
     tokio::time::sleep(Duration::from_millis(150)).await;
 
-    client1.disconnect().await.expect("disconnect phase 1");
-    let _ = tokio::time::timeout(Duration::from_secs(1), el1.poll()).await;
+    conn1.disconnect().expect("disconnect phase 1");
+    let _ = tokio::time::timeout(Duration::from_secs(1), conn1.poll()).await;
 
-    let (client_pub, mut el_pub) = connect(connect_options(port, "clean-start-pub"))
+    let mut conn_pub = Connection::connect(connect_options(port, "clean-start-pub"))
         .await
         .expect("connect publisher");
     assert!(matches!(
-        el_pub.poll().await.expect("publisher connected"),
+        conn_pub.poll().await.expect("publisher connected"),
         Event::Connected
     ));
-    client_pub
+    conn_pub
         .publish(msg("test/clean-start", b"queued", Qos::AtLeastOnce))
-        .await
         .expect("publish");
-    let pub_event = el_pub.poll().await.expect("puback");
+    let pub_event = conn_pub.poll().await.expect("puback");
     assert!(
         matches!(pub_event, Event::PublishAcknowledged(_, _)),
         "expected PublishAcknowledged, got {pub_event:?}"
     );
 
-    let (_client, mut el3) = connect(connect_options(port, "clean-start-client"))
+    let mut conn3 = Connection::connect(connect_options(port, "clean-start-client"))
         .await
         .expect("connect phase 3");
     assert!(
         matches!(
-            el3.poll().await.expect("connected phase 3"),
+            conn3.poll().await.expect("connected phase 3"),
             Event::Connected
         ),
         "expected Connected after clean reconnect"
     );
 
-    let result = tokio::time::timeout(Duration::from_millis(300), el3.poll()).await;
+    let result = tokio::time::timeout(Duration::from_millis(300), conn3.poll()).await;
     assert!(
         result.is_err(),
         "expected no message after clean_start, but got an event: {result:?}"
@@ -67,54 +65,50 @@ async fn clean_start_clears_session() {
 async fn session_resumption() {
     let (_container, port) = anonymous_broker().await;
 
-    let (client1, mut el1) = connect(persistent_connect_options(port, "resume-client"))
+    let mut conn1 = Connection::connect(persistent_connect_options(port, "resume-client"))
         .await
         .expect("connect phase 1");
     assert!(
         matches!(
-            el1.poll().await.expect("connected phase 1"),
+            conn1.poll().await.expect("connected phase 1"),
             Event::Connected
         ),
         "expected Connected"
     );
-    client1
-        .subscribe(sub_qos1("test/resume"))
-        .await
-        .expect("subscribe");
+    conn1.subscribe(sub_qos1("test/resume")).expect("subscribe");
     tokio::time::sleep(Duration::from_millis(150)).await;
 
-    client1.disconnect().await.expect("disconnect");
-    let _ = tokio::time::timeout(Duration::from_secs(1), el1.poll()).await;
+    conn1.disconnect().expect("disconnect");
+    let _ = tokio::time::timeout(Duration::from_secs(1), conn1.poll()).await;
 
-    let (client_pub, mut el_pub) = connect(connect_options(port, "resume-pub"))
+    let mut conn_pub = Connection::connect(connect_options(port, "resume-pub"))
         .await
         .expect("connect publisher");
     assert!(matches!(
-        el_pub.poll().await.expect("publisher connected"),
+        conn_pub.poll().await.expect("publisher connected"),
         Event::Connected
     ));
-    client_pub
+    conn_pub
         .publish(msg("test/resume", b"queued-for-resume", Qos::AtLeastOnce))
-        .await
         .expect("publish");
-    let pub_event = el_pub.poll().await.expect("puback");
+    let pub_event = conn_pub.poll().await.expect("puback");
     assert!(
         matches!(pub_event, Event::PublishAcknowledged(_, _)),
         "expected PublishAcknowledged, got {pub_event:?}"
     );
 
-    let (_client, mut el3) = connect(resume_connect_options(port, "resume-client"))
+    let mut conn3 = Connection::connect(resume_connect_options(port, "resume-client"))
         .await
         .expect("connect phase 3");
     assert!(
         matches!(
-            el3.poll().await.expect("connected phase 3"),
+            conn3.poll().await.expect("connected phase 3"),
             Event::Connected
         ),
         "expected Connected on resume"
     );
 
-    let result = tokio::time::timeout(Duration::from_secs(3), el3.poll())
+    let result = tokio::time::timeout(Duration::from_secs(3), conn3.poll())
         .await
         .expect("message must arrive within 3 s")
         .expect("event loop ok");
@@ -130,20 +124,17 @@ async fn session_resumption() {
 async fn will_message_delivered() {
     let (_container, port) = anonymous_broker().await;
 
-    let (client_sub, mut el_sub) = connect(connect_options(port, "will-subscriber"))
+    let mut conn_sub = Connection::connect(connect_options(port, "will-subscriber"))
         .await
         .expect("connect subscriber");
     assert!(matches!(
-        el_sub.poll().await.expect("subscriber connected"),
+        conn_sub.poll().await.expect("subscriber connected"),
         Event::Connected
     ));
-    client_sub
-        .subscribe(sub("will/gone"))
-        .await
-        .expect("subscribe");
+    conn_sub.subscribe(sub("will/gone")).expect("subscribe");
     tokio::time::sleep(Duration::from_millis(150)).await;
 
-    let sub_task = tokio::spawn(async move { el_sub.poll().await });
+    let sub_task = tokio::spawn(async move { conn_sub.poll().await });
 
     let will = Will {
         topic: Topic::try_new("will/gone").expect("valid will topic"),
@@ -166,18 +157,20 @@ async fn will_message_delivered() {
         ..ConnectOptions::default()
     };
 
-    let (_client_will, mut el_will) = connect(will_opts).await.expect("connect will sender");
+    let mut conn_will = Connection::connect(will_opts)
+        .await
+        .expect("connect will sender");
     assert!(
         matches!(
-            el_will.poll().await.expect("will sender connected"),
+            conn_will.poll().await.expect("will sender connected"),
             Event::Connected
         ),
         "expected will sender Connected"
     );
 
-    // Dropping the event loop without sending DISCONNECT triggers the broker's will
+    // Dropping the connection without sending DISCONNECT triggers the broker's will
     // publication.
-    drop(el_will);
+    drop(conn_will);
 
     let event = tokio::time::timeout(Duration::from_secs(3), sub_task)
         .await

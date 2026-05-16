@@ -1,59 +1,43 @@
-use sansio::Protocol;
-use sansio_mqtt_v5_protocol::Client as ProtocolClient;
+use std::net::IpAddr;
+use std::net::Ipv4Addr;
+use std::net::SocketAddr;
+
 use sansio_mqtt_v5_protocol::ClientSettings;
 use sansio_mqtt_v5_protocol::ConnectionOptions;
-use sansio_mqtt_v5_protocol::DriverEventIn;
-use sansio_mqtt_v5_protocol::DriverEventOut;
-use sansio_mqtt_v5_protocol::UserWriteIn;
-use tokio::io::AsyncWriteExt;
-use tokio::net::TcpStream;
-use tokio::sync::mpsc;
 
-use crate::Client;
-use crate::ConnectError;
-use crate::EventLoop;
+use crate::backoff::Backoff;
 
 #[derive(Clone, Debug)]
 pub struct ConnectOptions {
-    pub addr: std::net::SocketAddr,
+    pub addr: SocketAddr,
     pub connection: ConnectionOptions,
     pub protocol_config: ClientSettings,
-    pub command_channel_capacity: usize,
+    /// Maximum number of concurrent inbound QoS 1/2 messages (in-flight).
+    ///
+    /// This value is applied as the MQTT `Receive Maximum` property in the
+    /// `CONNECT` packet, capped to `u16::MAX`.  A value of `0` means the broker
+    /// is not permitted to send any QoS 1/2 `PUBLISH` packets, which will
+    /// effectively stall all inbound delivery.
+    pub max_in_queued_messages: usize,
+    /// Maximum number of concurrent outbound QoS 1/2 messages (in-flight).
+    ///
+    /// Once the count of unacknowledged outbound messages reaches this limit,
+    /// [`Connection::publish`] returns
+    /// [`ConnectionError::QueueFull`](crate::error::ConnectionError::QueueFull).
+    /// A value of `0` means every QoS 1/2 publish is rejected immediately.
+    pub max_out_queued_messages: usize,
+    pub backoff: Option<Backoff>,
 }
 
 impl Default for ConnectOptions {
     fn default() -> Self {
         Self {
-            addr: std::net::SocketAddr::from(([127, 0, 0, 1], 1883)),
+            addr: SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 1883),
             connection: ConnectionOptions::default(),
             protocol_config: ClientSettings::default(),
-            command_channel_capacity: 16,
+            max_in_queued_messages: 16,
+            max_out_queued_messages: 16,
+            backoff: None,
         }
     }
-}
-
-pub async fn connect(options: ConnectOptions) -> Result<(Client, EventLoop), ConnectError> {
-    let mut stream = TcpStream::connect(options.addr).await?;
-    let mut protocol =
-        ProtocolClient::<tokio::time::Instant>::with_settings(options.protocol_config);
-
-    protocol.handle_write(UserWriteIn::Connect(options.connection))?;
-
-    while let Some(action) = protocol.poll_event() {
-        if !matches!(action, DriverEventOut::OpenSocket) {
-            return Err(ConnectError::UnexpectedDriverAction(action));
-        }
-    }
-
-    protocol.handle_event(DriverEventIn::SocketConnected)?;
-
-    while let Some(frame) = protocol.poll_write() {
-        stream.write_all(&frame).await?;
-    }
-
-    let (tx, rx) = mpsc::channel(options.command_channel_capacity.max(1));
-    let client = Client::new(tx);
-    let event_loop = EventLoop::new(stream, protocol, rx);
-
-    Ok((client, event_loop))
 }
