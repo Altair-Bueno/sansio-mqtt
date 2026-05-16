@@ -141,6 +141,8 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@nightly
+        with:
+          targets: x86_64-unknown-linux-gnu
       - uses: actions/cache@v5
         with:
           path: |
@@ -154,7 +156,9 @@ jobs:
         with:
           tool: cargo-fuzz
       - name: Smoke-test parse_control_packet
-        run: cargo fuzz run parse_control_packet corpus/parse_control_packet -- -max_total_time=30
+        run:
+          cargo fuzz run --target x86_64-unknown-linux-gnu parse_control_packet
+          corpus/parse_control_packet -- -max_total_time=30
         working-directory: fuzz
 
   fuzz-check-roundtrip:
@@ -163,6 +167,8 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@nightly
+        with:
+          targets: x86_64-unknown-linux-gnu
       - uses: actions/cache@v5
         with:
           path: |
@@ -176,7 +182,10 @@ jobs:
         with:
           tool: cargo-fuzz
       - name: Smoke-test roundtrip_control_packet
-        run: cargo fuzz run roundtrip_control_packet corpus/roundtrip_control_packet -- -max_total_time=30
+        run:
+          cargo fuzz run --target x86_64-unknown-linux-gnu
+          roundtrip_control_packet corpus/roundtrip_control_packet --
+          -max_total_time=30
         working-directory: fuzz
 
   ci-check:
