@@ -30,17 +30,16 @@ async fn reconnect_after_session_steal() {
     let mut conn = Connection::connect(backoff_opts).await.expect("connect main");
 
     // Wait for initial connection.
-    loop {
-        match conn.poll().await.expect("poll main (initial connect)") {
-            Event::Connected => break,
-            _ => {}
+    tokio::time::timeout(Duration::from_secs(5), async {
+        loop {
+            match conn.poll().await.expect("poll main (initial connect)") {
+                Event::Connected => break,
+                _ => {}
+            }
         }
-    }
-
-    // Subscribe to the test topic.
-    conn.subscribe(sub("test/reconnect")).expect("subscribe");
-    // Allow time for the SUBSCRIBE/SUBACK round-trip.
-    tokio::time::sleep(Duration::from_millis(150)).await;
+    })
+    .await
+    .expect("main client connected within 5 seconds");
 
     // Steal the session: connect a second client with the same client_id.
     // The broker will close the first client's connection [MQTT-3.1.4-2].
@@ -55,28 +54,36 @@ async fn reconnect_after_session_steal() {
     };
     let mut conn_stealer =
         Connection::connect(stealer_opts).await.expect("connect stealer");
-    loop {
-        match conn_stealer
-            .poll()
-            .await
-            .expect("stealer poll (initial connect)")
-        {
-            Event::Connected => break,
-            _ => {}
+    tokio::time::timeout(Duration::from_secs(5), async {
+        loop {
+            match conn_stealer
+                .poll()
+                .await
+                .expect("stealer poll (initial connect)")
+            {
+                Event::Connected => break,
+                _ => {}
+            }
         }
-    }
+    })
+    .await
+    .expect("stealer connected within 5 seconds");
 
     // The main client should now see Disconnected (broker kicked it).
-    loop {
-        match conn.poll().await {
-            Ok(Event::Disconnected(_)) => break,
-            Ok(_) => {}
-            Err(e) => panic!("unexpected error waiting for disconnect on main client: {e}"),
+    tokio::time::timeout(Duration::from_secs(5), async {
+        loop {
+            match conn.poll().await {
+                Ok(Event::Disconnected(_)) => break,
+                Ok(_) => {}
+                Err(e) => panic!("unexpected error waiting for disconnect on main client: {e}"),
+            }
         }
-    }
+    })
+    .await
+    .expect("main client disconnected within 5 seconds");
 
     // The backoff loop will reconnect automatically — poll until Connected.
-    let reconnect = tokio::time::timeout(Duration::from_secs(10), async {
+    tokio::time::timeout(Duration::from_secs(10), async {
         loop {
             match conn.poll().await {
                 Ok(Event::Connected) => break,
@@ -84,15 +91,23 @@ async fn reconnect_after_session_steal() {
                 Err(e) => panic!("unexpected error while waiting for reconnect: {e}"),
             }
         }
-    });
-    reconnect.await.expect("main client reconnected within 10 seconds");
+    })
+    .await
+    .expect("main client reconnected within 10 seconds");
 
     // Re-subscribe after reconnect: clean_start=true means no session state is
     // preserved on the broker, so subscriptions must be re-established manually.
     conn.subscribe(sub("test/reconnect")).expect("re-subscribe after reconnect");
 
-    // Give the broker time to process the new SUBSCRIBE before publishing.
-    tokio::time::sleep(Duration::from_millis(300)).await;
+    // Drive the event loop to flush the SUBSCRIBE packet and receive the SUBACK.
+    // Without polling here, the SUBSCRIBE bytes stay in the protocol write buffer
+    // and the broker never processes the subscription.
+    let _ = tokio::time::timeout(Duration::from_millis(500), async {
+        loop {
+            conn.poll().await.expect("poll during subscribe flush");
+        }
+    })
+    .await;
 
     // Publish from the stealer to the topic.
     conn_stealer
@@ -102,7 +117,7 @@ async fn reconnect_after_session_steal() {
     let _ = tokio::time::timeout(Duration::from_millis(200), conn_stealer.poll()).await;
 
     // The main client should receive the message.
-    let got_msg = tokio::time::timeout(Duration::from_secs(5), async {
+    tokio::time::timeout(Duration::from_secs(5), async {
         loop {
             match conn.poll().await {
                 Ok(Event::Message(_)) => break,
@@ -110,6 +125,7 @@ async fn reconnect_after_session_steal() {
                 Err(e) => panic!("unexpected error while waiting for message: {e}"),
             }
         }
-    });
-    got_msg.await.expect("message received within 5 seconds");
+    })
+    .await
+    .expect("message received within 5 seconds");
 }
