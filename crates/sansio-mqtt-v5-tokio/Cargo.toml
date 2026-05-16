@@ -14,7 +14,6 @@ tokio = { workspace = true, features = [
   "net",
   "io-util",
   "io-std",
-  "sync",
   "time",
 ] }
 thiserror = { workspace = true }
