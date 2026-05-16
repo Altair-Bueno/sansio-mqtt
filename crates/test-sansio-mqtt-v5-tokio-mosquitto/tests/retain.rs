@@ -199,7 +199,7 @@ async fn retain_handling_send_on_subscribe() {
         })
         .await
         .expect("unsubscribe");
-    tokio::time::sleep(Duration::from_millis(100)).await;
+    let _ = tokio::time::timeout(Duration::from_millis(500), el_sub.poll()).await;
 
     sub_c
         .subscribe(sub_with_options(

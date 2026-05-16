@@ -82,7 +82,7 @@ async fn qos2_queued_for_offline_subscriber_delivered_on_resume() {
     ))
     .await
     .expect("subscribe");
-    tokio::time::sleep(Duration::from_millis(150)).await;
+    let _ = tokio::time::timeout(Duration::from_millis(500), el1.poll()).await;
     sub1.disconnect().await.expect("disconnect");
     let _ = tokio::time::timeout(Duration::from_secs(1), el1.poll()).await;
 
@@ -137,7 +137,7 @@ async fn qos2_beyond_receive_maximum_queues_without_error() {
         Event::Connected
     ));
     sub_c.subscribe(sub("qos2/rm")).await.expect("subscribe");
-    tokio::time::sleep(Duration::from_millis(150)).await;
+    let _ = tokio::time::timeout(Duration::from_millis(500), el_sub.poll()).await;
 
     // Connect with a low receive_maximum to limit in-flight QoS2 from broker to us,
     // then fire more publishes than the default broker receive_maximum (typically

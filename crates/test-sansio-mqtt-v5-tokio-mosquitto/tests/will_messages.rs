@@ -186,7 +186,7 @@ async fn will_with_delay_interval() {
         .subscribe(sub("will/delayed"))
         .await
         .expect("subscribe");
-    tokio::time::sleep(Duration::from_millis(150)).await;
+    let _ = tokio::time::timeout(Duration::from_millis(500), el_sub.poll()).await;
 
     let will = Will {
         topic: Topic::try_new("will/delayed").expect("valid"),
@@ -245,7 +245,7 @@ async fn will_with_expiry_interval() {
     s.subscribe(sub_qos1("will/expiry"))
         .await
         .expect("subscribe");
-    tokio::time::sleep(Duration::from_millis(150)).await;
+    let _ = tokio::time::timeout(Duration::from_millis(500), el_s.poll()).await;
     s.disconnect().await.expect("disconnect");
     let _ = tokio::time::timeout(Duration::from_secs(1), el_s.poll()).await;
 
