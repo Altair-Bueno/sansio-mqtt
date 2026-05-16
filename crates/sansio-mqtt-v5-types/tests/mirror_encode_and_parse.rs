@@ -890,8 +890,6 @@ fn assert_that_different_packets_can_be_decoded_and_encoded(
     );
 }
 
-// Regression: encoder had User Name Flag (bit 7) and Password Flag (bit 6)
-// swapped. [MQTT-3.1.2-19]: User Name Flag is bit 7; [MQTT-3.1.2-21]: Password Flag is bit 6.
 #[rstest::rstest]
 #[case::user_name_some_password_none(
     ControlPacket::Connect(Connect {
