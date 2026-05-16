@@ -39,7 +39,8 @@ impl Connection {
     pub async fn connect(options: ConnectOptions) -> Result<Self, ConnectError> {
         let mut stream = TcpStream::connect(options.addr).await?;
 
-        let mut protocol = ProtocolClient::<Instant>::with_settings(options.protocol_config.clone());
+        let mut protocol =
+            ProtocolClient::<Instant>::with_settings(options.protocol_config.clone());
 
         let conn_opts =
             Self::apply_receive_maximum(options.connection.clone(), options.max_in_queued_messages);
@@ -54,11 +55,7 @@ impl Connection {
 
         Self::flush_writes_to(&mut stream, &mut protocol).await?;
 
-        let rng = options
-            .backoff
-            .as_ref()
-            .map(|b| b.seed.max(1))
-            .unwrap_or(1);
+        let rng = options.backoff.as_ref().map(|b| b.seed.max(1)).unwrap_or(1);
 
         Ok(Self {
             state: SocketState::Active(stream),
@@ -178,18 +175,21 @@ impl Connection {
                         DriverEventOut::CloseSocket => {
                             stream.shutdown().await.ok();
                             self.protocol.handle_event(DriverEventIn::SocketClosed)?;
-                            let reason = match self
-                                .protocol
-                                .poll_read()
-                                .map(Event::from_protocol_output)
-                            {
-                                Some(Event::Disconnected(r)) => r,
-                                _ => None,
+                            let reason =
+                                match self.protocol.poll_read().map(Event::from_protocol_output) {
+                                    Some(Event::Disconnected(r)) => r,
+                                    _ => None,
+                                };
+                            transition = Transition::Disconnect {
+                                reason,
+                                quit: false,
                             };
-                            transition = Transition::Disconnect { reason, quit: false };
                         }
                         DriverEventOut::Quit => {
-                            transition = Transition::Disconnect { reason: None, quit: true };
+                            transition = Transition::Disconnect {
+                                reason: None,
+                                quit: true,
+                            };
                         }
                         other => return Err(ConnectionError::UnexpectedDriverAction(other)),
                     }
@@ -249,7 +249,10 @@ impl Connection {
                     self.state = SocketState::Terminal;
                     return Err(ConnectionError::ProtocolRequestedQuit);
                 }
-                Transition::Disconnect { reason, quit: false } => {
+                Transition::Disconnect {
+                    reason,
+                    quit: false,
+                } => {
                     self.state = match &self.options.backoff {
                         Some(b) => {
                             let delay = compute_delay(b, 0, &mut self.rng);
@@ -286,7 +289,8 @@ impl Connection {
                     self.options.connection.clone(),
                     self.options.max_in_queued_messages,
                 );
-                self.protocol.handle_write(UserWriteIn::Connect(conn_opts))?;
+                self.protocol
+                    .handle_write(UserWriteIn::Connect(conn_opts))?;
                 match self.protocol.poll_event() {
                     Some(DriverEventOut::OpenSocket) => {}
                     Some(other) => return Err(ConnectionError::UnexpectedDriverAction(other)),
@@ -295,8 +299,9 @@ impl Connection {
                 self.protocol.handle_event(DriverEventIn::SocketConnected)?;
                 Self::flush_writes(&mut new_stream, &mut self.protocol).await?;
                 self.state = SocketState::Active(new_stream);
-                // Next poll() iteration drains poll_read() which returns Event::Connected
-                // once the CONNACK arrives via the Active socket-read path.
+                // Next poll() iteration drains poll_read() which returns
+                // Event::Connected once the CONNACK arrives via
+                // the Active socket-read path.
             }
             Err(_) => {
                 let next_attempt = current_attempt.saturating_add(1);

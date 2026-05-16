@@ -2,14 +2,16 @@ use std::time::Duration;
 
 use test_sansio_mqtt_v5_tokio_mosquitto::*;
 
-/// Verifies automatic reconnection with backoff using the "session steal" technique:
-/// a second client connecting with the same client_id causes the broker to disconnect
-/// the first client, which then reconnects automatically via the configured backoff.
+/// Verifies automatic reconnection with backoff using the "session steal"
+/// technique: a second client connecting with the same client_id causes the
+/// broker to disconnect the first client, which then reconnects automatically
+/// via the configured backoff.
 #[tokio::test]
 async fn reconnect_after_session_steal() {
     let (_container, port) = anonymous_broker().await;
 
-    // Connect the main client with backoff configured so it reconnects after disconnect.
+    // Connect the main client with backoff configured so it reconnects after
+    // disconnect.
     let backoff_opts = ConnectOptions {
         addr: format!("127.0.0.1:{port}").parse().expect("valid addr"),
         connection: ConnectionOptions {
@@ -27,7 +29,9 @@ async fn reconnect_after_session_steal() {
         ..ConnectOptions::default()
     };
 
-    let mut conn = Connection::connect(backoff_opts).await.expect("connect main");
+    let mut conn = Connection::connect(backoff_opts)
+        .await
+        .expect("connect main");
 
     // Wait for initial connection.
     tokio::time::timeout(Duration::from_secs(5), async {
@@ -52,8 +56,9 @@ async fn reconnect_after_session_steal() {
         },
         ..ConnectOptions::default()
     };
-    let mut conn_stealer =
-        Connection::connect(stealer_opts).await.expect("connect stealer");
+    let mut conn_stealer = Connection::connect(stealer_opts)
+        .await
+        .expect("connect stealer");
     tokio::time::timeout(Duration::from_secs(5), async {
         loop {
             match conn_stealer
@@ -97,7 +102,8 @@ async fn reconnect_after_session_steal() {
 
     // Re-subscribe after reconnect: clean_start=true means no session state is
     // preserved on the broker, so subscriptions must be re-established manually.
-    conn.subscribe(sub("test/reconnect")).expect("re-subscribe after reconnect");
+    conn.subscribe(sub("test/reconnect"))
+        .expect("re-subscribe after reconnect");
 
     // Drive the event loop to flush the SUBSCRIBE packet and receive the SUBACK.
     // Without polling here, the SUBSCRIBE bytes stay in the protocol write buffer
@@ -111,9 +117,14 @@ async fn reconnect_after_session_steal() {
 
     // Publish from the stealer to the topic.
     conn_stealer
-        .publish(msg("test/reconnect", b"hello-after-reconnect", Qos::AtMostOnce))
+        .publish(msg(
+            "test/reconnect",
+            b"hello-after-reconnect",
+            Qos::AtMostOnce,
+        ))
         .expect("publish from stealer");
-    // Flush the stealer's PUBLISH packet; QoS 0 has no response so a timeout is expected.
+    // Flush the stealer's PUBLISH packet; QoS 0 has no response so a timeout is
+    // expected.
     let _ = tokio::time::timeout(Duration::from_millis(200), conn_stealer.poll()).await;
 
     // The main client should receive the message.

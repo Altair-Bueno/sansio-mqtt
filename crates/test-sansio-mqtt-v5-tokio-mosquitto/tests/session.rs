@@ -75,9 +75,7 @@ async fn session_resumption() {
         ),
         "expected Connected"
     );
-    conn1
-        .subscribe(sub_qos1("test/resume"))
-        .expect("subscribe");
+    conn1.subscribe(sub_qos1("test/resume")).expect("subscribe");
     tokio::time::sleep(Duration::from_millis(150)).await;
 
     conn1.disconnect().expect("disconnect");
@@ -159,7 +157,9 @@ async fn will_message_delivered() {
         ..ConnectOptions::default()
     };
 
-    let mut conn_will = Connection::connect(will_opts).await.expect("connect will sender");
+    let mut conn_will = Connection::connect(will_opts)
+        .await
+        .expect("connect will sender");
     assert!(
         matches!(
             conn_will.poll().await.expect("will sender connected"),

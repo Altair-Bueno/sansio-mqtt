@@ -1,7 +1,13 @@
-use sansio_mqtt_v5_tokio::{
-    ClientMessage, ConnectOptions, Connection, ConnectionError, Event, Payload, Qos, Topic,
-};
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use sansio_mqtt_v5_tokio::ClientMessage;
+use sansio_mqtt_v5_tokio::ConnectOptions;
+use sansio_mqtt_v5_tokio::Connection;
+use sansio_mqtt_v5_tokio::ConnectionError;
+use sansio_mqtt_v5_tokio::Event;
+use sansio_mqtt_v5_tokio::Payload;
+use sansio_mqtt_v5_tokio::Qos;
+use sansio_mqtt_v5_tokio::Topic;
+use tokio::io::AsyncReadExt;
+use tokio::io::AsyncWriteExt;
 use tokio::net::TcpListener;
 
 /// Start a mock broker that sends a valid CONNACK and then gracefully closes
@@ -19,10 +25,7 @@ async fn mock_broker_connack_then_close(addr: &str) -> String {
         // Send CONNACK: success, session not present, no properties.
         // Bytes: 0x20 (type), 0x03 (remaining length), 0x00 (ack flags),
         //        0x00 (reason code = success), 0x00 (properties length)
-        stream
-            .write_all(&[0x20, 0x03, 0x00, 0x00, 0x00])
-            .await
-            .ok();
+        stream.write_all(&[0x20, 0x03, 0x00, 0x00, 0x00]).await.ok();
         // Initiate graceful TCP shutdown (FIN). The CONNACK bytes are already
         // in the kernel send buffer; the client will see CONNACK then EOF.
         stream.shutdown().await.ok();
@@ -46,10 +49,7 @@ async fn mock_broker_connack_keep_open(addr: &str) -> String {
         let mut buf = [0u8; 256];
         stream.read(&mut buf).await.ok();
         // Send CONNACK.
-        stream
-            .write_all(&[0x20, 0x03, 0x00, 0x00, 0x00])
-            .await
-            .ok();
+        stream.write_all(&[0x20, 0x03, 0x00, 0x00, 0x00]).await.ok();
         // Keep draining without responding, so the in-flight queue fills up.
         loop {
             let n = stream.read(&mut buf).await.unwrap_or(0);
@@ -106,9 +106,7 @@ async fn no_backoff_returns_disconnected_error_after_disconnect() {
     for _ in 0..3 {
         match conn.poll().await {
             Err(ConnectionError::Disconnected) => {}
-            other => panic!(
-                "expected Err(ConnectionError::Disconnected), got {other:?}"
-            ),
+            other => panic!("expected Err(ConnectionError::Disconnected), got {other:?}"),
         }
     }
 }
