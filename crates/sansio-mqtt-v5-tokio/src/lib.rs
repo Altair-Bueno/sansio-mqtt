@@ -1,5 +1,6 @@
 #![forbid(unsafe_code)]
 
+pub mod backoff;
 mod client;
 mod connect;
 mod error;
