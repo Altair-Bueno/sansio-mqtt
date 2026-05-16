@@ -1,59 +1,26 @@
-use sansio::Protocol;
-use sansio_mqtt_v5_protocol::Client as ProtocolClient;
-use sansio_mqtt_v5_protocol::ClientSettings;
-use sansio_mqtt_v5_protocol::ConnectionOptions;
-use sansio_mqtt_v5_protocol::DriverEventIn;
-use sansio_mqtt_v5_protocol::DriverEventOut;
-use sansio_mqtt_v5_protocol::UserWriteIn;
-use tokio::io::AsyncWriteExt;
-use tokio::net::TcpStream;
-use tokio::sync::mpsc;
-
-use crate::Client;
-use crate::ConnectError;
-use crate::EventLoop;
+use std::net::SocketAddr;
+use sansio_mqtt_v5_protocol::{ClientSettings, ConnectionOptions};
+use crate::backoff::Backoff;
 
 #[derive(Clone, Debug)]
 pub struct ConnectOptions {
-    pub addr: std::net::SocketAddr,
+    pub addr: SocketAddr,
     pub connection: ConnectionOptions,
     pub protocol_config: ClientSettings,
-    pub command_channel_capacity: usize,
+    pub max_in_queued_messages: usize,
+    pub max_out_queued_messages: usize,
+    pub backoff: Option<Backoff>,
 }
 
 impl Default for ConnectOptions {
     fn default() -> Self {
         Self {
-            addr: std::net::SocketAddr::from(([127, 0, 0, 1], 1883)),
+            addr: "127.0.0.1:1883".parse().unwrap(),
             connection: ConnectionOptions::default(),
             protocol_config: ClientSettings::default(),
-            command_channel_capacity: 16,
+            max_in_queued_messages: 16,
+            max_out_queued_messages: 16,
+            backoff: None,
         }
     }
-}
-
-pub async fn connect(options: ConnectOptions) -> Result<(Client, EventLoop), ConnectError> {
-    let mut stream = TcpStream::connect(options.addr).await?;
-    let mut protocol =
-        ProtocolClient::<tokio::time::Instant>::with_settings(options.protocol_config);
-
-    protocol.handle_write(UserWriteIn::Connect(options.connection))?;
-
-    while let Some(action) = protocol.poll_event() {
-        if !matches!(action, DriverEventOut::OpenSocket) {
-            return Err(ConnectError::UnexpectedDriverAction(action));
-        }
-    }
-
-    protocol.handle_event(DriverEventIn::SocketConnected)?;
-
-    while let Some(frame) = protocol.poll_write() {
-        stream.write_all(&frame).await?;
-    }
-
-    let (tx, rx) = mpsc::channel(options.command_channel_capacity.max(1));
-    let client = Client::new(tx);
-    let event_loop = EventLoop::new(stream, protocol, rx);
-
-    Ok((client, event_loop))
 }
