@@ -889,3 +889,60 @@ fn assert_that_different_packets_can_be_decoded_and_encoded(
         "The re-decoded packet should be equal to the expected packet"
     );
 }
+
+// Regression: encoder had User Name Flag (bit 7) and Password Flag (bit 6)
+// swapped. [MQTT-3.1.2-19]: User Name Flag is bit 7; [MQTT-3.1.2-21]: Password Flag is bit 6.
+#[rstest::rstest]
+#[case::user_name_some_password_none(
+    ControlPacket::Connect(Connect {
+        protocol_name: Utf8String::new("MQTT"),
+        protocol_version: 5,
+        clean_start: true,
+        client_identifier: Utf8String::new(""),
+        keep_alive: None,
+        user_name: Some(Utf8String::new("alice")),
+        password: None,
+        will: None,
+        properties: ConnectProperties::default(),
+    })
+)]
+#[case::user_name_none_password_some(
+    ControlPacket::Connect(Connect {
+        protocol_name: Utf8String::new("MQTT"),
+        protocol_version: 5,
+        clean_start: true,
+        client_identifier: Utf8String::new(""),
+        keep_alive: None,
+        user_name: None,
+        password: Some(BinaryData::new(b"secret".as_slice())),
+        will: None,
+        properties: ConnectProperties::default(),
+    })
+)]
+#[case::user_name_some_password_some(
+    ControlPacket::Connect(Connect {
+        protocol_name: Utf8String::new("MQTT"),
+        protocol_version: 5,
+        clean_start: true,
+        client_identifier: Utf8String::new(""),
+        keep_alive: None,
+        user_name: Some(Utf8String::new("alice")),
+        password: Some(BinaryData::new(b"secret".as_slice())),
+        will: None,
+        properties: ConnectProperties::default(),
+    })
+)]
+fn assert_connect_user_name_and_password_roundtrip(
+    settings: ParserSettings,
+    #[case] packet: ControlPacket,
+) {
+    let mut buf = Vec::with_capacity(packet.encoded_size().unwrap());
+    packet.encode(&mut buf).unwrap();
+    let reparsed = ControlPacket::parser::<_, ContextError, ContextError>(&settings)
+        .parse(&buf[..])
+        .unwrap();
+    assert_eq!(
+        packet, reparsed,
+        "CONNECT user_name/password round-trip failed"
+    );
+}
