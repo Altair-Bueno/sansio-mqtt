@@ -79,6 +79,8 @@ SEEDS = [
             0,               # reason code: Success
         ]),
     ),
+    # AUTH — reason code 0x00 (Success), empty properties
+    ("auth", bytes([0xF0, 0x02, 0x00, 0x00])),
 ]
 
 TARGETS = ["parse_control_packet", "roundtrip_control_packet"]

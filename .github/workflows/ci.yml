@@ -138,6 +138,8 @@ jobs:
   fuzz-check-parse:
     name: fuzz check (parse)
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@nightly
@@ -151,10 +153,12 @@ jobs:
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             fuzz/target/
-          key: ${{ runner.os }}-${{ github.job }}
+          key:
+            ${{ runner.os }}-${{ github.job }}-${{ hashFiles('fuzz/Cargo.lock')
+            }}
       - uses: taiki-e/install-action@v2
         with:
-          tool: cargo-fuzz
+          tool: cargo-fuzz@0.12
       - name: Smoke-test parse_control_packet
         run:
           cargo fuzz run --target x86_64-unknown-linux-gnu parse_control_packet
@@ -164,6 +168,8 @@ jobs:
   fuzz-check-roundtrip:
     name: fuzz check (roundtrip)
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@nightly
@@ -177,10 +183,12 @@ jobs:
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             fuzz/target/
-          key: ${{ runner.os }}-${{ github.job }}
+          key:
+            ${{ runner.os }}-${{ github.job }}-${{ hashFiles('fuzz/Cargo.lock')
+            }}
       - uses: taiki-e/install-action@v2
         with:
-          tool: cargo-fuzz
+          tool: cargo-fuzz@0.12
       - name: Smoke-test roundtrip_control_packet
         run:
           cargo fuzz run --target x86_64-unknown-linux-gnu
