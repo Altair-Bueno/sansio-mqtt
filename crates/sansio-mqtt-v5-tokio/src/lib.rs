@@ -2,6 +2,8 @@
 
 pub mod backoff;
 mod client;
+mod connection;
+pub use connection::Connection;
 mod connect;
 mod error;
 mod event;
