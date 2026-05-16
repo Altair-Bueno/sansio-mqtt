@@ -10,8 +10,14 @@ async fn will_fires_at_session_expiry_when_delay_exceeds_expiry() {
     let (sub_client, mut el_sub) = connect(connect_options(port, "wsi-sub"))
         .await
         .expect("connect sub");
-    assert!(matches!(el_sub.poll().await.expect("poll"), Event::Connected));
-    sub_client.subscribe(sub("will/si")).await.expect("subscribe");
+    assert!(matches!(
+        el_sub.poll().await.expect("poll"),
+        Event::Connected
+    ));
+    sub_client
+        .subscribe(sub("will/si"))
+        .await
+        .expect("subscribe");
     let _ = tokio::time::timeout(Duration::from_millis(500), el_sub.poll()).await;
 
     let will = Will {
@@ -63,8 +69,14 @@ async fn will_cancelled_on_reconnect_before_delay() {
     let (sub_client, mut el_sub) = connect(connect_options(port, "wc-sub"))
         .await
         .expect("connect sub");
-    assert!(matches!(el_sub.poll().await.expect("poll"), Event::Connected));
-    sub_client.subscribe(sub("will/cancel")).await.expect("subscribe");
+    assert!(matches!(
+        el_sub.poll().await.expect("poll"),
+        Event::Connected
+    ));
+    sub_client
+        .subscribe(sub("will/cancel"))
+        .await
+        .expect("subscribe");
     let _ = tokio::time::timeout(Duration::from_millis(500), el_sub.poll()).await;
 
     let will = Will {
@@ -106,7 +118,8 @@ async fn will_cancelled_on_reconnect_before_delay() {
     assert!(matches!(el2.poll().await.expect("poll"), Event::Connected));
 
     // Wait past the original 5s delay — will must NOT fire.
-    // Poll el_sub while waiting (so the subscriber can receive if something arrives).
+    // Poll el_sub while waiting (so the subscriber can receive if something
+    // arrives).
     for _ in 0..6 {
         tokio::time::sleep(Duration::from_secs(1)).await;
         let got = tokio::time::timeout(Duration::from_millis(100), el_sub.poll()).await;

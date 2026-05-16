@@ -57,7 +57,7 @@ async fn keepalive_timeout_disconnects_client() {
         connection: ConnectionOptions {
             clean_start: true,
             client_identifier: Utf8String::try_from("nf-ka").expect("id"),
-            keep_alive: core::num::NonZero::new(2u16),
+            keep_alive: core::num::NonZero::new(1u16),
             ..ConnectionOptions::default()
         },
         ..ConnectOptions::default()
@@ -66,8 +66,8 @@ async fn keepalive_timeout_disconnects_client() {
     let (_client, mut el) = connect(opts).await.expect("connect");
     assert!(matches!(el.poll().await.expect("poll"), Event::Connected));
 
-    // Do NOT poll for 4s — broker closes TCP after ~3s (1.5 × 2s keepalive).
-    tokio::time::sleep(Duration::from_secs(4)).await;
+    // Do NOT poll for 2.5s — broker closes TCP after ~1.5s (1.5 × 1s keepalive).
+    tokio::time::sleep(Duration::from_millis(2500)).await;
 
     let result = el.poll().await;
     assert!(

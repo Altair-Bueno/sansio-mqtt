@@ -10,14 +10,20 @@ async fn large_payload_roundtrip_qos0() {
     let (sub_c, mut el_sub) = connect(connect_options(port, "lp0-sub"))
         .await
         .expect("connect sub");
-    assert!(matches!(el_sub.poll().await.expect("poll"), Event::Connected));
+    assert!(matches!(
+        el_sub.poll().await.expect("poll"),
+        Event::Connected
+    ));
     sub_c.subscribe(sub("lp/qos0")).await.expect("subscribe");
     let _ = tokio::time::timeout(Duration::from_millis(500), el_sub.poll()).await;
 
     let (pub_c, mut el_pub) = connect(connect_options(port, "lp0-pub"))
         .await
         .expect("connect pub");
-    assert!(matches!(el_pub.poll().await.expect("poll"), Event::Connected));
+    assert!(matches!(
+        el_pub.poll().await.expect("poll"),
+        Event::Connected
+    ));
 
     let payload: Vec<u8> = (0..PAYLOAD_64KB).map(|i| (i % 251) as u8).collect();
     pub_c
@@ -58,14 +64,23 @@ async fn large_payload_roundtrip_qos1() {
     let (sub_c, mut el_sub) = connect(connect_options(port, "lp1-sub"))
         .await
         .expect("connect sub");
-    assert!(matches!(el_sub.poll().await.expect("poll"), Event::Connected));
-    sub_c.subscribe(sub_qos1("lp/qos1")).await.expect("subscribe");
+    assert!(matches!(
+        el_sub.poll().await.expect("poll"),
+        Event::Connected
+    ));
+    sub_c
+        .subscribe(sub_qos1("lp/qos1"))
+        .await
+        .expect("subscribe");
     let _ = tokio::time::timeout(Duration::from_millis(500), el_sub.poll()).await;
 
     let (pub_c, mut el_pub) = connect(connect_options(port, "lp1-pub"))
         .await
         .expect("connect pub");
-    assert!(matches!(el_pub.poll().await.expect("poll"), Event::Connected));
+    assert!(matches!(
+        el_pub.poll().await.expect("poll"),
+        Event::Connected
+    ));
 
     let payload: Vec<u8> = (0..PAYLOAD_64KB).map(|i| (i % 251) as u8).collect();
     pub_c

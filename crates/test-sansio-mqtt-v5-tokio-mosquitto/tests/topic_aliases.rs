@@ -11,14 +11,20 @@ async fn publisher_send_with_topic_alias() {
     let (sub_c, mut el_sub) = connect(connect_options(port, "ta-pub-sub"))
         .await
         .expect("connect sub");
-    assert!(matches!(el_sub.poll().await.expect("poll"), Event::Connected));
+    assert!(matches!(
+        el_sub.poll().await.expect("poll"),
+        Event::Connected
+    ));
     sub_c.subscribe(sub("ta/pub")).await.expect("subscribe");
     let _ = tokio::time::timeout(Duration::from_millis(500), el_sub.poll()).await;
 
     let (pub_c, mut el_pub) = connect(connect_options(port, "ta-pub-pub"))
         .await
         .expect("connect pub");
-    assert!(matches!(el_pub.poll().await.expect("poll"), Event::Connected));
+    assert!(matches!(
+        el_pub.poll().await.expect("poll"),
+        Event::Connected
+    ));
 
     let message = ClientMessage {
         topic: Topic::try_new(b"ta/pub".to_vec()).expect("valid topic"),
@@ -58,14 +64,20 @@ async fn subscriber_resolves_broker_topic_aliases() {
         ..ConnectOptions::default()
     };
     let (sub_c, mut el_sub) = connect(sub_opts).await.expect("connect sub");
-    assert!(matches!(el_sub.poll().await.expect("poll"), Event::Connected));
+    assert!(matches!(
+        el_sub.poll().await.expect("poll"),
+        Event::Connected
+    ));
     sub_c.subscribe(sub("ta/sub")).await.expect("subscribe");
     let _ = tokio::time::timeout(Duration::from_millis(500), el_sub.poll()).await;
 
     let (pub_c, mut el_pub) = connect(connect_options(port, "ta-sub-pub"))
         .await
         .expect("connect pub");
-    assert!(matches!(el_pub.poll().await.expect("poll"), Event::Connected));
+    assert!(matches!(
+        el_pub.poll().await.expect("poll"),
+        Event::Connected
+    ));
 
     for i in 0u8..5 {
         pub_c
