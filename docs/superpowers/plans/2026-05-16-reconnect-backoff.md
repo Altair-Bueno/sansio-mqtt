@@ -1,42 +1,56 @@
 # Connection Reconnect & Backoff Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use
+> superpowers:subagent-driven-development (recommended) or
+> superpowers:executing-plans to implement this plan task-by-task. Steps use
+> checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Replace `Client` + `EventLoop` with a single `Connection` struct that owns the full socket lifecycle, implements configurable backoff algorithms, and optionally reconnects automatically after disconnection.
+**Goal:** Replace `Client` + `EventLoop` with a single `Connection` struct that
+owns the full socket lifecycle, implements configurable backoff algorithms, and
+optionally reconnects automatically after disconnection.
 
-**Architecture:** `Connection` holds a `SocketState` enum (`Active(TcpStream)` | `Offline { attempt, wake_at }` | `Terminal`) alongside the `ProtocolClient`. `poll(&mut self)` drives all I/O and state transitions. Sync command methods (`publish`, `subscribe`, etc.) feed the sansio protocol state machine directly without channels. On disconnect, `poll()` returns `Event::Disconnected`, then on the next call either enters a backoff-retry loop or returns `ConnectionError::Disconnected` if no backoff is configured.
+**Architecture:** `Connection` holds a `SocketState` enum (`Active(TcpStream)` |
+`Offline { attempt, wake_at }` | `Terminal`) alongside the `ProtocolClient`.
+`poll(&mut self)` drives all I/O and state transitions. Sync command methods
+(`publish`, `subscribe`, etc.) feed the sansio protocol state machine directly
+without channels. On disconnect, `poll()` returns `Event::Disconnected`, then on
+the next call either enters a backoff-retry loop or returns
+`ConnectionError::Disconnected` if no backoff is configured.
 
-**Tech Stack:** Rust stable, Tokio 1.x (`net`, `io-util`, `io-std`, `time`, `macros`), sansio, sansio-mqtt-v5-protocol, thiserror 2.x. xorshift64 RNG implemented inline — no new dependencies.
+**Tech Stack:** Rust stable, Tokio 1.x (`net`, `io-util`, `io-std`, `time`,
+`macros`), sansio, sansio-mqtt-v5-protocol, thiserror 2.x. xorshift64 RNG
+implemented inline — no new dependencies.
 
 ---
 
 ## File Map
 
-| Path | Action | Responsibility |
-|---|---|---|
-| `crates/sansio-mqtt-v5-protocol/src/client.rs` | Modify | Add `outbound_inflight_count() -> usize` |
-| `crates/sansio-mqtt-v5-tokio/src/backoff.rs` | Create | `Backoff`, `BackoffAlgorithm`, `compute_delay()`, `xorshift64()` |
-| `crates/sansio-mqtt-v5-tokio/src/connection.rs` | Create | `Connection`, `SocketState`, `connect()`, `poll()`, command methods |
-| `crates/sansio-mqtt-v5-tokio/src/connect.rs` | Modify | `ConnectOptions` only — add `max_in/out_queued_messages`, `backoff`; remove `command_channel_capacity` and `connect()` free function |
-| `crates/sansio-mqtt-v5-tokio/src/error.rs` | Modify | Add `ConnectionError`; remove `ClientError` and `EventLoopError` |
-| `crates/sansio-mqtt-v5-tokio/src/lib.rs` | Modify | Update module declarations and public exports |
-| `crates/sansio-mqtt-v5-tokio/src/client.rs` | Delete | Replaced by `Connection` |
-| `crates/sansio-mqtt-v5-tokio/src/event_loop.rs` | Delete | Replaced by `Connection` |
-| `crates/sansio-mqtt-v5-tokio/Cargo.toml` | Modify | Remove `tokio/sync` feature (no more mpsc channels) |
-| `crates/sansio-mqtt-v5-tokio/examples/cli.rs` | Modify | Use `Connection` instead of `Client + EventLoop` |
-| `crates/sansio-mqtt-v5-tokio/tests/backoff.rs` | Create | Backoff algorithm unit tests |
-| `crates/sansio-mqtt-v5-tokio/tests/connection.rs` | Create | Queue-full and no-backoff regression tests |
-| `crates/test-sansio-mqtt-v5-tokio-mosquitto/tests/reconnect.rs` | Create | Reconnect integration test with Mosquitto |
+| Path                                                            | Action | Responsibility                                                                                                                       |
+| --------------------------------------------------------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `crates/sansio-mqtt-v5-protocol/src/client.rs`                  | Modify | Add `outbound_inflight_count() -> usize`                                                                                             |
+| `crates/sansio-mqtt-v5-tokio/src/backoff.rs`                    | Create | `Backoff`, `BackoffAlgorithm`, `compute_delay()`, `xorshift64()`                                                                     |
+| `crates/sansio-mqtt-v5-tokio/src/connection.rs`                 | Create | `Connection`, `SocketState`, `connect()`, `poll()`, command methods                                                                  |
+| `crates/sansio-mqtt-v5-tokio/src/connect.rs`                    | Modify | `ConnectOptions` only — add `max_in/out_queued_messages`, `backoff`; remove `command_channel_capacity` and `connect()` free function |
+| `crates/sansio-mqtt-v5-tokio/src/error.rs`                      | Modify | Add `ConnectionError`; remove `ClientError` and `EventLoopError`                                                                     |
+| `crates/sansio-mqtt-v5-tokio/src/lib.rs`                        | Modify | Update module declarations and public exports                                                                                        |
+| `crates/sansio-mqtt-v5-tokio/src/client.rs`                     | Delete | Replaced by `Connection`                                                                                                             |
+| `crates/sansio-mqtt-v5-tokio/src/event_loop.rs`                 | Delete | Replaced by `Connection`                                                                                                             |
+| `crates/sansio-mqtt-v5-tokio/Cargo.toml`                        | Modify | Remove `tokio/sync` feature (no more mpsc channels)                                                                                  |
+| `crates/sansio-mqtt-v5-tokio/examples/cli.rs`                   | Modify | Use `Connection` instead of `Client + EventLoop`                                                                                     |
+| `crates/sansio-mqtt-v5-tokio/tests/backoff.rs`                  | Create | Backoff algorithm unit tests                                                                                                         |
+| `crates/sansio-mqtt-v5-tokio/tests/connection.rs`               | Create | Queue-full and no-backoff regression tests                                                                                           |
+| `crates/test-sansio-mqtt-v5-tokio-mosquitto/tests/reconnect.rs` | Create | Reconnect integration test with Mosquitto                                                                                            |
 
 ---
 
 ### Task 1: Protocol crate — expose `outbound_inflight_count()`
 
-The tokio driver needs to check the current outbound in-flight message count before
-accepting new publish commands. `ClientSession::on_flight_sent` is private, so we add a
-public method to `Client<Time>`.
+The tokio driver needs to check the current outbound in-flight message count
+before accepting new publish commands. `ClientSession::on_flight_sent` is
+private, so we add a public method to `Client<Time>`.
 
 **Files:**
+
 - Modify: `crates/sansio-mqtt-v5-protocol/src/client.rs`
 
 - [ ] **Step 1: Write the failing test**
@@ -66,8 +80,9 @@ Expected: compile error — `outbound_inflight_count` not found
 
 - [ ] **Step 3: Implement the method**
 
-Add inside `impl<Time> Client<Time>` in `crates/sansio-mqtt-v5-protocol/src/client.rs`
-(before the `Protocol` trait impl block):
+Add inside `impl<Time> Client<Time>` in
+`crates/sansio-mqtt-v5-protocol/src/client.rs` (before the `Protocol` trait impl
+block):
 
 ```rust
 pub fn outbound_inflight_count(&self) -> usize {
@@ -95,6 +110,7 @@ git commit -m "feat(protocol): expose outbound_inflight_count on Client"
 ### Task 2: Create `backoff.rs` — types and algorithm
 
 **Files:**
+
 - Create: `crates/sansio-mqtt-v5-tokio/src/backoff.rs`
 - Create: `crates/sansio-mqtt-v5-tokio/tests/backoff.rs`
 
@@ -311,6 +327,7 @@ git commit -m "feat(tokio): add Backoff types and algorithm with xorshift64 RNG"
 Remove `ClientError` and `EventLoopError`; add `ConnectionError`.
 
 **Files:**
+
 - Modify: `crates/sansio-mqtt-v5-tokio/src/error.rs`
 
 - [ ] **Step 1: Replace the contents of `error.rs`**
@@ -345,14 +362,16 @@ pub enum ConnectionError {
 }
 ```
 
-- [ ] **Step 2: Verify the crate still compiles (old types referenced in other files)**
+- [ ] **Step 2: Verify the crate still compiles (old types referenced in other
+      files)**
 
 ```bash
 cargo build -p sansio-mqtt-v5-tokio 2>&1 | head -30
 ```
 
-Expected: compile errors in `lib.rs`, `client.rs`, `event_loop.rs` referencing removed types
-(these will be fixed in later tasks — this step just confirms the error is what we expect)
+Expected: compile errors in `lib.rs`, `client.rs`, `event_loop.rs` referencing
+removed types (these will be fixed in later tasks — this step just confirms the
+error is what we expect)
 
 - [ ] **Step 3: Commit**
 
@@ -366,6 +385,7 @@ git commit -m "feat(tokio): add ConnectionError, remove ClientError and EventLoo
 ### Task 4: Update `ConnectOptions`
 
 **Files:**
+
 - Modify: `crates/sansio-mqtt-v5-tokio/src/connect.rs`
 
 - [ ] **Step 1: Replace the full contents of `connect.rs`**
@@ -405,7 +425,8 @@ impl Default for ConnectOptions {
 cargo build -p sansio-mqtt-v5-tokio 2>&1 | grep "connect.rs"
 ```
 
-Expected: no errors from `connect.rs` itself (errors from other files are expected)
+Expected: no errors from `connect.rs` itself (errors from other files are
+expected)
 
 - [ ] **Step 3: Commit**
 
@@ -419,6 +440,7 @@ git commit -m "feat(tokio): update ConnectOptions — add max queues + backoff, 
 ### Task 5: Create `connection.rs` — struct, `connect()`, and command methods
 
 **Files:**
+
 - Create: `crates/sansio-mqtt-v5-tokio/src/connection.rs`
 
 - [ ] **Step 1: Create `connection.rs` with the struct and `connect()`**
@@ -573,18 +595,20 @@ git commit -m "feat(tokio): add Connection struct with connect() and command met
 ### Task 6: Implement `Connection::poll()` — Active state
 
 **Files:**
+
 - Modify: `crates/sansio-mqtt-v5-tokio/src/connection.rs`
 
 - [ ] **Step 1: Add `poll()` and `attempt_reconnect()` to `Connection`**
 
-Add the following to `impl Connection` in `connection.rs`, after the `disconnect()` method.
+Add the following to `impl Connection` in `connection.rs`, after the
+`disconnect()` method.
 
 **Key borrow-safety constraint:** `stream: &mut TcpStream` is extracted from
-`self.state` via `if let SocketState::Active(stream) = &mut self.state`. While that
-borrow is live we can freely access `self.protocol` and `self.read_buffer` (different
-fields) but we CANNOT assign `self.state = ...` (would re-borrow). State transitions
-are communicated via a local `Transition` enum and applied *after* the `if let` block
-ends and the borrow is released.
+`self.state` via `if let SocketState::Active(stream) = &mut self.state`. While
+that borrow is live we can freely access `self.protocol` and `self.read_buffer`
+(different fields) but we CANNOT assign `self.state = ...` (would re-borrow).
+State transitions are communicated via a local `Transition` enum and applied
+_after_ the `if let` block ends and the borrow is released.
 
 ```rust
 pub async fn poll(&mut self) -> Result<Event, ConnectionError> {
@@ -790,6 +814,7 @@ git commit -m "feat(tokio): implement Connection::poll() with Active and Offline
 ### Task 7: Update `lib.rs`, remove dead files, update `Cargo.toml` and example
 
 **Files:**
+
 - Modify: `crates/sansio-mqtt-v5-tokio/src/lib.rs`
 - Delete: `crates/sansio-mqtt-v5-tokio/src/client.rs`
 - Delete: `crates/sansio-mqtt-v5-tokio/src/event_loop.rs`
@@ -818,14 +843,17 @@ pub use sansio_mqtt_v5_protocol::*;
 
 - [ ] **Step 2: Remove `sync` feature from Tokio in `Cargo.toml`**
 
-In `crates/sansio-mqtt-v5-tokio/Cargo.toml`, find the tokio dependency and remove `sync`:
+In `crates/sansio-mqtt-v5-tokio/Cargo.toml`, find the tokio dependency and
+remove `sync`:
 
 Before:
+
 ```toml
 tokio = { workspace = true, features = ["macros", "net", "io-util", "io-std", "sync", "time"] }
 ```
 
 After:
+
 ```toml
 tokio = { workspace = true, features = ["macros", "net", "io-util", "io-std", "time"] }
 ```
@@ -848,12 +876,15 @@ Expected: clean build with no errors
 - [ ] **Step 5: Update `examples/cli.rs`**
 
 Replace the contents of `crates/sansio-mqtt-v5-tokio/examples/cli.rs` with the
-equivalent using `Connection`. The key structural change: replace the `(client, mut event_loop)`
-pair with `let mut conn = Connection::connect(opts).await?;`, replace
-`client.publish(...).await?` with `conn.publish(...)`, and replace `event_loop.poll()`
-with `conn.poll()`. Use `tokio::select!` to multiplex stdin and `conn.poll()`.
+equivalent using `Connection`. The key structural change: replace the
+`(client, mut event_loop)` pair with
+`let mut conn = Connection::connect(opts).await?;`, replace
+`client.publish(...).await?` with `conn.publish(...)`, and replace
+`event_loop.poll()` with `conn.poll()`. Use `tokio::select!` to multiplex stdin
+and `conn.poll()`.
 
-Read the existing file first and adapt it, preserving all existing functionality.
+Read the existing file first and adapt it, preserving all existing
+functionality.
 
 - [ ] **Step 6: Build the example**
 
@@ -885,6 +916,7 @@ git commit -m "feat(tokio): wire up Connection as the public API, remove Client+
 ### Task 8: Queue-full and no-backoff regression tests
 
 **Files:**
+
 - Create: `crates/sansio-mqtt-v5-tokio/tests/connection.rs`
 
 These tests use a mock TCP listener on localhost so they don't need Docker.
@@ -965,10 +997,13 @@ git commit -m "test(tokio): add connection error variant smoke tests"
 ### Task 9: Integration test — reconnect with Mosquitto
 
 **Files:**
-- Modify: `crates/test-sansio-mqtt-v5-tokio-mosquitto/Cargo.toml` (add dependency if needed)
+
+- Modify: `crates/test-sansio-mqtt-v5-tokio-mosquitto/Cargo.toml` (add
+  dependency if needed)
 - Create: `crates/test-sansio-mqtt-v5-tokio-mosquitto/tests/reconnect.rs`
 
-First, read the existing test files in that crate to understand the testcontainers pattern used.
+First, read the existing test files in that crate to understand the
+testcontainers pattern used.
 
 - [ ] **Step 1: Read existing tests to understand the pattern**
 
@@ -979,19 +1014,24 @@ cat crates/test-sansio-mqtt-v5-tokio-mosquitto/tests/*.rs | head -80
 
 - [ ] **Step 2: Write the reconnect integration test**
 
-Create `crates/test-sansio-mqtt-v5-tokio-mosquitto/tests/reconnect.rs` following the
-same testcontainers setup as existing tests. The scenario:
+Create `crates/test-sansio-mqtt-v5-tokio-mosquitto/tests/reconnect.rs` following
+the same testcontainers setup as existing tests. The scenario:
 
 1. Start a Mosquitto broker via testcontainers.
-2. Connect with `backoff: Some(Backoff { algorithm: BackoffAlgorithm::Linear { slope: Duration::from_millis(100) }, range: Duration::from_millis(100)..=Duration::from_secs(1), seed: 1 })`.
+2. Connect with
+   `backoff: Some(Backoff { algorithm: BackoffAlgorithm::Linear { slope: Duration::from_millis(100) }, range: Duration::from_millis(100)..=Duration::from_secs(1), seed: 1 })`.
 3. Call `poll()` until `Event::Connected` is received.
 4. Subscribe to topic `"test/reconnect"`.
-5. **Force disconnect**: stop and restart the Mosquitto container (or use the broker's admin interface to disconnect the client).
+5. **Force disconnect**: stop and restart the Mosquitto container (or use the
+   broker's admin interface to disconnect the client).
 6. Call `poll()` and assert it returns `Ok(Event::Disconnected(_))`.
-7. Keep calling `poll()` until `Ok(Event::Connected)` is returned (with a 10-second timeout).
-8. Publish a message to `"test/reconnect"` and call `poll()` until `Ok(Event::Message(_))` is received.
+7. Keep calling `poll()` until `Ok(Event::Connected)` is returned (with a
+   10-second timeout).
+8. Publish a message to `"test/reconnect"` and call `poll()` until
+   `Ok(Event::Message(_))` is received.
 
-The exact testcontainers API must match the pattern in existing tests in that crate.
+The exact testcontainers API must match the pattern in existing tests in that
+crate.
 
 - [ ] **Step 3: Run the integration test (requires Docker)**
 
@@ -1026,7 +1066,8 @@ cargo clippy -- -D warnings
 
 Fix any warnings clippy reports.
 
-- [ ] **Step 3: Run full test suite (excluding Mosquitto if Docker unavailable)**
+- [ ] **Step 3: Run full test suite (excluding Mosquitto if Docker
+      unavailable)**
 
 ```bash
 cargo test --exclude test-sansio-mqtt-v5-tokio-mosquitto
