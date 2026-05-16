@@ -156,6 +156,11 @@ impl Connection {
                     reason: Option<sansio_mqtt_v5_protocol::DisconnectReasonCode>,
                     quit: bool,
                 },
+                // Fatal I/O error: transition to Terminal and surface the error.
+                // Using a variant (rather than returning early) ensures self.state
+                // is updated before the error is returned, preventing a stale
+                // Active state on the next poll() call.
+                IoError(std::io::Error),
             }
             let mut transition = Transition::None;
 
@@ -231,7 +236,7 @@ impl Connection {
                                 }
                                 Err(e) => {
                                     self.protocol.handle_event(DriverEventIn::SocketError).ok();
-                                    return Err(ConnectionError::Io(e));
+                                    transition = Transition::IoError(e);
                                 }
                             }
                         }
@@ -264,6 +269,11 @@ impl Connection {
                         None => SocketState::Terminal,
                     };
                     return Ok(Event::Disconnected(reason));
+                }
+                // I/O errors are fatal regardless of backoff configuration.
+                Transition::IoError(e) => {
+                    self.state = SocketState::Terminal;
+                    return Err(ConnectionError::Io(e));
                 }
             }
         }
