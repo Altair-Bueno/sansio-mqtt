@@ -1,15 +1,16 @@
 #![no_main]
 
-use encode::{Encodable, EncodableSize};
+use encode::Encodable;
+use encode::EncodableSize;
 use libfuzzer_sys::fuzz_target;
-use sansio_mqtt_v5_types::{ControlPacket, ParserSettings};
-use winnow::Parser;
+use sansio_mqtt_v5_types::ControlPacket;
+use sansio_mqtt_v5_types::ParserSettings;
 use winnow::error::ContextError;
+use winnow::Parser;
 
 fuzz_target!(|data: &[u8]| {
     let settings = ParserSettings::new();
-    let Ok(packet) =
-        ControlPacket::parser::<_, ContextError, ContextError>(&settings).parse(data)
+    let Ok(packet) = ControlPacket::parser::<_, ContextError, ContextError>(&settings).parse(data)
     else {
         return;
     };
