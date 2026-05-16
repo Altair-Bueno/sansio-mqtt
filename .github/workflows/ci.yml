@@ -135,6 +135,67 @@ jobs:
           files: target/nextest/ci/junit.xml
           token: ${{ secrets.CODECOV_TOKEN }}
 
+  fuzz-check-parse:
+    name: fuzz check (parse)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@nightly
+        with:
+          targets: x86_64-unknown-linux-gnu
+      - uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            fuzz/target/
+          key:
+            ${{ runner.os }}-${{ github.job }}-${{ hashFiles('fuzz/Cargo.lock')
+            }}
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-fuzz@0.12
+      - name: Smoke-test parse_control_packet
+        run:
+          cargo fuzz run --target x86_64-unknown-linux-gnu parse_control_packet
+          corpus/parse_control_packet -- -max_total_time=30
+        working-directory: fuzz
+
+  fuzz-check-roundtrip:
+    name: fuzz check (roundtrip)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@nightly
+        with:
+          targets: x86_64-unknown-linux-gnu
+      - uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            fuzz/target/
+          key:
+            ${{ runner.os }}-${{ github.job }}-${{ hashFiles('fuzz/Cargo.lock')
+            }}
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-fuzz@0.12
+      - name: Smoke-test roundtrip_control_packet
+        run:
+          cargo fuzz run --target x86_64-unknown-linux-gnu
+          roundtrip_control_packet corpus/roundtrip_control_packet --
+          -max_total_time=30
+        working-directory: fuzz
+
   ci-check:
     name: CI passed
     if: always()
@@ -146,6 +207,8 @@ jobs:
       - rust-clippy
       # - rust-check-msrv
       - rust-coverage
+      - fuzz-check-parse
+      - fuzz-check-roundtrip
     runs-on: ubuntu-latest
     steps:
       - uses: re-actors/alls-green@v1.2.2

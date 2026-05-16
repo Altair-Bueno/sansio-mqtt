@@ -108,8 +108,8 @@ where
             flags |= u8::from(will.qos) << 3;
             flags |= u8::from(will.retain) << 5;
         }
-        flags |= u8::from(self.user_name.is_some()) << 6;
-        flags |= u8::from(self.password.is_some()) << 7;
+        flags |= u8::from(self.user_name.is_some()) << 7;
+        flags |= u8::from(self.password.is_some()) << 6;
         encode::combinators::LengthPrefix::<_, VariableByteInteger, Self::Error>::new((
             &self.protocol_name,
             encode::combinators::FromError::new(self.protocol_version),
