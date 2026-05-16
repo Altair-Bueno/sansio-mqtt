@@ -4,7 +4,7 @@ use test_sansio_mqtt_v5_tokio_mosquitto::*;
 async fn valid_credentials_accepted() {
     let (_container, port) = authenticated_broker().await;
 
-    let (_client, mut event_loop) = connect(authenticated_connect_options(
+    let mut conn = Connection::connect(authenticated_connect_options(
         port,
         "valid-auth-client",
         "testuser",
@@ -13,7 +13,7 @@ async fn valid_credentials_accepted() {
     .await
     .expect("connect");
 
-    let event = event_loop.poll().await.expect("poll");
+    let event = conn.poll().await.expect("poll");
     assert!(
         matches!(event, Event::Connected),
         "expected Connected, got {event:?}"
@@ -24,7 +24,7 @@ async fn valid_credentials_accepted() {
 async fn invalid_credentials_rejected() {
     let (_container, port) = authenticated_broker().await;
 
-    let (_client, mut event_loop) = connect(authenticated_connect_options(
+    let mut conn = Connection::connect(authenticated_connect_options(
         port,
         "invalid-auth-client",
         "testuser",
@@ -33,7 +33,7 @@ async fn invalid_credentials_rejected() {
     .await
     .expect("connect");
 
-    let result = event_loop.poll().await;
+    let result = conn.poll().await;
     assert!(
         result.is_err(),
         "expected Err for wrong password, got {result:?}"
@@ -44,11 +44,11 @@ async fn invalid_credentials_rejected() {
 async fn anonymous_rejected() {
     let (_container, port) = authenticated_broker().await;
 
-    let (_client, mut event_loop) = connect(connect_options(port, "anon-client"))
+    let mut conn = Connection::connect(connect_options(port, "anon-client"))
         .await
         .expect("connect");
 
-    let result = event_loop.poll().await;
+    let result = conn.poll().await;
     assert!(
         result.is_err(),
         "expected Err for anonymous connection, got {result:?}"
