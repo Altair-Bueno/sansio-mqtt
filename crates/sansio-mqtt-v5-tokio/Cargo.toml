@@ -17,6 +17,7 @@ tokio = { workspace = true, features = [
   "sync",
   "time",
 ] }
+thiserror = { workspace = true }
 tracing = { workspace = true }
 
 [dev-dependencies]
