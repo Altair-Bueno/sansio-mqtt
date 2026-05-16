@@ -148,13 +148,13 @@ jobs:
             ~/.cargo/registry/index/
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
-            target/
+            fuzz/target/
           key: ${{ runner.os }}-${{ github.job }}
       - uses: taiki-e/install-action@v2
         with:
           tool: cargo-fuzz
       - name: Smoke-test parse_control_packet
-        run: cargo fuzz run parse_control_packet -- -max_total_time=30 corpus/parse_control_packet
+        run: cargo fuzz run parse_control_packet corpus/parse_control_packet -- -max_total_time=30
         working-directory: fuzz
 
   fuzz-check-roundtrip:
@@ -170,13 +170,13 @@ jobs:
             ~/.cargo/registry/index/
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
-            target/
+            fuzz/target/
           key: ${{ runner.os }}-${{ github.job }}
       - uses: taiki-e/install-action@v2
         with:
           tool: cargo-fuzz
       - name: Smoke-test roundtrip_control_packet
-        run: cargo fuzz run roundtrip_control_packet -- -max_total_time=30 corpus/roundtrip_control_packet
+        run: cargo fuzz run roundtrip_control_packet corpus/roundtrip_control_packet -- -max_total_time=30
         working-directory: fuzz
 
   ci-check:
