@@ -1,7 +1,6 @@
 use sansio_mqtt_v5_tokio::{
     ClientMessage, ConnectOptions, Connection, ConnectionError, Event, Payload, Qos, Topic,
 };
-use std::time::Duration;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
 
@@ -24,14 +23,9 @@ async fn mock_broker_connack_then_close(addr: &str) -> String {
             .write_all(&[0x20, 0x03, 0x00, 0x00, 0x00])
             .await
             .ok();
-        // Give the client time to receive CONNACK, then initiate a graceful
-        // TCP shutdown (FIN) so the client side sees EOF (Ok(0)) rather than a
-        // connection reset.
-        tokio::time::sleep(Duration::from_millis(50)).await;
+        // Initiate graceful TCP shutdown (FIN). The CONNACK bytes are already
+        // in the kernel send buffer; the client will see CONNACK then EOF.
         stream.shutdown().await.ok();
-        // Keep `stream` alive briefly so the FIN is sent and the OS can finish
-        // the TCP teardown before we drop the socket entirely.
-        tokio::time::sleep(Duration::from_millis(50)).await;
     });
     local
 }
@@ -95,9 +89,9 @@ async fn no_backoff_returns_disconnected_error_after_disconnect() {
         }
     }
 
-    // The mock gracefully shuts down the TCP connection after ~50 ms. Poll
-    // until we observe the disconnect: the protocol should emit
-    // `Event::Disconnected` when it sees EOF (FIN) on the socket.
+    // The mock gracefully shuts down the TCP connection immediately after
+    // sending CONNACK. Poll until we observe the disconnect: the protocol
+    // emits `Event::Disconnected` when it sees EOF (FIN) on the socket.
     loop {
         match conn.poll().await {
             Ok(Event::Disconnected(_)) => break,
