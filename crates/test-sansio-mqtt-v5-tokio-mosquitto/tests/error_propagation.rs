@@ -20,6 +20,9 @@ async fn publish_after_disconnect_returns_closed() {
         matches!(ev, Event::Disconnected(None)),
         "expected Disconnected(None), got {ev:?}"
     );
+    // Drop the event loop to close the MPSC receiver; only then does the
+    // sender side return ClientError::Closed.
+    drop(el);
 
     let result = client
         .publish(msg("ep/topic", b"after-disconnect", Qos::AtMostOnce))
@@ -49,6 +52,7 @@ async fn subscribe_after_disconnect_returns_closed() {
         matches!(ev, Event::Disconnected(None)),
         "expected Disconnected(None), got {ev:?}"
     );
+    drop(el);
 
     let result = client.subscribe(sub("ep/topic")).await;
     assert_eq!(
@@ -76,6 +80,7 @@ async fn unsubscribe_after_disconnect_returns_closed() {
         matches!(ev, Event::Disconnected(None)),
         "expected Disconnected(None), got {ev:?}"
     );
+    drop(el);
 
     let result = client
         .unsubscribe(UnsubscribeOptions {

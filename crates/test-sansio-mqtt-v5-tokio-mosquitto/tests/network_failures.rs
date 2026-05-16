@@ -35,12 +35,14 @@ async fn broker_kill_closes_event_loop() {
     // Stop the broker — this closes the TCP connection from the server side.
     let _ = container.stop().await;
 
+    // Mosquitto sends a DISCONNECT packet before closing TCP, so we may get
+    // Ok(Disconnected(_)) instead of Err(Io). Both mean the connection is gone.
     let result = tokio::time::timeout(Duration::from_secs(5), el.poll())
         .await
-        .expect("error within 5s");
+        .expect("connection closed within 5s");
     assert!(
-        result.is_err(),
-        "poll must return error after broker kill, got: {result:?}"
+        matches!(result, Err(_) | Ok(Event::Disconnected(_))),
+        "poll must return error or Disconnected after broker kill, got: {result:?}"
     );
 }
 
@@ -69,9 +71,12 @@ async fn keepalive_timeout_disconnects_client() {
     // Do NOT poll for 2.5s — broker closes TCP after ~1.5s (1.5 × 1s keepalive).
     tokio::time::sleep(Duration::from_millis(2500)).await;
 
+    // Mosquitto sends DISCONNECT (reason: KeepAliveTimeout) before closing TCP,
+    // so we may get Ok(Disconnected(Some(_))) instead of Err(Io). Both mean
+    // the broker has terminated the connection.
     let result = el.poll().await;
     assert!(
-        result.is_err(),
-        "poll after keepalive timeout must return error, got: {result:?}"
+        matches!(result, Err(_) | Ok(Event::Disconnected(Some(_)))),
+        "poll after keepalive timeout must return error or Disconnected(Some(_)), got: {result:?}"
     );
 }
