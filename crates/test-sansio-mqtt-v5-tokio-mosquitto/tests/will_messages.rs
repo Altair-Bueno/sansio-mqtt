@@ -28,7 +28,7 @@ async fn will_not_sent_on_graceful_disconnect() {
         .subscribe(sub("will/ng"))
         .await
         .expect("subscribe");
-    tokio::time::sleep(Duration::from_millis(150)).await;
+    let _ = tokio::time::timeout(Duration::from_millis(500), el_sub.poll()).await;
 
     let will = make_will("will/ng", b"gone", Qos::AtMostOnce);
     let (sender, mut el_sender) = connect(will_connect_options(port, "wng-sender", will))
@@ -64,8 +64,7 @@ async fn will_sent_on_abrupt_disconnect_qos0() {
         .subscribe(sub("will/aq0"))
         .await
         .expect("subscribe");
-    tokio::time::sleep(Duration::from_millis(150)).await;
-    let sub_task = tokio::spawn(async move { el_sub.poll().await });
+    let _ = tokio::time::timeout(Duration::from_millis(500), el_sub.poll()).await;
 
     let will = make_will("will/aq0", b"gone-qos0", Qos::AtMostOnce);
     let (_sender, mut el) = connect(will_connect_options(port, "waq0-sender", will))
@@ -74,10 +73,9 @@ async fn will_sent_on_abrupt_disconnect_qos0() {
     assert!(matches!(el.poll().await.expect("poll"), Event::Connected));
     drop(el); // abrupt — triggers will
 
-    let ev = tokio::time::timeout(Duration::from_secs(3), sub_task)
+    let ev = tokio::time::timeout(Duration::from_secs(3), el_sub.poll())
         .await
         .expect("will within 3s")
-        .expect("join")
         .expect("event");
     assert!(
         matches!(ev, Event::Message(_)),
@@ -100,8 +98,7 @@ async fn will_sent_on_abrupt_disconnect_qos1() {
         .subscribe(sub_qos1("will/aq1"))
         .await
         .expect("subscribe");
-    tokio::time::sleep(Duration::from_millis(150)).await;
-    let sub_task = tokio::spawn(async move { el_sub.poll().await });
+    let _ = tokio::time::timeout(Duration::from_millis(500), el_sub.poll()).await;
 
     let will = make_will("will/aq1", b"gone-qos1", Qos::AtLeastOnce);
     let (_sender, mut el) = connect(will_connect_options(port, "waq1-sender", will))
@@ -110,10 +107,9 @@ async fn will_sent_on_abrupt_disconnect_qos1() {
     assert!(matches!(el.poll().await.expect("poll"), Event::Connected));
     drop(el);
 
-    let ev = tokio::time::timeout(Duration::from_secs(3), sub_task)
+    let ev = tokio::time::timeout(Duration::from_secs(3), el_sub.poll())
         .await
         .expect("will within 3s")
-        .expect("join")
         .expect("event");
     assert!(
         matches!(ev, Event::MessageWithRequiredAcknowledgement(_, _)),
@@ -310,8 +306,7 @@ async fn will_with_empty_payload() {
         .subscribe(sub("will/empty"))
         .await
         .expect("subscribe");
-    tokio::time::sleep(Duration::from_millis(150)).await;
-    let sub_task = tokio::spawn(async move { el_sub.poll().await });
+    let _ = tokio::time::timeout(Duration::from_millis(500), el_sub.poll()).await;
 
     let will = Will {
         topic: Topic::try_new("will/empty").expect("valid"),
@@ -326,10 +321,9 @@ async fn will_with_empty_payload() {
     assert!(matches!(el.poll().await.expect("poll"), Event::Connected));
     drop(el);
 
-    let ev = tokio::time::timeout(Duration::from_secs(3), sub_task)
+    let ev = tokio::time::timeout(Duration::from_secs(3), el_sub.poll())
         .await
         .expect("within 3s")
-        .expect("join")
         .expect("event");
     assert!(
         matches!(ev, Event::Message(_)),
@@ -352,8 +346,7 @@ async fn will_with_user_properties() {
         .subscribe(sub("will/props"))
         .await
         .expect("subscribe");
-    tokio::time::sleep(Duration::from_millis(150)).await;
-    let sub_task = tokio::spawn(async move { el_sub.poll().await });
+    let _ = tokio::time::timeout(Duration::from_millis(500), el_sub.poll()).await;
 
     let key = Utf8String::try_from("reason").expect("valid");
     let val = Utf8String::try_from("crash").expect("valid");
@@ -371,10 +364,9 @@ async fn will_with_user_properties() {
     assert!(matches!(el.poll().await.expect("poll"), Event::Connected));
     drop(el);
 
-    let ev = tokio::time::timeout(Duration::from_secs(3), sub_task)
+    let ev = tokio::time::timeout(Duration::from_secs(3), el_sub.poll())
         .await
         .expect("within 3s")
-        .expect("join")
         .expect("event");
     let broker_msg = match ev {
         Event::Message(m) => m,

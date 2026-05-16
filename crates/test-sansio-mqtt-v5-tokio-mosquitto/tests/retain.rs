@@ -360,6 +360,56 @@ async fn retain_handling_do_not_send() {
 }
 
 #[tokio::test]
+async fn retained_message_delivered_on_wildcard_subscribe() {
+    let (_c, port) = anonymous_broker().await;
+
+    let (pub_c, mut el_pub) = connect(connect_options(port, "ret-wild-pub"))
+        .await
+        .expect("connect");
+    assert!(matches!(
+        el_pub.poll().await.expect("poll"),
+        Event::Connected
+    ));
+    pub_c
+        .publish(msg_retain(
+            "test/retain/wild/foo",
+            b"wildcard-retained",
+            Qos::AtMostOnce,
+        ))
+        .await
+        .expect("publish retained");
+    let _ = tokio::time::timeout(Duration::from_millis(200), el_pub.poll()).await;
+    tokio::time::sleep(Duration::from_millis(150)).await;
+
+    let (sub_c, mut el_sub) = connect(connect_options(port, "ret-wild-sub"))
+        .await
+        .expect("connect");
+    assert!(matches!(
+        el_sub.poll().await.expect("poll"),
+        Event::Connected
+    ));
+    sub_c
+        .subscribe(sub("test/retain/wild/#"))
+        .await
+        .expect("subscribe");
+
+    let ev = tokio::time::timeout(Duration::from_secs(3), el_sub.poll())
+        .await
+        .expect("retained within 3s")
+        .expect("event");
+    assert!(
+        matches!(ev, Event::Message(_)),
+        "expected retained Message on wildcard subscribe, got {ev:?}"
+    );
+
+    // Clean up
+    pub_c
+        .publish(msg_retain("test/retain/wild/foo", b"", Qos::AtMostOnce))
+        .await
+        .expect("clear");
+}
+
+#[tokio::test]
 async fn retain_as_published_preserves_retain_flag() {
     let (_c, port) = anonymous_broker().await;
 

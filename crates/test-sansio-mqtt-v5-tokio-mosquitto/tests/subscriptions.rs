@@ -373,36 +373,39 @@ async fn shared_subscription_load_balancing() {
         Event::Connected
     ));
 
-    // Publish 4 messages; each must be delivered to exactly one of the two
-    // subscribers.
-    for i in 0u8..4 {
+    for i in 0u8..6 {
         pub_c
             .publish(msg("ss/topic", &[i], Qos::AtMostOnce))
             .await
             .expect("publish");
     }
     let _ = tokio::time::timeout(Duration::from_millis(500), el_pub.poll()).await;
+    tokio::time::sleep(Duration::from_millis(400)).await;
 
-    let mut total = 0u8;
-    for _ in 0..4 {
-        let got1 = tokio::time::timeout(Duration::from_millis(200), el1.poll()).await;
-        let got2 = tokio::time::timeout(Duration::from_millis(200), el2.poll()).await;
-        // Exactly one of the two should receive the message for each publish
-        match (got1, got2) {
-            (Ok(Ok(Event::Message(_))), Err(_)) => total += 1,
-            (Err(_), Ok(Ok(Event::Message(_)))) => total += 1,
-            (Ok(Ok(Event::Message(_))), Ok(Ok(Event::Message(_)))) => {
-                // Both got this message — that's also acceptable if Mosquitto
-                // doesn't guarantee exclusivity at AtMostOnce
-                total += 1;
-            }
-            _ => {}
-        }
+    let mut count1 = 0u32;
+    let mut count2 = 0u32;
+    while let Ok(Ok(Event::Message(_))) =
+        tokio::time::timeout(Duration::from_millis(100), el1.poll()).await
+    {
+        count1 += 1;
     }
-    // Give a brief extra window for any remaining messages
-    tokio::time::sleep(Duration::from_millis(300)).await;
+    while let Ok(Ok(Event::Message(_))) =
+        tokio::time::timeout(Duration::from_millis(100), el2.poll()).await
+    {
+        count2 += 1;
+    }
+
     assert!(
-        total >= 1,
-        "at least one shared subscriber must receive messages"
+        count1 >= 1,
+        "subscriber 1 must receive at least one shared message, got {count1}"
+    );
+    assert!(
+        count2 >= 1,
+        "subscriber 2 must receive at least one shared message, got {count2}"
+    );
+    assert_eq!(
+        count1 + count2,
+        6,
+        "all 6 messages must be delivered exactly once; s1={count1}, s2={count2}"
     );
 }
