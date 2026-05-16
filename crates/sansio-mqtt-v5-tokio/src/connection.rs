@@ -6,16 +6,20 @@ use sansio_mqtt_v5_protocol::ClientMessage;
 use sansio_mqtt_v5_protocol::ConnectionOptions;
 use sansio_mqtt_v5_protocol::DriverEventIn;
 use sansio_mqtt_v5_protocol::DriverEventOut;
+use sansio_mqtt_v5_protocol::IncomingData;
 use sansio_mqtt_v5_protocol::SubscribeOptions;
 use sansio_mqtt_v5_protocol::UnsubscribeOptions;
 use sansio_mqtt_v5_protocol::UserWriteIn;
+use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpStream;
 use tokio::time::Instant;
 
+use crate::backoff::compute_delay;
 use crate::connect::ConnectOptions;
 use crate::error::ConnectError;
 use crate::error::ConnectionError;
+use crate::event::Event;
 
 enum SocketState {
     Active(TcpStream),
@@ -119,5 +123,183 @@ impl Connection {
     pub fn disconnect(&mut self) -> Result<(), ConnectionError> {
         self.protocol.handle_write(UserWriteIn::Disconnect)?;
         Ok(())
+    }
+
+    pub async fn poll(&mut self) -> Result<Event, ConnectionError> {
+        loop {
+            // Drain buffered protocol output before touching the socket
+            if let Some(output) = self.protocol.poll_read() {
+                return Ok(Event::from_protocol_output(output));
+            }
+
+            if matches!(&self.state, SocketState::Terminal) {
+                return Err(ConnectionError::Disconnected);
+            }
+
+            if matches!(&self.state, SocketState::Offline { .. }) {
+                // Copy wake_at (Instant is Copy) so the immutable borrow is released
+                // before the async sleep and before calling &mut self methods.
+                let wake_at = if let SocketState::Offline { wake_at, .. } = &self.state {
+                    *wake_at
+                } else {
+                    unreachable!()
+                };
+                tokio::time::sleep_until(wake_at).await;
+                // No borrow of self active here — safe to call &mut self method.
+                self.attempt_reconnect().await?;
+                continue;
+            }
+
+            // --- Active state ---
+            // Use a local enum to communicate required state transitions out of the
+            // borrow block; we cannot assign self.state while `stream` borrows it.
+            enum Transition {
+                None,
+                Disconnect {
+                    reason: Option<sansio_mqtt_v5_protocol::DisconnectReasonCode>,
+                    quit: bool,
+                },
+            }
+            let mut transition = Transition::None;
+
+            if let SocketState::Active(stream) = &mut self.state {
+                // Flush pending writes (self.protocol is a distinct field — valid).
+                while let Some(frame) = self.protocol.poll_write() {
+                    if let Err(e) = stream.write_all(&frame).await {
+                        return Err(ConnectionError::Io(e));
+                    }
+                }
+
+                // Handle driver events.
+                loop {
+                    match self.protocol.poll_event() {
+                        Some(DriverEventOut::CloseSocket) => {
+                            stream.shutdown().await.ok();
+                            self.protocol.handle_event(DriverEventIn::SocketClosed)?;
+                            let reason = match self
+                                .protocol
+                                .poll_read()
+                                .map(Event::from_protocol_output)
+                            {
+                                Some(Event::Disconnected(r)) => r,
+                                _ => None,
+                            };
+                            transition = Transition::Disconnect { reason, quit: false };
+                            break;
+                        }
+                        Some(DriverEventOut::Quit) => {
+                            transition = Transition::Disconnect { reason: None, quit: true };
+                            break;
+                        }
+                        Some(other) => return Err(ConnectionError::UnexpectedDriverAction(other)),
+                        None => break,
+                    }
+                }
+
+                if matches!(transition, Transition::None) {
+                    // Drain again after events.
+                    if let Some(output) = self.protocol.poll_read() {
+                        return Ok(Event::from_protocol_output(output));
+                    }
+
+                    let timeout = self.protocol.poll_timeout();
+                    tokio::select! {
+                        result = stream.read(&mut self.read_buffer) => {
+                            match result {
+                                Ok(0) => {
+                                    self.protocol.handle_event(DriverEventIn::SocketClosed)?;
+                                }
+                                Ok(n) => {
+                                    self.protocol.handle_read(IncomingData {
+                                        bytes: bytes::Bytes::copy_from_slice(&self.read_buffer[..n]),
+                                        received_at: Instant::now(),
+                                    })?;
+                                }
+                                Err(e) => {
+                                    self.protocol.handle_event(DriverEventIn::SocketError).ok();
+                                    return Err(ConnectionError::Io(e));
+                                }
+                            }
+                        }
+                        _ = maybe_sleep_until(timeout) => {
+                            self.protocol.handle_timeout(Instant::now())?;
+                        }
+                    }
+                }
+            }
+            // `stream` borrow released — state transitions are now safe.
+
+            match transition {
+                Transition::None => {}
+                Transition::Disconnect { quit: true, .. } => {
+                    self.state = SocketState::Terminal;
+                    return Err(ConnectionError::ProtocolRequestedQuit);
+                }
+                Transition::Disconnect { reason, quit: false } => {
+                    self.state = match &self.options.backoff {
+                        Some(b) => {
+                            let delay = compute_delay(b, 0, &mut self.rng);
+                            SocketState::Offline {
+                                attempt: 0,
+                                wake_at: Instant::now() + delay,
+                            }
+                        }
+                        None => SocketState::Terminal,
+                    };
+                    return Ok(Event::Disconnected(reason));
+                }
+            }
+        }
+    }
+
+    async fn attempt_reconnect(&mut self) -> Result<(), ConnectionError> {
+        let backoff = match self.options.backoff.clone() {
+            Some(b) => b,
+            None => {
+                self.state = SocketState::Terminal;
+                return Ok(());
+            }
+        };
+        let current_attempt = if let SocketState::Offline { attempt, .. } = &self.state {
+            *attempt
+        } else {
+            0
+        };
+
+        match TcpStream::connect(self.options.addr).await {
+            Ok(mut new_stream) => {
+                let conn_opts = Self::apply_receive_maximum(
+                    self.options.connection.clone(),
+                    self.options.max_in_queued_messages,
+                );
+                self.protocol.handle_write(UserWriteIn::Connect(conn_opts))?;
+                match self.protocol.poll_event() {
+                    Some(DriverEventOut::OpenSocket) => {}
+                    Some(other) => return Err(ConnectionError::UnexpectedDriverAction(other)),
+                    None => {}
+                }
+                self.protocol.handle_event(DriverEventIn::SocketConnected)?;
+                Self::flush_writes(&mut new_stream, &mut self.protocol).await?;
+                self.state = SocketState::Active(new_stream);
+                // Next poll() iteration drains poll_read() which returns Event::Connected
+                // once the CONNACK arrives via the Active socket-read path.
+            }
+            Err(_) => {
+                let next_attempt = current_attempt.saturating_add(1);
+                let delay = compute_delay(&backoff, next_attempt, &mut self.rng);
+                self.state = SocketState::Offline {
+                    attempt: next_attempt,
+                    wake_at: Instant::now() + delay,
+                };
+            }
+        }
+        Ok(())
+    }
+}
+
+async fn maybe_sleep_until(deadline: Option<Instant>) {
+    match deadline {
+        Some(d) => tokio::time::sleep_until(d).await,
+        None => std::future::pending().await,
     }
 }
