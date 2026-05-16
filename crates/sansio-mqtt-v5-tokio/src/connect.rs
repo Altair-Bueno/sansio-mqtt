@@ -1,6 +1,7 @@
-use std::net::SocketAddr;
-use sansio_mqtt_v5_protocol::{ClientSettings, ConnectionOptions};
 use crate::backoff::Backoff;
+use sansio_mqtt_v5_protocol::ClientSettings;
+use sansio_mqtt_v5_protocol::ConnectionOptions;
+use std::net::SocketAddr;
 
 #[derive(Clone, Debug)]
 pub struct ConnectOptions {

@@ -170,10 +170,12 @@ impl Connection {
                     }
                 }
 
-                // Handle driver events.
-                loop {
-                    match self.protocol.poll_event() {
-                        Some(DriverEventOut::CloseSocket) => {
+                // Handle at most one pending driver event per poll cycle.
+                // Additional events are picked up on subsequent outer-loop
+                // iterations, which keeps the borrow structure simple.
+                if let Some(event) = self.protocol.poll_event() {
+                    match event {
+                        DriverEventOut::CloseSocket => {
                             stream.shutdown().await.ok();
                             self.protocol.handle_event(DriverEventIn::SocketClosed)?;
                             let reason = match self
@@ -185,14 +187,11 @@ impl Connection {
                                 _ => None,
                             };
                             transition = Transition::Disconnect { reason, quit: false };
-                            break;
                         }
-                        Some(DriverEventOut::Quit) => {
+                        DriverEventOut::Quit => {
                             transition = Transition::Disconnect { reason: None, quit: true };
-                            break;
                         }
-                        Some(other) => return Err(ConnectionError::UnexpectedDriverAction(other)),
-                        None => break,
+                        other => return Err(ConnectionError::UnexpectedDriverAction(other)),
                     }
                 }
 
@@ -207,7 +206,22 @@ impl Connection {
                         result = stream.read(&mut self.read_buffer) => {
                             match result {
                                 Ok(0) => {
+                                    // EOF: remote closed the TCP connection.
+                                    // Inform the protocol, then drain the
+                                    // Disconnected event it enqueues so that
+                                    // the state transition is handled through
+                                    // the normal Transition::Disconnect path
+                                    // (which sets self.state = Terminal).
                                     self.protocol.handle_event(DriverEventIn::SocketClosed)?;
+                                    let reason = match self
+                                        .protocol
+                                        .poll_read()
+                                        .map(Event::from_protocol_output)
+                                    {
+                                        Some(Event::Disconnected(r)) => r,
+                                        _ => None,
+                                    };
+                                    transition = Transition::Disconnect { reason, quit: false };
                                 }
                                 Ok(n) => {
                                     self.protocol.handle_read(IncomingData {
