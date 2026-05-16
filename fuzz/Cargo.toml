@@ -1,0 +1,28 @@
+[package]
+name = "sansio-mqtt-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+[package.metadata]
+cargo-fuzz = true
+
+[workspace]
+
+[dependencies]
+libfuzzer-sys = "0.4"
+sansio-mqtt-v5-types = { path = "../crates/sansio-mqtt-v5-types" }
+winnow = { version = "0.7.0", features = ["alloc"] }
+encode = { version = "1.0.0", features = ["alloc"] }
+
+[[bin]]
+name = "parse_control_packet"
+path = "fuzz_targets/parse_control_packet.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "roundtrip_control_packet"
+path = "fuzz_targets/roundtrip_control_packet.rs"
+test = false
+doc = false
