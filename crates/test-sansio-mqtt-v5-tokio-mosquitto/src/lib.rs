@@ -215,6 +215,18 @@ pub fn sub_with_options(
     }
 }
 
+/// Builds a simple [`Will`] message with the given topic, payload, and QoS.
+/// `retain` is false; all other fields use their defaults.
+pub fn make_will(topic: &'static str, payload: &'static [u8], qos: Qos) -> Will {
+    Will {
+        topic: Topic::try_new(topic.as_bytes().to_vec()).expect("valid topic"),
+        payload: Payload::from(payload),
+        qos,
+        retain: false,
+        ..Will::default()
+    }
+}
+
 /// [`ClientMessage`] with `retain = true`.
 pub fn msg_retain(topic: &str, payload: &[u8], qos: Qos) -> ClientMessage {
     ClientMessage {

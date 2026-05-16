@@ -1,16 +1,6 @@
 use std::time::Duration;
 use test_sansio_mqtt_v5_tokio_mosquitto::*;
 
-fn make_will(topic: &'static str, payload: &'static [u8], qos: Qos) -> Will {
-    Will {
-        topic: Topic::try_new(topic).expect("valid topic"),
-        payload: Payload::from(payload),
-        qos,
-        retain: false,
-        ..Will::default()
-    }
-}
-
 /// Will MUST NOT be published when the client sends DISCONNECT normally.
 /// [MQTT-3.1.2-10]
 #[tokio::test]

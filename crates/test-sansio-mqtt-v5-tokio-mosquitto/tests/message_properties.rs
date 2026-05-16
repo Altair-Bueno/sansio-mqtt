@@ -19,7 +19,6 @@ async fn user_properties_preserved_end_to_end() {
         .await
         .expect("subscribe");
     let _ = tokio::time::timeout(Duration::from_millis(500), el_sub.poll()).await;
-    tokio::time::sleep(Duration::from_millis(150)).await;
 
     let (pub_c, mut el_pub) = connect(connect_options(port, "up-pub"))
         .await
@@ -85,7 +84,7 @@ async fn message_expiry_interval_drops_stale_message() {
     sub1.subscribe(sub_qos1("mp/expiry"))
         .await
         .expect("subscribe");
-    tokio::time::sleep(Duration::from_millis(150)).await;
+    let _ = tokio::time::timeout(Duration::from_millis(500), el1.poll()).await;
     sub1.disconnect().await.expect("disconnect");
     let _ = tokio::time::timeout(Duration::from_secs(1), el1.poll()).await;
 
@@ -142,7 +141,6 @@ async fn response_topic_and_correlation_data_round_trip() {
         .await
         .expect("subscribe request");
     let _ = tokio::time::timeout(Duration::from_millis(500), el_resp.poll()).await;
-    tokio::time::sleep(Duration::from_millis(150)).await;
 
     // Requester publishes with response_topic and correlation_data
     let (req_c, mut el_req) = connect(connect_options(port, "rr-req"))
@@ -157,7 +155,6 @@ async fn response_topic_and_correlation_data_round_trip() {
         .await
         .expect("subscribe response");
     let _ = tokio::time::timeout(Duration::from_millis(500), el_req.poll()).await;
-    tokio::time::sleep(Duration::from_millis(100)).await;
 
     req_c
         .publish(ClientMessage {
@@ -236,7 +233,6 @@ async fn content_type_preserved() {
     ));
     sub_c.subscribe(sub("mp/ct")).await.expect("subscribe");
     let _ = tokio::time::timeout(Duration::from_millis(500), el_sub.poll()).await;
-    tokio::time::sleep(Duration::from_millis(150)).await;
 
     let (pub_c, mut el_pub) = connect(connect_options(port, "ct-pub"))
         .await
@@ -287,7 +283,6 @@ async fn payload_format_indicator_preserved() {
     ));
     sub_c.subscribe(sub("mp/pfi")).await.expect("subscribe");
     let _ = tokio::time::timeout(Duration::from_millis(500), el_sub.poll()).await;
-    tokio::time::sleep(Duration::from_millis(150)).await;
 
     let (pub_c, mut el_pub) = connect(connect_options(port, "pfi-pub"))
         .await
@@ -337,7 +332,6 @@ async fn multiple_user_properties_duplicate_keys() {
     ));
     sub_c.subscribe(sub("mp/dupkeys")).await.expect("subscribe");
     let _ = tokio::time::timeout(Duration::from_millis(500), el_sub.poll()).await;
-    tokio::time::sleep(Duration::from_millis(150)).await;
 
     let (pub_c, mut el_pub) = connect(connect_options(port, "dupk-pub"))
         .await

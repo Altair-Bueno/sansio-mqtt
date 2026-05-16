@@ -68,8 +68,8 @@ async fn keepalive_timeout_disconnects_client() {
     let (_client, mut el) = connect(opts).await.expect("connect");
     assert!(matches!(el.poll().await.expect("poll"), Event::Connected));
 
-    // Do NOT poll for 2.5s — broker closes TCP after ~1.5s (1.5 × 1s keepalive).
-    tokio::time::sleep(Duration::from_millis(2500)).await;
+    // Do NOT poll for 3.5s — broker closes TCP after ~1.5s (1.5 × 1s keepalive).
+    tokio::time::sleep(Duration::from_millis(3500)).await;
 
     // Mosquitto sends DISCONNECT before closing TCP (reason code varies by
     // version), so we may get Ok(Disconnected(_)) instead of Err(Io). Both

@@ -24,8 +24,8 @@ async fn graceful_disconnect_reason_code_is_none() {
 }
 
 /// When a second client connects with the same client_id, Mosquitto sends a
-/// server-initiated DISCONNECT with reason SessionTakenOver to the first
-/// client.
+/// DISCONNECT with reason SessionTakenOver (0x8E) [MQTT-3.14.2.1] to the
+/// first client.
 #[tokio::test]
 async fn session_takeover_reason_code() {
     let (_c, port) = anonymous_broker().await;
@@ -45,7 +45,13 @@ async fn session_takeover_reason_code() {
         .await
         .expect("server disconnect within 3s");
     match result {
-        Ok(Event::Disconnected(_)) | Err(_) => {}
-        Ok(ev) => panic!("expected Disconnected or error on session takeover, got {ev:?}"),
+        Ok(Event::Disconnected(Some(code))) => assert_eq!(
+            code,
+            DisconnectReasonCode::SessionTakenOver,
+            "expected SessionTakenOver reason code on session takeover"
+        ),
+        // TCP torn down without DISCONNECT packet — acceptable fallback
+        Ok(Event::Disconnected(None)) | Err(_) => {}
+        Ok(ev) => panic!("expected Disconnected on session takeover, got {ev:?}"),
     }
 }

@@ -21,7 +21,7 @@ async fn no_local_prevents_receiving_own_publishes() {
         ))
         .await
         .expect("subscribe");
-    tokio::time::sleep(Duration::from_millis(150)).await;
+    let _ = tokio::time::timeout(Duration::from_millis(500), el.poll()).await;
 
     client
         .publish(msg("nl/topic", b"self-pub", Qos::AtMostOnce))
@@ -60,7 +60,6 @@ async fn subscription_identifier_delivered_with_message() {
         .await
         .expect("subscribe");
     let _ = tokio::time::timeout(Duration::from_millis(500), el_sub.poll()).await;
-    tokio::time::sleep(Duration::from_millis(150)).await;
 
     let (pub_c, mut el_pub) = connect(connect_options(port, "sid-pub"))
         .await
@@ -116,7 +115,6 @@ async fn subscription_identifier_on_wildcard_subscription() {
         .await
         .expect("subscribe");
     let _ = tokio::time::timeout(Duration::from_millis(500), el_sub.poll()).await;
-    tokio::time::sleep(Duration::from_millis(150)).await;
 
     let (pub_c, mut el_pub) = connect(connect_options(port, "sidw-pub"))
         .await
@@ -161,7 +159,6 @@ async fn unsubscribe_stops_delivery() {
     ));
     sub_c.subscribe(sub("us/topic")).await.expect("subscribe");
     let _ = tokio::time::timeout(Duration::from_millis(500), el_sub.poll()).await;
-    tokio::time::sleep(Duration::from_millis(150)).await;
 
     let (pub_c, mut el_pub) = connect(connect_options(port, "us-pub"))
         .await
@@ -193,7 +190,6 @@ async fn unsubscribe_stops_delivery() {
         .await
         .expect("unsubscribe");
     let _ = tokio::time::timeout(Duration::from_millis(500), el_sub.poll()).await;
-    tokio::time::sleep(Duration::from_millis(150)).await;
 
     pub_c
         .publish(msg("us/topic", b"after", Qos::AtMostOnce))
@@ -312,7 +308,6 @@ async fn multiple_subscriptions_one_call() {
         .await
         .expect("multi subscribe");
     let _ = tokio::time::timeout(Duration::from_millis(500), el_sub.poll()).await;
-    tokio::time::sleep(Duration::from_millis(150)).await;
 
     let (pub_c, mut el_pub) = connect(connect_options(port, "msoc-pub"))
         .await
@@ -363,7 +358,6 @@ async fn shared_subscription_load_balancing() {
         .await
         .expect("subscribe 2");
     let _ = tokio::time::timeout(Duration::from_millis(500), el2.poll()).await;
-    tokio::time::sleep(Duration::from_millis(150)).await;
 
     let (pub_c, mut el_pub) = connect(connect_options(port, "ss-pub"))
         .await

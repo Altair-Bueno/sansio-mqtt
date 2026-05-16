@@ -19,7 +19,6 @@ async fn concurrent_qos2_publishes_all_complete() {
         .await
         .expect("subscribe");
     let _ = tokio::time::timeout(Duration::from_millis(500), el_sub.poll()).await;
-    tokio::time::sleep(Duration::from_millis(150)).await;
 
     let (pub_c, mut el_pub) = connect(connect_options(port, "cq2-pub"))
         .await
@@ -123,10 +122,10 @@ async fn qos2_queued_for_offline_subscriber_delivered_on_resume() {
     );
 }
 
-/// Publishing more QoS 2 messages than the server's receive_maximum allows in
-/// parallel does not cause errors — the protocol queues them.
+/// Ten concurrent QoS 2 messages all complete the PUBLISH→PUBREC→PUBREL→PUBCOMP
+/// handshake without error.
 #[tokio::test]
-async fn qos2_beyond_receive_maximum_queues_without_error() {
+async fn multiple_concurrent_qos2_publishes_all_complete() {
     let (_c, port) = anonymous_broker().await;
 
     let (sub_c, mut el_sub) = connect(connect_options(port, "qos2-rm-sub"))

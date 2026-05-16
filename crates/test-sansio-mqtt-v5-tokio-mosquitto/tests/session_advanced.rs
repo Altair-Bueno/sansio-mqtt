@@ -12,7 +12,7 @@ async fn multiple_inflight_qos1_all_delivered_after_reconnect() {
         .expect("connect");
     assert!(matches!(el1.poll().await.expect("poll"), Event::Connected));
     sub1.subscribe(sub_qos1("sa/mq1")).await.expect("subscribe");
-    tokio::time::sleep(Duration::from_millis(150)).await;
+    let _ = tokio::time::timeout(Duration::from_millis(500), el1.poll()).await;
     sub1.disconnect().await.expect("disconnect");
     let _ = tokio::time::timeout(Duration::from_secs(1), el1.poll()).await;
 
@@ -73,7 +73,7 @@ async fn multiple_inflight_qos2_all_delivered_after_reconnect() {
     ))
     .await
     .expect("subscribe");
-    tokio::time::sleep(Duration::from_millis(150)).await;
+    let _ = tokio::time::timeout(Duration::from_millis(500), el1.poll()).await;
     sub1.disconnect().await.expect("disconnect");
     let _ = tokio::time::timeout(Duration::from_secs(1), el1.poll()).await;
 
@@ -129,7 +129,7 @@ async fn queued_inbound_messages_arrive_after_connack() {
         .expect("connect");
     assert!(matches!(el1.poll().await.expect("poll"), Event::Connected));
     sub1.subscribe(sub_qos1("sa/qi")).await.expect("subscribe");
-    tokio::time::sleep(Duration::from_millis(150)).await;
+    let _ = tokio::time::timeout(Duration::from_millis(500), el1.poll()).await;
     sub1.disconnect().await.expect("disconnect");
     let _ = tokio::time::timeout(Duration::from_secs(1), el1.poll()).await;
 
@@ -166,37 +166,10 @@ async fn queued_inbound_messages_arrive_after_connack() {
     }
 }
 
-/// When a second client connects with the same client_id, Mosquitto sends
-/// DISCONNECT with reason code SessionTakenOver to the first connection.
+/// With session_expiry_interval=0, the broker drops the session synchronously
+/// when the DISCONNECT is processed — reconnecting finds no queued messages.
 #[tokio::test]
-async fn session_takeover_disconnects_old_connection() {
-    let (_c, port) = anonymous_broker().await;
-
-    let (_client1, mut el1) = connect(connect_options(port, "sa-takeover"))
-        .await
-        .expect("connect first");
-    assert!(matches!(el1.poll().await.expect("poll"), Event::Connected));
-
-    // Second connection with the same client_id
-    let (_client2, mut el2) = connect(connect_options(port, "sa-takeover"))
-        .await
-        .expect("connect second");
-    assert!(matches!(el2.poll().await.expect("poll"), Event::Connected));
-
-    // First event loop must receive a disconnect with SessionTakenOver
-    let result = tokio::time::timeout(Duration::from_secs(3), el1.poll())
-        .await
-        .expect("disconnect within 3s");
-    match result {
-        Ok(Event::Disconnected(_)) | Err(_) => {}
-        Ok(ev) => panic!("expected Disconnected or error on session takeover, got {ev:?}"),
-    }
-}
-
-/// After session_expiry elapses, reconnecting with clean_start=false results
-/// in no queued messages (session was dropped).
-#[tokio::test]
-async fn session_expiry_drops_queued_messages() {
+async fn session_expiry_zero_drops_session_on_disconnect() {
     let (_c, port) = anonymous_broker().await;
 
     // session_expiry_interval=0 means the broker deletes the session synchronously

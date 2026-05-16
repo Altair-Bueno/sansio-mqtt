@@ -18,7 +18,6 @@ async fn single_level_wildcard_matches_one_segment() {
         .await
         .expect("subscribe");
     let _ = tokio::time::timeout(Duration::from_millis(500), el_sub.poll()).await;
-    tokio::time::sleep(Duration::from_millis(150)).await;
 
     let (pub_c, mut el_pub) = connect(connect_options(port, "tf-slw-pub"))
         .await
@@ -69,7 +68,6 @@ async fn multi_level_wildcard_matches_all_below() {
     ));
     sub_c.subscribe(sub("sensors/#")).await.expect("subscribe");
     let _ = tokio::time::timeout(Duration::from_millis(500), el_sub.poll()).await;
-    tokio::time::sleep(Duration::from_millis(150)).await;
 
     let (pub_c, mut el_pub) = connect(connect_options(port, "tf-mlw-pub"))
         .await
@@ -114,7 +112,6 @@ async fn multi_level_wildcard_boundary_not_matched() {
     ));
     sub_c.subscribe(sub("a/b/#")).await.expect("subscribe");
     let _ = tokio::time::timeout(Duration::from_millis(500), el_sub.poll()).await;
-    tokio::time::sleep(Duration::from_millis(150)).await;
 
     let (pub_c, mut el_pub) = connect(connect_options(port, "tf-mlwb-pub"))
         .await
@@ -193,7 +190,6 @@ async fn multiple_topics_in_one_subscribe_packet() {
         .await
         .expect("multi-subscribe");
     let _ = tokio::time::timeout(Duration::from_millis(500), el_sub.poll()).await;
-    tokio::time::sleep(Duration::from_millis(150)).await;
 
     let (pub_c, mut el_pub) = connect(connect_options(port, "tf-multi-pub"))
         .await
@@ -244,7 +240,6 @@ async fn overlapping_subscriptions_deliver_once_per_filter() {
         .await
         .expect("subscribe exact");
     let _ = tokio::time::timeout(Duration::from_millis(500), el_sub.poll()).await;
-    tokio::time::sleep(Duration::from_millis(150)).await;
 
     let (pub_c, mut el_pub) = connect(connect_options(port, "tf-overlap-pub"))
         .await
@@ -287,7 +282,6 @@ async fn resubscribe_upgrades_qos() {
         .await
         .expect("subscribe QoS0"); // QoS 0
     let _ = tokio::time::timeout(Duration::from_millis(500), el_sub.poll()).await;
-    tokio::time::sleep(Duration::from_millis(100)).await;
 
     // Re-subscribe at QoS 1
     sub_c
@@ -295,7 +289,6 @@ async fn resubscribe_upgrades_qos() {
         .await
         .expect("re-subscribe QoS1");
     let _ = tokio::time::timeout(Duration::from_millis(500), el_sub.poll()).await;
-    tokio::time::sleep(Duration::from_millis(100)).await;
 
     let (pub_c, mut el_pub) = connect(connect_options(port, "tf-upqos-pub"))
         .await
@@ -334,7 +327,6 @@ async fn unsubscribe_followed_by_resubscribe() {
     ));
     sub_c.subscribe(sub("tf/unsub")).await.expect("subscribe");
     let _ = tokio::time::timeout(Duration::from_millis(500), el_sub.poll()).await;
-    tokio::time::sleep(Duration::from_millis(150)).await;
 
     let (pub_c, mut el_pub) = connect(connect_options(port, "tf-unsub-pub"))
         .await
@@ -369,7 +361,6 @@ async fn unsubscribe_followed_by_resubscribe() {
         .await
         .expect("unsubscribe");
     let _ = tokio::time::timeout(Duration::from_millis(500), el_sub.poll()).await;
-    tokio::time::sleep(Duration::from_millis(150)).await;
 
     pub_c
         .publish(msg("tf/unsub", b"second", Qos::AtMostOnce))
@@ -388,7 +379,6 @@ async fn unsubscribe_followed_by_resubscribe() {
         .await
         .expect("re-subscribe");
     let _ = tokio::time::timeout(Duration::from_millis(500), el_sub.poll()).await;
-    tokio::time::sleep(Duration::from_millis(150)).await;
     pub_c
         .publish(msg("tf/unsub", b"third", Qos::AtMostOnce))
         .await

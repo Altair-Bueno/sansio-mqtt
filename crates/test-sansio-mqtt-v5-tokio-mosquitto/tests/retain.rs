@@ -440,7 +440,6 @@ async fn retain_as_published_preserves_retain_flag() {
         .await
         .expect("subscribe");
     let _ = tokio::time::timeout(Duration::from_millis(500), el_sub.poll()).await;
-    tokio::time::sleep(Duration::from_millis(150)).await;
 
     pub_c
         .publish(msg_retain("test/retain/rap", b"value", Qos::AtMostOnce))

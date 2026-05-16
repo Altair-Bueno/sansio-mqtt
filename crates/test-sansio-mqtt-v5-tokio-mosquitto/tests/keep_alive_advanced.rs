@@ -59,8 +59,9 @@ async fn traffic_resets_keep_alive_deadline() {
         .await
         .expect("publish");
 
-    // Poll past the original 2s deadline — connection must still be alive
-    let result = tokio::time::timeout(Duration::from_millis(800), el.poll()).await;
+    // Poll for up to 2s past the original keep-alive deadline — connection must
+    // still be alive
+    let result = tokio::time::timeout(Duration::from_millis(2000), el.poll()).await;
     match result {
         Err(_elapsed) => { /* success: alive past 2s deadline */ }
         Ok(Err(e)) => panic!("connection dropped after traffic reset: {e:?}"),
