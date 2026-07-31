@@ -39,12 +39,6 @@ pub struct ClientSession {
     pub(crate) next_packet_id: u16,
 }
 
-impl ClientSession {
-    pub fn clear(&mut self) {
-        *self = Self::default();
-    }
-}
-
 impl Default for ClientSession {
     fn default() -> Self {
         Self {

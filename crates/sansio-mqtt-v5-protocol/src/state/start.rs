@@ -45,7 +45,7 @@ pub(crate) fn store_connect_options_and_enqueue_open_socket<Time>(
     limits::recompute_effective_limits(settings, scratchpad);
     if scratchpad.pending_connect_options.clean_start {
         // [MQTT-3.1.2-4] Clean Start=1 starts a new Session.
-        session.clear();
+        *session = ClientSession::default();
     }
     scratchpad.session_should_persist = scratchpad
         .pending_connect_options
