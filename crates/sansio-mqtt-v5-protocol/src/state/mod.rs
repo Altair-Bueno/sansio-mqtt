@@ -4,8 +4,6 @@ pub(crate) mod disconnected;
 pub(crate) mod start;
 pub(crate) use connected::Connected;
 pub(crate) use connecting::Connecting;
-use core::ops::Add;
-use core::time::Duration;
 pub(crate) use disconnected::Disconnected;
 pub(crate) use start::Start;
 
@@ -16,6 +14,7 @@ use crate::session::ClientSession;
 use crate::types::ClientSettings;
 use crate::types::DriverEventIn;
 use crate::types::Error;
+use crate::types::ProtocolTime;
 use crate::types::UserWriteIn;
 
 /// The MQTT client lifecycle as a type-state FSM.
@@ -42,6 +41,7 @@ pub(crate) trait StateHandler<Time>: Sized {
         session: &mut ClientSession,
         scratchpad: &mut ClientScratchpad<Time>,
         packet: ControlPacket,
+        received_at: Time,
     ) -> (ClientState, Result<(), Error>);
 
     fn handle_write(
@@ -78,7 +78,7 @@ pub(crate) trait StateHandler<Time>: Sized {
 
 impl<Time> StateHandler<Time> for ClientState
 where
-    Time: Ord + Add<Duration, Output = Time> + Copy,
+    Time: ProtocolTime,
 {
     fn handle_control_packet(
         self,
@@ -86,18 +86,21 @@ where
         session: &mut ClientSession,
         scratchpad: &mut ClientScratchpad<Time>,
         packet: ControlPacket,
+        received_at: Time,
     ) -> (ClientState, Result<(), Error>) {
         match self {
             ClientState::Transitioning => unreachable!("FSM observed mid-transition"),
-            ClientState::Start(x) => x.handle_control_packet(settings, session, scratchpad, packet),
+            ClientState::Start(x) => {
+                x.handle_control_packet(settings, session, scratchpad, packet, received_at)
+            }
             ClientState::Disconnected(x) => {
-                x.handle_control_packet(settings, session, scratchpad, packet)
+                x.handle_control_packet(settings, session, scratchpad, packet, received_at)
             }
             ClientState::Connecting(x) => {
-                x.handle_control_packet(settings, session, scratchpad, packet)
+                x.handle_control_packet(settings, session, scratchpad, packet, received_at)
             }
             ClientState::Connected(x) => {
-                x.handle_control_packet(settings, session, scratchpad, packet)
+                x.handle_control_packet(settings, session, scratchpad, packet, received_at)
             }
         }
     }

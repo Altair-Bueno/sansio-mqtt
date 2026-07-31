@@ -5,9 +5,9 @@ use crate::session::ClientSession;
 use crate::session::InboundInflightState;
 use crate::session::OutboundInflightState;
 use crate::session_ops;
-use crate::state::disconnected::Disconnected;
 use crate::state::ClientState;
 use crate::state::StateHandler;
+use crate::state::disconnected::Disconnected;
 use crate::types::BrokerMessage;
 use crate::types::ClientMessage;
 use crate::types::ClientSettings;
@@ -16,10 +16,10 @@ use crate::types::DriverEventOut;
 use crate::types::Error;
 use crate::types::InboundMessageId;
 use crate::types::IncomingRejectReason;
+use crate::types::ProtocolTime;
 use crate::types::UserWriteIn;
 use crate::types::UserWriteOut;
 use alloc::vec::Vec;
-use core::ops::Add;
 use core::time::Duration;
 use sansio_mqtt_v5_types::ControlPacket;
 use sansio_mqtt_v5_types::Disconnect;
@@ -250,7 +250,7 @@ fn build_outbound_publish(
 
 impl<Time> StateHandler<Time> for Connected
 where
-    Time: Ord + Add<Duration, Output = Time> + Copy,
+    Time: ProtocolTime,
 {
     fn handle_control_packet(
         self,
@@ -258,6 +258,7 @@ where
         session: &mut ClientSession,
         scratchpad: &mut ClientScratchpad<Time>,
         packet: ControlPacket,
+        _received_at: Time,
     ) -> (ClientState, Result<(), Error>) {
         match packet {
             ControlPacket::Publish(mut publish) => {
@@ -487,7 +488,12 @@ where
                     }
                 }
             }
-            ControlPacket::PingResp(_) => (ClientState::Connected(self), Ok(())),
+            ControlPacket::PingResp(_) => {
+                // [MQTT-3.12.4-1] PINGRESP answers the outstanding PINGREQ, so the
+                // keep-alive watchdog must not treat the connection as dead.
+                scratchpad.keep_alive_ping_outstanding = false;
+                (ClientState::Connected(self), Ok(()))
+            }
             ControlPacket::SubAck(suback) => {
                 // [MQTT-3.8.4-1] SUBACK MUST correspond to an outstanding SUBSCRIBE Packet
                 // Identifier.
@@ -882,13 +888,11 @@ where
             );
         }
 
-        // Schedule the next keep-alive check one full interval from now.
-        let next_deadline = now + Duration::from_secs(interval_secs.get() as u64);
-
         if scratchpad.keep_alive_saw_network_activity {
-            // [MQTT-3.1.2-22] Any control packet traffic resets keep-alive idle detection.
+            // [MQTT-3.1.2-22] Any control packet traffic resets keep-alive idle
+            // detection. Schedule the next check one full interval from now.
             scratchpad.keep_alive_saw_network_activity = false;
-            scratchpad.next_timeout = Some(next_deadline);
+            scratchpad.arm_keep_alive_deadline(now, u64::from(interval_secs.get()));
             return (ClientState::Connected(self), Ok(()));
         }
 
@@ -905,7 +909,7 @@ where
                 // half-interval deadline. A minimum of 1 second is enforced so the deadline
                 // always advances even for a keep-alive of 1 second.
                 let half_interval = (interval_secs.get() / 2).max(1);
-                scratchpad.next_timeout = Some(now + Duration::from_secs(half_interval as u64));
+                scratchpad.arm_keep_alive_deadline(now, u64::from(half_interval));
                 (ClientState::Connected(self), Ok(()))
             }
             Err(e) => (ClientState::Connected(self), Err(e)),

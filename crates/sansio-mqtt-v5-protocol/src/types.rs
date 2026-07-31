@@ -1,6 +1,7 @@
 use alloc::vec::Vec;
 use bytes::Bytes;
 use core::num::NonZero;
+use core::ops::Add;
 use core::time::Duration;
 pub use sansio_mqtt_v5_types::Auth as AuthPacket;
 pub use sansio_mqtt_v5_types::AuthReasonCode;
@@ -20,10 +21,32 @@ pub use sansio_mqtt_v5_types::Subscription;
 pub use sansio_mqtt_v5_types::Topic;
 pub use sansio_mqtt_v5_types::Utf8String;
 
+/// Instant-like time contract for [`Client`](crate::Client).
+///
+/// The protocol never reads a clock: the driver supplies instants through
+/// [`IncomingData::received_at`] and `handle_timeout(now)`, and receives
+/// deadlines back through `poll_timeout()`. The protocol only *advances*
+/// instants by a [`core::time::Duration`] when scheduling keep-alive
+/// deadlines, hence the `Add<Duration>` requirement.
+///
+/// The blanket implementation covers any ordered, copyable instant type that
+/// can add a `Duration`: `std::time::Instant`, `tokio::time::Instant`,
+/// [`core::time::Duration`] (as time since an arbitrary epoch), and similar
+/// monotonic-instant types on embedded platforms.
+pub trait ProtocolTime: Ord + Add<Duration, Output = Self> + Copy {}
+
+impl<T> ProtocolTime for T where T: Ord + Add<Duration, Output = T> + Copy {}
+
 /// A chunk of bytes received from the network together with the instant they
-/// arrived. Passing the arrival time lets the protocol update the keep-alive
-/// deadline precisely from the packet timestamp rather than from the next
-/// `handle_timeout` fire time.
+/// arrived.
+///
+/// Timestamping inbound data is the standard sans-IO pattern for feeding
+/// time into a protocol alongside I/O (compare `quinn`'s `handle_input(now,
+/// …)` and `str0m`'s `Input(now, …)`): the driver reads the clock, the
+/// protocol only stores and compares the instants it is given. Passing the
+/// arrival time lets the protocol arm the keep-alive deadline precisely from
+/// the packet timestamp rather than from the next `handle_timeout` fire
+/// time.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct IncomingData<Time> {
     pub bytes: Bytes,

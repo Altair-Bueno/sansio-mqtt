@@ -1,15 +1,14 @@
 use crate::scratchpad::ClientScratchpad;
 use crate::session::ClientSession;
-use crate::state::connecting::Connecting;
 use crate::state::ClientState;
 use crate::state::StateHandler;
+use crate::state::connecting::Connecting;
 use crate::types::ClientSettings;
 use crate::types::DriverEventIn;
 use crate::types::DriverEventOut;
 use crate::types::Error;
+use crate::types::ProtocolTime;
 use crate::types::UserWriteIn;
-use core::ops::Add;
-use core::time::Duration;
 use sansio_mqtt_v5_types::ControlPacket;
 
 #[allow(dead_code)]
@@ -18,7 +17,7 @@ pub(crate) struct Disconnected;
 
 impl<Time> StateHandler<Time> for Disconnected
 where
-    Time: Ord + Add<Duration, Output = Time> + Copy,
+    Time: ProtocolTime,
 {
     fn handle_control_packet(
         self,
@@ -26,6 +25,7 @@ where
         _session: &mut ClientSession,
         _scratchpad: &mut ClientScratchpad<Time>,
         _packet: ControlPacket,
+        _received_at: Time,
     ) -> (ClientState, Result<(), Error>) {
         (ClientState::Disconnected(self), Err(Error::ProtocolError))
     }

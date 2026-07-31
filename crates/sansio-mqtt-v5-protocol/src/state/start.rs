@@ -3,19 +3,18 @@ use crate::queues;
 use crate::scratchpad::ClientScratchpad;
 use crate::session::ClientSession;
 use crate::session_ops;
-use crate::state::connecting::Connecting;
-use crate::state::disconnected::Disconnected;
 use crate::state::ClientState;
 use crate::state::StateHandler;
+use crate::state::connecting::Connecting;
+use crate::state::disconnected::Disconnected;
 use crate::types::ClientSettings;
 use crate::types::ConnectionOptions;
 use crate::types::DriverEventIn;
 use crate::types::DriverEventOut;
 use crate::types::Error;
+use crate::types::ProtocolTime;
 use crate::types::UserWriteIn;
 use crate::types::UserWriteOut;
-use core::ops::Add;
-use core::time::Duration;
 use sansio_mqtt_v5_types::ControlPacket;
 use sansio_mqtt_v5_types::DisconnectReasonCode;
 
@@ -39,7 +38,7 @@ pub(crate) fn store_connect_options_and_enqueue_open_socket<Time>(
     scratchpad: &mut ClientScratchpad<Time>,
     options: ConnectionOptions,
 ) where
-    Time: Ord + Add<Duration, Output = Time> + Copy,
+    Time: ProtocolTime,
 {
     scratchpad.pending_connect_options = options;
     limits::recompute_effective_limits(settings, scratchpad);
@@ -66,7 +65,7 @@ pub(crate) fn store_connect_options_and_enqueue_open_socket<Time>(
 
 impl<Time> StateHandler<Time> for Start
 where
-    Time: Ord + Add<Duration, Output = Time> + Copy,
+    Time: ProtocolTime,
 {
     fn handle_control_packet(
         self,
@@ -74,6 +73,7 @@ where
         session: &mut ClientSession,
         scratchpad: &mut ClientScratchpad<Time>,
         _packet: ControlPacket,
+        _received_at: Time,
     ) -> (ClientState, Result<(), Error>) {
         let _ = queues::fail_protocol_and_disconnect(
             settings,

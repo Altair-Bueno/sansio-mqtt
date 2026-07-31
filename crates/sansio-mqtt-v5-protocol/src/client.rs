@@ -9,18 +9,17 @@ use crate::types::DriverEventIn;
 use crate::types::DriverEventOut;
 use crate::types::Error;
 use crate::types::IncomingData;
+use crate::types::ProtocolTime;
 use crate::types::UserWriteIn;
 use crate::types::UserWriteOut;
 use bytes::BytesMut;
-use core::ops::Add;
-use core::time::Duration;
 use sansio::Protocol;
 use sansio_mqtt_v5_types::ControlPacket;
 use sansio_mqtt_v5_types::DisconnectReasonCode;
 use sansio_mqtt_v5_types::ParserSettings;
+use winnow::Parser;
 use winnow::error::ErrMode;
 use winnow::stream::Partial;
-use winnow::Parser;
 
 #[derive(Debug)]
 pub struct Client<Time>
@@ -95,7 +94,7 @@ impl<Time> Client<Time> {
 
 impl<Time> Protocol<IncomingData<Time>, UserWriteIn, DriverEventIn> for Client<Time>
 where
-    Time: Ord + Add<Duration, Output = Time> + Copy,
+    Time: ProtocolTime,
 {
     type Rout = UserWriteOut;
     type Wout = bytes::Bytes;
@@ -125,20 +124,9 @@ where
             {
                 Ok(packet) => {
                     slice = input.into_inner();
-                    if matches!(packet, ControlPacket::PingResp(_)) {
-                        self.scratchpad.keep_alive_ping_outstanding = false;
-                    }
-                    let is_connack = matches!(packet, ControlPacket::ConnAck(_));
-                    self.dispatch(|s, set, ses, sp| s.handle_control_packet(set, ses, sp, packet))?;
-                    // [MQTT-3.1.2-22] Arm the keep-alive timer on CONNACK using the
-                    // exact packet arrival time so the first deadline fires one interval
-                    // after the session was established without a separate driver event.
-                    if is_connack {
-                        if let Some(interval_secs) = self.scratchpad.keep_alive_interval_secs {
-                            self.scratchpad.next_timeout =
-                                Some(received_at + Duration::from_secs(interval_secs.get() as u64));
-                        }
-                    }
+                    self.dispatch(|s, set, ses, sp| {
+                        s.handle_control_packet(set, ses, sp, packet, received_at)
+                    })?;
                 }
                 Err(ErrMode::Incomplete(_)) => {
                     break;

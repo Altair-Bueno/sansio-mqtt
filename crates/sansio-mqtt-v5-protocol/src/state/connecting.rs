@@ -3,20 +3,19 @@ use crate::queues;
 use crate::scratchpad::ClientScratchpad;
 use crate::session::ClientSession;
 use crate::session_ops;
-use crate::state::connected::Connected;
-use crate::state::disconnected::Disconnected;
 use crate::state::ClientState;
 use crate::state::StateHandler;
+use crate::state::connected::Connected;
+use crate::state::disconnected::Disconnected;
 use crate::types::ClientSettings;
 use crate::types::ConnectionOptions;
 use crate::types::DriverEventIn;
 use crate::types::DriverEventOut;
 use crate::types::Error;
+use crate::types::ProtocolTime;
 use crate::types::UserWriteIn;
 use crate::types::UserWriteOut;
 use core::num::NonZero;
-use core::ops::Add;
-use core::time::Duration;
 use sansio_mqtt_v5_types::BinaryData;
 use sansio_mqtt_v5_types::ConnAckKind;
 use sansio_mqtt_v5_types::ConnackReasonCode;
@@ -132,7 +131,7 @@ pub(crate) fn on_socket_connected<Time>(
     scratchpad: &mut ClientScratchpad<Time>,
 ) -> (ClientState, Result<(), Error>)
 where
-    Time: Ord + Add<Duration, Output = Time> + Copy,
+    Time: ProtocolTime,
 {
     limits::reset_negotiated_limits(settings, session, scratchpad);
     let connect = match build_connect(settings, &connecting.pending_connect_options) {
@@ -168,7 +167,7 @@ fn on_socket_closed_or_error<Time>(
     is_error: bool,
 ) -> (ClientState, Result<(), Error>)
 where
-    Time: Ord + Add<Duration, Output = Time> + Copy,
+    Time: ProtocolTime,
 {
     scratchpad.read_buffer.clear();
     session_ops::reset_keepalive(scratchpad);
@@ -202,9 +201,10 @@ fn on_connack_success<Time>(
     session: &mut ClientSession,
     scratchpad: &mut ClientScratchpad<Time>,
     connack: sansio_mqtt_v5_types::ConnAck,
+    received_at: Time,
 ) -> (ClientState, Result<(), Error>)
 where
-    Time: Ord + Add<Duration, Output = Time> + Copy,
+    Time: ProtocolTime,
 {
     scratchpad.negotiated_receive_maximum = connack
         .properties
@@ -303,12 +303,19 @@ where
         scratchpad.read_queue.push_back(UserWriteOut::Connected);
     }
 
+    // [MQTT-3.1.2-22] Arm the keep-alive timer from the CONNACK arrival
+    // instant so the first deadline fires one interval after the session was
+    // established.
+    if let Some(interval_secs) = scratchpad.keep_alive_interval_secs {
+        scratchpad.arm_keep_alive_deadline(received_at, u64::from(interval_secs.get()));
+    }
+
     (ClientState::Connected(Connected), Ok(()))
 }
 
 impl<Time> StateHandler<Time> for Connecting
 where
-    Time: Ord + Add<Duration, Output = Time> + Copy,
+    Time: ProtocolTime,
 {
     fn handle_control_packet(
         self,
@@ -316,6 +323,7 @@ where
         session: &mut ClientSession,
         scratchpad: &mut ClientScratchpad<Time>,
         packet: ControlPacket,
+        received_at: Time,
     ) -> (ClientState, Result<(), Error>) {
         match packet {
             ControlPacket::ConnAck(connack) => {
@@ -326,7 +334,7 @@ where
                             reason_code: ConnackReasonCode::Success
                         }
                 ) {
-                    on_connack_success(self, settings, session, scratchpad, connack)
+                    on_connack_success(self, settings, session, scratchpad, connack, received_at)
                 } else {
                     limits::reset_negotiated_limits(settings, session, scratchpad);
                     scratchpad

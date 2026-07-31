@@ -1,10 +1,12 @@
 use crate::types::ConnectionOptions;
 use crate::types::DriverEventOut;
+use crate::types::ProtocolTime;
 use crate::types::UserWriteOut;
 use alloc::collections::vec_deque::VecDeque;
 use bytes::Bytes;
 use bytes::BytesMut;
 use core::num::NonZero;
+use core::time::Duration;
 use sansio_mqtt_v5_types::MaximumQoS;
 
 #[derive(Debug)]
@@ -48,6 +50,19 @@ where
     pub(crate) write_queue: VecDeque<Bytes>,
     pub(crate) action_queue: VecDeque<DriverEventOut>,
     pub(crate) next_timeout: Option<Time>,
+}
+
+impl<Time> ClientScratchpad<Time>
+where
+    Time: ProtocolTime,
+{
+    /// Schedules the next keep-alive deadline `secs` seconds after `from`.
+    ///
+    /// The only place in the crate where an instant is advanced; everything
+    /// else stores and compares `Time` values supplied by the driver.
+    pub(crate) fn arm_keep_alive_deadline(&mut self, from: Time, secs: u64) {
+        self.next_timeout = Some(from + Duration::from_secs(secs));
+    }
 }
 
 impl<Time> Default for ClientScratchpad<Time>
