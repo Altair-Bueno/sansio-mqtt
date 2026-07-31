@@ -132,7 +132,7 @@ impl PublishProperties {
                                         _ => {
                                             return Err(PropertiesError::from(
                                                 DuplicatedPropertyError { property_type },
-                                            ))
+                                            ));
                                         }
                                     }
                                 }
@@ -142,7 +142,7 @@ impl PublishProperties {
                                         _ => {
                                             return Err(PropertiesError::from(
                                                 DuplicatedPropertyError { property_type },
-                                            ))
+                                            ));
                                         }
                                     }
                                 }
@@ -151,7 +151,7 @@ impl PublishProperties {
                                     _ => {
                                         return Err(PropertiesError::from(
                                             DuplicatedPropertyError { property_type },
-                                        ))
+                                        ));
                                     }
                                 },
                                 Property::ResponseTopic(value) => {
@@ -160,7 +160,7 @@ impl PublishProperties {
                                         _ => {
                                             return Err(PropertiesError::from(
                                                 DuplicatedPropertyError { property_type },
-                                            ))
+                                            ));
                                         }
                                     }
                                 }
@@ -170,7 +170,7 @@ impl PublishProperties {
                                         _ => {
                                             return Err(PropertiesError::from(
                                                 DuplicatedPropertyError { property_type },
-                                            ))
+                                            ));
                                         }
                                     }
                                 }
@@ -190,7 +190,7 @@ impl PublishProperties {
                                         _ => {
                                             return Err(PropertiesError::from(
                                                 DuplicatedPropertyError { property_type },
-                                            ))
+                                            ));
                                         }
                                     }
                                 }
@@ -207,7 +207,7 @@ impl PublishProperties {
                                 _ => {
                                     return Err(PropertiesError::from(UnsupportedPropertyError {
                                         property_type,
-                                    }))
+                                    }));
                                 }
                             };
                             Ok(properties)

@@ -104,7 +104,7 @@ impl DisconnectProperties {
                                         _ => {
                                             return Err(PropertiesError::from(
                                                 DuplicatedPropertyError { property_type },
-                                            ))
+                                            ));
                                         }
                                     }
                                 }
@@ -114,7 +114,7 @@ impl DisconnectProperties {
                                         _ => {
                                             return Err(PropertiesError::from(
                                                 DuplicatedPropertyError { property_type },
-                                            ))
+                                            ));
                                         }
                                     }
                                 }
@@ -134,14 +134,14 @@ impl DisconnectProperties {
                                         _ => {
                                             return Err(PropertiesError::from(
                                                 DuplicatedPropertyError { property_type },
-                                            ))
+                                            ));
                                         }
                                     }
                                 }
                                 _ => {
                                     return Err(PropertiesError::from(UnsupportedPropertyError {
                                         property_type,
-                                    }))
+                                    }));
                                 }
                             };
                             Ok(properties)

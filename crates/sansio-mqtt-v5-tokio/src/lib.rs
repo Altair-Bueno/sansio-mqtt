@@ -7,8 +7,8 @@ mod event;
 mod event_loop;
 
 pub use client::Client;
-pub use connect::connect;
 pub use connect::ConnectOptions;
+pub use connect::connect;
 pub use error::ClientError;
 pub use error::ConnectError;
 pub use error::EventLoopError;

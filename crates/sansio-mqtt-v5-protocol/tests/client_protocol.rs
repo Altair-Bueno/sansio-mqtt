@@ -51,8 +51,8 @@ use sansio_mqtt_v5_types::RetainHandling;
 use sansio_mqtt_v5_types::Subscription;
 use sansio_mqtt_v5_types::Topic;
 use sansio_mqtt_v5_types::Utf8String;
-use winnow::error::ContextError;
 use winnow::Parser;
+use winnow::error::ContextError;
 
 fn encode_packet(packet: &ControlPacket) -> Bytes {
     let mut out = Vec::new();

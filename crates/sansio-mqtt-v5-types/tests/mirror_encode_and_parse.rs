@@ -6,8 +6,8 @@ use core::num::NonZero;
 use encode::Encodable;
 use encode::EncodableSize;
 use sansio_mqtt_v5_types::*;
-use winnow::error::ContextError;
 use winnow::Parser;
+use winnow::error::ContextError;
 
 #[rstest::fixture]
 fn settings() -> ParserSettings {

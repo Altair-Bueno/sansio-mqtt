@@ -12,8 +12,8 @@ use encode::Encodable;
 use encode::EncodableSize;
 use rstest::rstest;
 use sansio_mqtt_v5_types::*;
-use winnow::error::ContextError;
 use winnow::Parser;
+use winnow::error::ContextError;
 
 #[test]
 fn value_types_support_hash_and_order_where_semantic() {

@@ -1,10 +1,10 @@
 pub use sansio_mqtt_v5_tokio::*;
-use testcontainers::core::IntoContainerPort;
-use testcontainers::core::WaitFor;
-use testcontainers::runners::AsyncRunner;
 use testcontainers::ContainerAsync;
 use testcontainers::GenericImage;
 use testcontainers::ImageExt;
+use testcontainers::core::IntoContainerPort;
+use testcontainers::core::WaitFor;
+use testcontainers::runners::AsyncRunner;
 
 const MOSQUITTO_IMAGE: &str = "eclipse-mosquitto";
 const MOSQUITTO_TAG: &str = "2";
@@ -34,8 +34,7 @@ pub async fn anonymous_broker() -> (ContainerAsync<GenericImage>, u16) {
 
 /// Starts an authenticated Mosquitto 2 broker (requires testuser/testpassword).
 pub async fn authenticated_broker() -> (ContainerAsync<GenericImage>, u16) {
-    let config =
-        "listener 1883\nallow_anonymous false\npassword_file /mosquitto/config/passwd\nlog_dest stdout\n";
+    let config = "listener 1883\nallow_anonymous false\npassword_file /mosquitto/config/passwd\nlog_dest stdout\n";
 
     // testcontainers copies files with 0644 permissions, but Mosquitto 2.0.18+
     // refuses world-readable passwd files. Override entrypoint to /bin/sh so

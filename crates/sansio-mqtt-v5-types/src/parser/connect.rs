@@ -351,7 +351,7 @@ impl WillProperties {
                                         _ => {
                                             return Err(PropertiesError::from(
                                                 DuplicatedPropertyError { property_type },
-                                            ))
+                                            ));
                                         }
                                     }
                                 }
@@ -361,7 +361,7 @@ impl WillProperties {
                                         _ => {
                                             return Err(PropertiesError::from(
                                                 DuplicatedPropertyError { property_type },
-                                            ))
+                                            ));
                                         }
                                     }
                                 }
@@ -371,7 +371,7 @@ impl WillProperties {
                                         _ => {
                                             return Err(PropertiesError::from(
                                                 DuplicatedPropertyError { property_type },
-                                            ))
+                                            ));
                                         }
                                     }
                                 }
@@ -381,7 +381,7 @@ impl WillProperties {
                                         _ => {
                                             return Err(PropertiesError::from(
                                                 DuplicatedPropertyError { property_type },
-                                            ))
+                                            ));
                                         }
                                     }
                                 }
@@ -391,7 +391,7 @@ impl WillProperties {
                                         _ => {
                                             return Err(PropertiesError::from(
                                                 DuplicatedPropertyError { property_type },
-                                            ))
+                                            ));
                                         }
                                     }
                                 }
@@ -401,7 +401,7 @@ impl WillProperties {
                                         _ => {
                                             return Err(PropertiesError::from(
                                                 DuplicatedPropertyError { property_type },
-                                            ))
+                                            ));
                                         }
                                     }
                                 }
@@ -418,7 +418,7 @@ impl WillProperties {
                                 _ => {
                                     return Err(PropertiesError::from(UnsupportedPropertyError {
                                         property_type,
-                                    }))
+                                    }));
                                 }
                             };
                             Ok(properties)

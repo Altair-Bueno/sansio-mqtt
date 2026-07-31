@@ -123,7 +123,7 @@ impl UnsubscribeProperties {
                                 _ => {
                                     return Err(PropertiesError::from(UnsupportedPropertyError {
                                         property_type,
-                                    }))
+                                    }));
                                 }
                             };
                             Ok(properties)
