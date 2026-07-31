@@ -7,12 +7,12 @@ pub fn flags<Input, BitError, ByteError>(
     input: &mut Input,
 ) -> Result<(bool, bool, bool, Qos, bool, bool), ByteError>
 where
-    BitError: ParserError<(Input, usize)>
+    BitError: ParserError<bits::Bits<Input>>
         + ErrorConvert<ByteError>
-        + FromExternalError<(Input, usize), InvalidQosError>
-        + AddContext<(Input, usize), StrContext>,
+        + FromExternalError<bits::Bits<Input>, InvalidQosError>
+        + AddContext<bits::Bits<Input>, StrContext>,
     ByteError: ParserError<Input>,
-    (Input, usize): Stream,
+    bits::Bits<Input>: Stream,
     Input: Stream<Token = u8> + StreamIsPartial + Clone,
 {
     let (username_flag, password_flag, will_retain, will_qos, will_flag, clean_start, _) =
@@ -57,10 +57,10 @@ impl Connect {
             + FromExternalError<ByteInput, TryFromIntError>
             + FromExternalError<ByteInput, BinaryDataError>
             + AddContext<ByteInput, StrContext>,
-        BitError: ParserError<(ByteInput, usize)>
+        BitError: ParserError<bits::Bits<ByteInput>>
             + ErrorConvert<ByteError>
-            + FromExternalError<(ByteInput, usize), InvalidQosError>
-            + AddContext<(ByteInput, usize), StrContext>,
+            + FromExternalError<bits::Bits<ByteInput>, InvalidQosError>
+            + AddContext<bits::Bits<ByteInput>, StrContext>,
     {
         combinator::trace(type_name::<Self>(), move |input: &mut ByteInput| {
             let (
@@ -145,10 +145,10 @@ impl ConnectHeaderFlags {
     /// ([§3.1.1](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901034),
     /// [MQTT-3.1.1-1]).
     #[inline]
-    pub fn parser<Input, Error>(input: &mut (Input, usize)) -> Result<Self, Error>
+    pub fn parser<Input, Error>(input: &mut bits::Bits<Input>) -> Result<Self, Error>
     where
         Input: Stream<Token = u8> + StreamIsPartial + Clone,
-        Error: ParserError<(Input, usize)> + AddContext<(Input, usize), StrContext>,
+        Error: ParserError<bits::Bits<Input>> + AddContext<bits::Bits<Input>, StrContext>,
     {
         combinator::trace(type_name::<Self>(), bits::pattern(0u8, 4usize).value(Self))
             .context(StrContext::Label(type_name::<Self>()))

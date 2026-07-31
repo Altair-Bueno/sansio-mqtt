@@ -7,7 +7,7 @@ rust-version.workspace = true
 [features]
 
 [dependencies]
-winnow = { workspace = true, features = ["alloc"] }
+winnow = { workspace = true, features = ["alloc", "binary"] }
 strum = { workspace = true, features = ["derive"] }
 bytes = { workspace = true }
 thiserror = { workspace = true }

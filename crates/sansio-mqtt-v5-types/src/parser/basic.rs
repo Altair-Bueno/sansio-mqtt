@@ -191,12 +191,12 @@ impl ControlPacketType {
     /// Parses the 4-bit Control Packet Type nibble from the Fixed
     /// Header ([§2.1.2](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901022)).
     #[inline]
-    pub fn parser<Input, Error>(input: &mut (Input, usize)) -> Result<Self, Error>
+    pub fn parser<Input, Error>(input: &mut bits::Bits<Input>) -> Result<Self, Error>
     where
         Input: Stream<Token = u8> + StreamIsPartial + Clone,
-        Error: ParserError<(Input, usize)>
-            + FromExternalError<(Input, usize), InvalidControlPacketTypeError>
-            + AddContext<(Input, usize), StrContext>,
+        Error: ParserError<bits::Bits<Input>>
+            + FromExternalError<bits::Bits<Input>, InvalidControlPacketTypeError>
+            + AddContext<bits::Bits<Input>, StrContext>,
     {
         combinator::trace(
             type_name::<Self>(),
@@ -214,12 +214,12 @@ impl Qos {
     /// Parses a 2-bit QoS field ([§4.3](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901234),
     /// [MQTT-3.3.1-4]). A value of 3 yields Malformed Packet.
     #[inline]
-    pub fn parser<Input, Error>(input: &mut (Input, usize)) -> Result<Self, Error>
+    pub fn parser<Input, Error>(input: &mut bits::Bits<Input>) -> Result<Self, Error>
     where
         Input: Stream<Token = u8> + StreamIsPartial + Clone,
-        Error: ParserError<(Input, usize)>
-            + FromExternalError<(Input, usize), InvalidQosError>
-            + AddContext<(Input, usize), StrContext>,
+        Error: ParserError<bits::Bits<Input>>
+            + FromExternalError<bits::Bits<Input>, InvalidQosError>
+            + AddContext<bits::Bits<Input>, StrContext>,
     {
         combinator::trace(
             type_name::<Self>(),
@@ -257,12 +257,12 @@ impl RetainHandling {
     /// Options byte ([§3.8.3.1](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901169),
     /// [MQTT-3.8.3-4]).
     #[inline]
-    pub fn parser<Input, Error>(input: &mut (Input, usize)) -> Result<Self, Error>
+    pub fn parser<Input, Error>(input: &mut bits::Bits<Input>) -> Result<Self, Error>
     where
         Input: Stream<Token = u8> + StreamIsPartial + Clone,
-        Error: ParserError<(Input, usize)>
-            + FromExternalError<(Input, usize), InvalidRetainHandlingError>
-            + AddContext<(Input, usize), StrContext>,
+        Error: ParserError<bits::Bits<Input>>
+            + FromExternalError<bits::Bits<Input>, InvalidRetainHandlingError>
+            + AddContext<bits::Bits<Input>, StrContext>,
     {
         combinator::trace(
             type_name::<Self>(),
@@ -291,11 +291,11 @@ impl Subscription {
             + FromExternalError<ByteInput, Utf8Error>
             + AddContext<ByteInput, StrContext>
             + FromExternalError<ByteInput, Utf8StringError>,
-        BitError: ParserError<(ByteInput, usize)>
+        BitError: ParserError<bits::Bits<ByteInput>>
             + ErrorConvert<ByteError>
-            + FromExternalError<(ByteInput, usize), InvalidQosError>
-            + FromExternalError<(ByteInput, usize), InvalidRetainHandlingError>
-            + AddContext<(ByteInput, usize), StrContext>,
+            + FromExternalError<bits::Bits<ByteInput>, InvalidQosError>
+            + FromExternalError<bits::Bits<ByteInput>, InvalidRetainHandlingError>
+            + AddContext<bits::Bits<ByteInput>, StrContext>,
     {
         combinator::trace(
             type_name::<Self>(),

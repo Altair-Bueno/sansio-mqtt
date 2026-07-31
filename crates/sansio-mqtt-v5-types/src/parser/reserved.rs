@@ -4,10 +4,10 @@ impl ReservedHeaderFlags {
     /// Parses the 4-bit Fixed Header flags for the Reserved (0) Control Packet
     /// type ([§2.1.2](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901022)).
     #[inline]
-    pub fn parser<Input, Error>(input: &mut (Input, usize)) -> Result<Self, Error>
+    pub fn parser<Input, Error>(input: &mut bits::Bits<Input>) -> Result<Self, Error>
     where
         Input: Stream<Token = u8> + StreamIsPartial + Clone,
-        Error: ParserError<(Input, usize)> + AddContext<(Input, usize), StrContext>,
+        Error: ParserError<bits::Bits<Input>> + AddContext<bits::Bits<Input>, StrContext>,
     {
         combinator::trace(type_name::<Self>(), bits::pattern(0u8, 4usize).value(Self))
             .context(StrContext::Label(type_name::<Self>()))

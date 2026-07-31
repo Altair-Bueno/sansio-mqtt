@@ -4,23 +4,28 @@ resolver = "2"
 
 [workspace.package]
 version = "0.1.0"
-edition = "2021"
-rust-version = "1.85.0"
+edition = "2024"
+rust-version = "1.97.0"
 
 [workspace.dependencies]
 sansio-mqtt-v5-protocol = { path = "crates/sansio-mqtt-v5-protocol", default-features = false }
 sansio-mqtt-v5-tokio = { path = "crates/sansio-mqtt-v5-tokio", default-features = false }
 sansio-mqtt-v5-types = { path = "crates/sansio-mqtt-v5-types", default-features = false }
 
+bon = { version = "3.9.3", default-features = false }
+bytes = { version = "1", default-features = false }
+encode = { version = "1.0.0", default-features = false }
+rstest = { version = "0.26.0", default-features = false }
+sansio = { version = "1.0.1", default-features = false }
+strum = { version = "0.28.0", default-features = false }
+tempfile = { version = "3", default-features = false }
+testcontainers = { version = "0.27", default-features = false }
+thiserror = { version = "2", default-features = false }
+tokio = { version = "1", default-features = false }
 tracing = { version = "0.1.41", default-features = false }
 tracing-subscriber = { version = "0.3.23", default-features = false }
-tokio = { version = "1", default-features = false }
-bytes = { version = "1", default-features = false }
-thiserror = { version = "2", default-features = false }
-winnow = { version = "0.7.0", default-features = false }
-strum = { version = "0.27.0", default-features = false }
-encode = { version = "1.0.0", default-features = false }
-rstest = { version = "0.25.0", default-features = false }
-sansio = { version = "1.0.1", default-features = false }
-tempfile = { version = "3", default-features = false }
-testcontainers = { version = "0.23", default-features = false }
+winnow = { version = "1.0.0", default-features = false }
+
+[profile.dev]
+debug = "none"
+opt-level = 1

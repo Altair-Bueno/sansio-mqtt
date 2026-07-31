@@ -7,12 +7,12 @@ impl PublishHeaderFlags {
     ///
     /// Enforces [MQTT-3.3.1-2]: the DUP flag MUST be `0` for QoS 0 packets.
     #[inline]
-    pub fn parser<Input, Error>(input: &mut (Input, usize)) -> Result<Self, Error>
+    pub fn parser<Input, Error>(input: &mut bits::Bits<Input>) -> Result<Self, Error>
     where
         Input: Stream<Token = u8> + StreamIsPartial + Clone,
-        Error: ParserError<(Input, usize)>
-            + FromExternalError<(Input, usize), InvalidQosError>
-            + AddContext<(Input, usize), StrContext>,
+        Error: ParserError<bits::Bits<Input>>
+            + FromExternalError<bits::Bits<Input>, InvalidQosError>
+            + AddContext<bits::Bits<Input>, StrContext>,
     {
         combinator::trace(
             type_name::<Self>(),
@@ -64,7 +64,7 @@ impl Publish {
             + FromExternalError<ByteInput, TryFromIntError>
             + FromExternalError<ByteInput, BinaryDataError>
             + AddContext<ByteInput, StrContext>,
-        BitError: ParserError<(ByteInput, usize)> + ErrorConvert<ByteError>,
+        BitError: ParserError<bits::Bits<ByteInput>> + ErrorConvert<ByteError>,
     {
         combinator::trace(type_name::<Self>(), move |input: &mut ByteInput| {
             let PublishHeaderFlags { kind, retain } = header_flags.clone();

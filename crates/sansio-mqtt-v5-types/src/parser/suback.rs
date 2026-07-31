@@ -4,10 +4,10 @@ impl SubAckHeaderFlags {
     /// ([§3.9.1](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901172),
     /// [MQTT-3.9.1-1]).
     #[inline]
-    pub fn parser<Input, Error>(input: &mut (Input, usize)) -> Result<Self, Error>
+    pub fn parser<Input, Error>(input: &mut bits::Bits<Input>) -> Result<Self, Error>
     where
         Input: Stream<Token = u8> + StreamIsPartial + Clone,
-        Error: ParserError<(Input, usize)> + AddContext<(Input, usize), StrContext>,
+        Error: ParserError<bits::Bits<Input>> + AddContext<bits::Bits<Input>, StrContext>,
     {
         combinator::trace(type_name::<Self>(), bits::pattern(0u8, 4usize).value(Self))
             .context(StrContext::Label(type_name::<Self>()))
@@ -40,7 +40,7 @@ impl SubAck {
             + FromExternalError<ByteInput, TopicError>
             + FromExternalError<ByteInput, BinaryDataError>
             + AddContext<ByteInput, StrContext>,
-        BitError: ParserError<(ByteInput, usize)> + ErrorConvert<ByteError>,
+        BitError: ParserError<bits::Bits<ByteInput>> + ErrorConvert<ByteError>,
     {
         combinator::trace(
             type_name::<Self>(),

@@ -24,12 +24,12 @@ impl ControlPacket {
             + FromExternalError<ByteInput, TryFromIntError>
             + FromExternalError<ByteInput, BinaryDataError>
             + AddContext<ByteInput, StrContext>,
-        BitError: ParserError<(ByteInput, usize)>
-            + FromExternalError<(ByteInput, usize), InvalidControlPacketTypeError>
-            + FromExternalError<(ByteInput, usize), InvalidRetainHandlingError>
-            + FromExternalError<(ByteInput, usize), InvalidQosError>
+        BitError: ParserError<bits::Bits<ByteInput>>
+            + FromExternalError<bits::Bits<ByteInput>, InvalidControlPacketTypeError>
+            + FromExternalError<bits::Bits<ByteInput>, InvalidRetainHandlingError>
+            + FromExternalError<bits::Bits<ByteInput>, InvalidQosError>
             + ErrorConvert<ByteError>
-            + AddContext<(ByteInput, usize), StrContext>,
+            + AddContext<bits::Bits<ByteInput>, StrContext>,
     {
         combinator::trace(type_name::<Self>(), |input: &mut ByteInput| {
             let control_packet_type =
