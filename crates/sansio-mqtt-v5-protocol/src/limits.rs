@@ -32,6 +32,25 @@ pub(crate) fn client_topic_alias_maximum(
         })
 }
 
+/// The Maximum Packet Size the client advertises in CONNECT, or `None` when the
+/// property is omitted (the client imposes no limit).
+///
+/// [MQTT-3.1.2-24] The value is the smaller of what the caller asked for and
+/// what local policy permits. Both this and the CONNECT packet derive it here
+/// so the parser enforces exactly the number that was advertised.
+pub(crate) fn client_maximum_packet_size(
+    settings: &ClientSettings,
+    options: &ConnectionOptions,
+) -> Option<NonZero<u32>> {
+    [
+        options.maximum_packet_size,
+        settings.max_incoming_packet_size,
+    ]
+    .into_iter()
+    .flatten()
+    .min()
+}
+
 /// Recomputes the limits that depend on both local policy and the values
 /// negotiated in CONNACK.
 ///
@@ -41,15 +60,16 @@ pub(crate) fn recompute_effective_limits<Time>(
     settings: &ClientSettings,
     scratchpad: &mut ClientScratchpad<Time>,
 ) {
+    scratchpad.effective_client_maximum_packet_size =
+        client_maximum_packet_size(settings, &scratchpad.pending_connect_options);
+    // [MQTT-3.1.2-24] Bound the parser by the advertised Maximum Packet Size, so
+    // the client refuses what it told the server it would not process. Derived
+    // after the field above, not before it, so one call fully settles the pair.
     scratchpad.effective_client_max_remaining_bytes = settings.max_remaining_bytes.min(
         scratchpad
             .effective_client_maximum_packet_size
-            .map(|x| u64::from(x.get()))
-            .unwrap_or(u64::MAX),
+            .map_or(u64::MAX, |packet_size| u64::from(packet_size.get())),
     );
-    scratchpad.effective_client_maximum_packet_size = settings
-        .max_incoming_packet_size
-        .min(scratchpad.pending_connect_options.maximum_packet_size);
     scratchpad.effective_client_topic_alias_maximum =
         client_topic_alias_maximum(settings, &scratchpad.pending_connect_options).unwrap_or(0);
 

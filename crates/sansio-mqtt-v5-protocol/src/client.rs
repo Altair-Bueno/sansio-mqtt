@@ -51,6 +51,26 @@ impl<Time> Client<Time> {
         Self::with_settings_and_session(settings, Default::default())
     }
 
+    /// Borrows the session state, for snapshotting a live connection.
+    ///
+    /// [`ClientSession`] is `Clone`, so an application that must survive a hard
+    /// reboot can persist a clone of this periodically and restore it through
+    /// [`Client::with_settings_and_session`].
+    pub fn session(&self) -> &ClientSession {
+        &self.session
+    }
+
+    /// Takes the session state out of the client, consuming it.
+    ///
+    /// [MQTT-4.1.0-1] Session State outlives the Network Connection when
+    /// Session Expiry Interval is greater than zero; persisting the
+    /// returned value and handing it to
+    /// [`Client::with_settings_and_session`] resumes the session, replaying
+    /// any unacknowledged QoS1/QoS2 PUBLISH with DUP=1.
+    pub fn into_session(self) -> ClientSession {
+        self.session
+    }
+
     /// The limits the inbound parser is held to.
     ///
     /// Only `max_remaining_bytes` is negotiated (it is additionally clamped by

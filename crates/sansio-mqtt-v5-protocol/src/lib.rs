@@ -13,4 +13,6 @@ mod types;
 
 pub use client::Client;
 pub use session::ClientSession;
+pub use session::InboundInflightState;
+pub use session::OutboundInflightState;
 pub use types::*;

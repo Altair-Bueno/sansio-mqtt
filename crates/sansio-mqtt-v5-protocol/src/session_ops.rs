@@ -44,15 +44,14 @@ pub(crate) fn reset_session_state(session: &mut ClientSession) {
 
 /// Advances and returns the packet id counter, wrapping from u16::MAX back to
 /// 1.
+///
+/// [MQTT-2.2.1-3] A Packet Identifier of 0 is invalid, so the counter wraps to
+/// 1 rather than overflowing.
 pub(crate) fn next_packet_id(session: &mut ClientSession) -> NonZero<u16> {
     let packet_id = session.next_packet_id;
-    session.next_packet_id = if packet_id == u16::MAX {
-        1
-    } else {
-        packet_id + 1
-    };
+    session.next_packet_id = packet_id.checked_add(1).unwrap_or(NonZero::<u16>::MIN);
 
-    NonZero::new(packet_id).expect("packet identifier is always non-zero")
+    packet_id
 }
 
 /// Loops to find a packet id that is not already claimed by an in-flight

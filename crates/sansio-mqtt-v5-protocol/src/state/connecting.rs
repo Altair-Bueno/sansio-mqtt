@@ -94,13 +94,7 @@ fn build_connect(settings: &ClientSettings, options: &ConnectionOptions) -> Resu
             .into_iter()
             .flatten()
             .min(),
-            maximum_packet_size: [
-                options.maximum_packet_size,
-                settings.max_incoming_packet_size,
-            ]
-            .into_iter()
-            .flatten()
-            .min(),
+            maximum_packet_size: limits::client_maximum_packet_size(settings, options),
             topic_alias_maximum: limits::client_topic_alias_maximum(settings, options),
             request_response_information: options
                 .request_response_information
