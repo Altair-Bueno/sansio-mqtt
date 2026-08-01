@@ -31,7 +31,3 @@ tokio = { version = "1", default-features = false }
 tracing = { version = "0.1.41", default-features = false }
 tracing-subscriber = { version = "0.3.23", default-features = false }
 winnow = { version = "1.0.0", default-features = false }
-
-[profile.dev]
-debug = "none"
-opt-level = 1
