@@ -52,13 +52,35 @@ jobs:
       - name: Check formatting
         run: cargo fmt --all -- --check
 
-  rust-clippy:
-    name: Cargo clippy
+  msrv:
+    name: Read MSRV
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.msrv.outputs.version }}
     steps:
       - uses: actions/checkout@v6
-      - uses: dtolnay/rust-toolchain@stable
+      - name: Read rust-version from Cargo.toml
+        id: msrv
+        shell: python3 {0}
+        run: |
+          import os
+          import tomllib
+
+          with open("Cargo.toml", "rb") as f:
+              manifest = tomllib.load(f)
+          version = manifest["workspace"]["package"]["rust-version"]
+          with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+              f.write(f"version={version}\n")
+
+  rust-clippy:
+    name: Cargo clippy (MSRV)
+    runs-on: ubuntu-latest
+    needs: msrv
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@master
         with:
+          toolchain: ${{ needs.msrv.outputs.version }}
           components: clippy
       - uses: actions/cache@v5
         with:
@@ -68,33 +90,10 @@ jobs:
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             target/
-          key: ${{ runner.os }}-${{ github.job }}
+          key:
+            ${{ runner.os }}-${{ github.job }}-${{ needs.msrv.outputs.version }}
       - name: Run clippy
         run: cargo clippy --all-targets -- -D warnings
-
-  # rust-check-msrv:
-  #   name: Cargo check (MSRV)
-  #   runs-on: ubuntu-latest
-  #   steps:
-  #     - uses: actions/checkout@v6
-  #     - name: Read MSRV from Cargo.toml
-  #       id: msrv
-  #       run: |
-  #         echo "version=$(sed -n 's/^rust-version = "\(.*\)"/\1/p' Cargo.toml)" >> "$GITHUB_OUTPUT"
-  #     - uses: dtolnay/rust-toolchain@stable
-  #       with:
-  #         toolchain: ${{ steps.msrv.outputs.version }}
-  #     - uses: actions/cache@v5
-  #       with:
-  #         path: |
-  #           ~/.cargo/bin/
-  #           ~/.cargo/registry/index/
-  #           ~/.cargo/registry/cache/
-  #           ~/.cargo/git/db/
-  #           target/
-  #         key: ${{ runner.os }}-${{ github.job }}
-  #     - name: Check MSRV
-  #       run: cargo check --all-targets
 
   rust-coverage:
     name: coverage
@@ -152,10 +151,10 @@ jobs:
             ~/.cargo/registry/index/
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
+            target/
             fuzz/target/
           key:
-            ${{ runner.os }}-${{ github.job }}-${{ hashFiles('fuzz/Cargo.lock')
-            }}
+            ${{ runner.os }}-${{ github.job }}-${{ hashFiles('**/Cargo.toml') }}
       - uses: taiki-e/install-action@v2
         with:
           tool: cargo-fuzz@0.12
@@ -182,10 +181,10 @@ jobs:
             ~/.cargo/registry/index/
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
+            target/
             fuzz/target/
           key:
-            ${{ runner.os }}-${{ github.job }}-${{ hashFiles('fuzz/Cargo.lock')
-            }}
+            ${{ runner.os }}-${{ github.job }}-${{ hashFiles('**/Cargo.toml') }}
       - uses: taiki-e/install-action@v2
         with:
           tool: cargo-fuzz@0.12
@@ -204,8 +203,8 @@ jobs:
       - taplo-fmt
       - prettier-fmt
       - rust-fmt
+      - msrv
       - rust-clippy
-      # - rust-check-msrv
       - rust-coverage
       - fuzz-check-parse
       - fuzz-check-roundtrip

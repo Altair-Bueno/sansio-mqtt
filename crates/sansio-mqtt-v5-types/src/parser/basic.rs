@@ -64,15 +64,13 @@ impl Payload {
         _: &ParserSettings,
     ) -> impl Parser<Input, Self, Error> + use<'input, Input, Error>
     where
-        Input: StreamIsPartial + Stream<Token = u8, Slice = &'input [u8]>,
-        Error: ParserError<Input>
-            + FromExternalError<Input, BinaryDataError>
-            + AddContext<Input, StrContext>,
+        Input: StreamIsPartial + Stream<Token = u8, Slice = &'input [u8]> + BytesSource,
+        Error: ParserError<Input> + AddContext<Input, StrContext>,
     {
-        combinator::trace(
-            type_name::<Self>(),
-            token::rest.map(|s| Self::new(bytes::Bytes::copy_from_slice(s))),
-        )
+        combinator::trace(type_name::<Self>(), |input: &mut Input| {
+            let taken = token::rest.parse_next(input)?;
+            Ok(Self::new(input.owned_slice(taken)))
+        })
         .context(StrContext::Label(type_name::<Self>()))
         .context(StrContext::Expected(StrContextValue::Description(
             "the message payload",
@@ -90,18 +88,18 @@ impl BinaryData {
         parser_settings: &ParserSettings,
     ) -> impl Parser<Input, Self, Error> + use<'input, Input, Error>
     where
-        Input: StreamIsPartial + Stream<Token = u8, Slice = &'input [u8]>,
+        Input: StreamIsPartial + Stream<Token = u8, Slice = &'input [u8]> + BytesSource,
         Error: ParserError<Input>
             + FromExternalError<Input, BinaryDataError>
             + AddContext<Input, StrContext>,
     {
-        combinator::trace(
-            type_name::<Self>(),
-            binary::length_take(two_byte_integer_len_with_limits(
-                parser_settings.max_bytes_binary_data,
-            ))
-            .try_map(|s| Self::try_new(bytes::Bytes::copy_from_slice(s))),
-        )
+        let max_bytes = parser_settings.max_bytes_binary_data;
+        combinator::trace(type_name::<Self>(), move |input: &mut Input| {
+            let taken = binary::length_take(two_byte_integer_len_with_limits(max_bytes))
+                .parse_next(input)?;
+            Self::try_new(input.owned_slice(taken))
+                .map_err(|error| Error::from_external_error(input, error))
+        })
         .context(StrContext::Label(type_name::<Self>()))
         .context(StrContext::Expected(StrContextValue::Description(
             "a length prefixed slice of binary data",
@@ -114,7 +112,7 @@ pub fn string_pair<'input, 'settings, Input, Error>(
     parser_settings: &'settings ParserSettings,
 ) -> impl Parser<Input, (Utf8String, Utf8String), Error> + use<'input, 'settings, Input, Error>
 where
-    Input: StreamIsPartial + Stream<Token = u8, Slice = &'input [u8]>,
+    Input: StreamIsPartial + Stream<Token = u8, Slice = &'input [u8]> + BytesSource,
     Error: ParserError<Input>
         + FromExternalError<Input, Utf8Error>
         + AddContext<Input, StrContext>
@@ -140,19 +138,19 @@ impl Utf8String {
         parser_settings: &ParserSettings,
     ) -> impl Parser<Input, Self, Error> + use<'input, Input, Error>
     where
-        Input: StreamIsPartial + Stream<Token = u8, Slice = &'input [u8]>,
+        Input: StreamIsPartial + Stream<Token = u8, Slice = &'input [u8]> + BytesSource,
         Error: ParserError<Input>
             + FromExternalError<Input, Utf8Error>
             + FromExternalError<Input, Utf8StringError>
             + AddContext<Input, StrContext>,
     {
-        combinator::trace(
-            type_name::<Self>(),
-            binary::length_take(two_byte_integer_len_with_limits(
-                parser_settings.max_bytes_string,
-            ))
-            .try_map(|b| Self::try_new(bytes::Bytes::copy_from_slice(b))),
-        )
+        let max_bytes = parser_settings.max_bytes_string;
+        combinator::trace(type_name::<Self>(), move |input: &mut Input| {
+            let taken = binary::length_take(two_byte_integer_len_with_limits(max_bytes))
+                .parse_next(input)?;
+            Self::try_new(input.owned_slice(taken))
+                .map_err(|error| Error::from_external_error(input, error))
+        })
         .context(StrContext::Label(type_name::<Self>()))
         .context(StrContext::Expected(StrContextValue::Description(
             "a length prefixed MQTT string",
@@ -169,7 +167,7 @@ impl Topic {
         parser_settings: &ParserSettings,
     ) -> impl Parser<Input, Self, Error> + use<'input, Input, Error>
     where
-        Input: StreamIsPartial + Stream<Token = u8, Slice = &'input [u8]>,
+        Input: StreamIsPartial + Stream<Token = u8, Slice = &'input [u8]> + BytesSource,
         Error: ParserError<Input>
             + FromExternalError<Input, Utf8Error>
             + FromExternalError<Input, Utf8StringError>
@@ -191,12 +189,12 @@ impl ControlPacketType {
     /// Parses the 4-bit Control Packet Type nibble from the Fixed
     /// Header ([§2.1.2](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901022)).
     #[inline]
-    pub fn parser<Input, Error>(input: &mut bits::Bits<Input>) -> Result<Self, Error>
+    pub fn parser<Input, Error>(input: &mut Bits<Input>) -> Result<Self, Error>
     where
         Input: Stream<Token = u8> + StreamIsPartial + Clone,
-        Error: ParserError<bits::Bits<Input>>
-            + FromExternalError<bits::Bits<Input>, InvalidControlPacketTypeError>
-            + AddContext<bits::Bits<Input>, StrContext>,
+        Error: ParserError<Bits<Input>>
+            + FromExternalError<Bits<Input>, InvalidControlPacketTypeError>
+            + AddContext<Bits<Input>, StrContext>,
     {
         combinator::trace(
             type_name::<Self>(),
@@ -214,12 +212,12 @@ impl Qos {
     /// Parses a 2-bit QoS field ([§4.3](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901234),
     /// [MQTT-3.3.1-4]). A value of 3 yields Malformed Packet.
     #[inline]
-    pub fn parser<Input, Error>(input: &mut bits::Bits<Input>) -> Result<Self, Error>
+    pub fn parser<Input, Error>(input: &mut Bits<Input>) -> Result<Self, Error>
     where
         Input: Stream<Token = u8> + StreamIsPartial + Clone,
-        Error: ParserError<bits::Bits<Input>>
-            + FromExternalError<bits::Bits<Input>, InvalidQosError>
-            + AddContext<bits::Bits<Input>, StrContext>,
+        Error: ParserError<Bits<Input>>
+            + FromExternalError<Bits<Input>, InvalidQosError>
+            + AddContext<Bits<Input>, StrContext>,
     {
         combinator::trace(
             type_name::<Self>(),
@@ -239,7 +237,7 @@ impl FormatIndicator {
     #[inline]
     pub fn parser<'input, Input, Error>(input: &mut Input) -> Result<Self, Error>
     where
-        Input: StreamIsPartial + Stream<Token = u8, Slice = &'input [u8]>,
+        Input: StreamIsPartial + Stream<Token = u8, Slice = &'input [u8]> + BytesSource,
         Error: ParserError<Input>
             + FromExternalError<Input, UnknownFormatIndicatorError>
             + AddContext<Input, StrContext>,
@@ -257,12 +255,12 @@ impl RetainHandling {
     /// Options byte ([§3.8.3.1](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901169),
     /// [MQTT-3.8.3-4]).
     #[inline]
-    pub fn parser<Input, Error>(input: &mut bits::Bits<Input>) -> Result<Self, Error>
+    pub fn parser<Input, Error>(input: &mut Bits<Input>) -> Result<Self, Error>
     where
         Input: Stream<Token = u8> + StreamIsPartial + Clone,
-        Error: ParserError<bits::Bits<Input>>
-            + FromExternalError<bits::Bits<Input>, InvalidRetainHandlingError>
-            + AddContext<bits::Bits<Input>, StrContext>,
+        Error: ParserError<Bits<Input>>
+            + FromExternalError<Bits<Input>, InvalidRetainHandlingError>
+            + AddContext<Bits<Input>, StrContext>,
     {
         combinator::trace(
             type_name::<Self>(),
@@ -286,16 +284,16 @@ impl Subscription {
         parser_settings: &'settings ParserSettings,
     ) -> impl Parser<ByteInput, Self, ByteError> + use<'input, 'settings, ByteInput, ByteError, BitError>
     where
-        ByteInput: StreamIsPartial + Stream<Token = u8, Slice = &'input [u8]> + Clone + UpdateSlice,
+        ByteInput: StreamIsPartial + Stream<Token = u8, Slice = &'input [u8]> + BytesSource + Clone,
         ByteError: ParserError<ByteInput>
             + FromExternalError<ByteInput, Utf8Error>
             + AddContext<ByteInput, StrContext>
             + FromExternalError<ByteInput, Utf8StringError>,
-        BitError: ParserError<bits::Bits<ByteInput>>
+        BitError: ParserError<Bits<ByteInput>>
             + ErrorConvert<ByteError>
-            + FromExternalError<bits::Bits<ByteInput>, InvalidQosError>
-            + FromExternalError<bits::Bits<ByteInput>, InvalidRetainHandlingError>
-            + AddContext<bits::Bits<ByteInput>, StrContext>,
+            + FromExternalError<Bits<ByteInput>, InvalidQosError>
+            + FromExternalError<Bits<ByteInput>, InvalidRetainHandlingError>
+            + AddContext<Bits<ByteInput>, StrContext>,
     {
         combinator::trace(
             type_name::<Self>(),

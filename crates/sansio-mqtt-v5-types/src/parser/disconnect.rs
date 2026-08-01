@@ -4,10 +4,10 @@ impl DisconnectHeaderFlags {
     /// ([§3.14.1](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901206),
     /// [MQTT-3.14.1-1]).
     #[inline]
-    pub fn parser<Input, Error>(input: &mut bits::Bits<Input>) -> Result<Self, Error>
+    pub fn parser<Input, Error>(input: &mut Bits<Input>) -> Result<Self, Error>
     where
         Input: Stream<Token = u8> + StreamIsPartial + Clone,
-        Error: ParserError<bits::Bits<Input>> + AddContext<bits::Bits<Input>, StrContext>,
+        Error: ParserError<Bits<Input>> + AddContext<Bits<Input>, StrContext>,
     {
         combinator::trace(type_name::<Self>(), bits::pattern(0u8, 4usize).value(Self))
             .context(StrContext::Label(type_name::<Self>()))
@@ -26,9 +26,12 @@ impl Disconnect {
         parser_settings: &'settings ParserSettings,
     ) -> impl Parser<ByteInput, Self, ByteError> + use<'input, 'settings, ByteInput, ByteError, BitError>
     where
-        ByteInput: StreamIsPartial + Stream<Token = u8, Slice = &'input [u8]> + Clone + UpdateSlice,
+        ByteInput: StreamIsPartial
+            + Stream<Token = u8, Slice = &'input [u8]>
+            + BytesSource
+            + Clone
+            + UpdateSlice,
         ByteError: ParserError<ByteInput>
-            + FromExternalError<ByteInput, Utf8Error>
             + FromExternalError<ByteInput, Utf8Error>
             + FromExternalError<ByteInput, InvalidQosError>
             + FromExternalError<ByteInput, InvalidPropertyTypeError>
@@ -40,7 +43,7 @@ impl Disconnect {
             + FromExternalError<ByteInput, TryFromIntError>
             + FromExternalError<ByteInput, BinaryDataError>
             + AddContext<ByteInput, StrContext>,
-        BitError: ParserError<bits::Bits<ByteInput>> + ErrorConvert<ByteError>,
+        BitError: ParserError<Bits<ByteInput>> + ErrorConvert<ByteError>,
     {
         combinator::trace(
             type_name::<Self>(),
@@ -75,7 +78,11 @@ impl DisconnectProperties {
         parser_settings: &'settings ParserSettings,
     ) -> impl Parser<Input, Self, Error> + use<'input, 'settings, Input, Error>
     where
-        Input: Stream<Token = u8, Slice = &'input [u8]> + UpdateSlice + StreamIsPartial + Clone,
+        Input: Stream<Token = u8, Slice = &'input [u8]>
+            + BytesSource
+            + UpdateSlice
+            + StreamIsPartial
+            + Clone,
         Error: ParserError<Input>
             + AddContext<Input, StrContext>
             + FromExternalError<Input, Utf8Error>
@@ -98,46 +105,25 @@ impl DisconnectProperties {
                         |mut properties, property| {
                             let property_type = PropertyType::from(&property);
                             match property {
-                                Property::SessionExpiryInterval(value) => {
-                                    match &mut properties.session_expiry_interval {
-                                        slot @ None => *slot = Some(value),
-                                        _ => {
-                                            return Err(PropertiesError::from(
-                                                DuplicatedPropertyError { property_type },
-                                            ));
-                                        }
-                                    }
-                                }
+                                Property::SessionExpiryInterval(value) => set_once(
+                                    &mut properties.session_expiry_interval,
+                                    value,
+                                    property_type,
+                                )?,
                                 Property::ReasonString(value) => {
-                                    match &mut properties.reason_string {
-                                        slot @ None => *slot = Some(value),
-                                        _ => {
-                                            return Err(PropertiesError::from(
-                                                DuplicatedPropertyError { property_type },
-                                            ));
-                                        }
-                                    }
+                                    set_once(&mut properties.reason_string, value, property_type)?
                                 }
-                                Property::UserProperty(key, value) => {
-                                    if properties.user_properties.len()
-                                        >= parser_settings.max_user_properties_len
-                                    {
-                                        return Err(PropertiesError::from(
-                                            TooManyUserPropertiesError,
-                                        ));
-                                    }
-                                    properties.user_properties.push((key, value))
-                                }
-                                Property::ServerReference(value) => {
-                                    match &mut properties.server_reference {
-                                        slot @ None => *slot = Some(value),
-                                        _ => {
-                                            return Err(PropertiesError::from(
-                                                DuplicatedPropertyError { property_type },
-                                            ));
-                                        }
-                                    }
-                                }
+                                Property::UserProperty(key, value) => push_capped(
+                                    &mut properties.user_properties,
+                                    (key, value),
+                                    parser_settings.max_user_properties_len,
+                                    PropertiesError::from(TooManyUserPropertiesError),
+                                )?,
+                                Property::ServerReference(value) => set_once(
+                                    &mut properties.server_reference,
+                                    value,
+                                    property_type,
+                                )?,
                                 _ => {
                                     return Err(PropertiesError::from(UnsupportedPropertyError {
                                         property_type,

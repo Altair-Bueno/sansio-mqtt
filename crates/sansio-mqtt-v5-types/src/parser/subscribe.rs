@@ -5,10 +5,10 @@ impl SubscribeHeaderFlags {
     /// ([§3.8.1](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901162),
     /// [MQTT-3.8.1-1]). The bit pattern `0b0010` is required.
     #[inline]
-    pub fn parser<Input, Error>(input: &mut bits::Bits<Input>) -> Result<Self, Error>
+    pub fn parser<Input, Error>(input: &mut Bits<Input>) -> Result<Self, Error>
     where
         Input: Stream<Token = u8> + StreamIsPartial + Clone,
-        Error: ParserError<bits::Bits<Input>> + AddContext<bits::Bits<Input>, StrContext>,
+        Error: ParserError<Bits<Input>> + AddContext<Bits<Input>, StrContext>,
     {
         combinator::trace(
             type_name::<Self>(),
@@ -33,9 +33,12 @@ impl Subscribe {
         parser_settings: &'settings ParserSettings,
     ) -> impl Parser<ByteInput, Self, ByteError> + use<'input, 'settings, ByteInput, ByteError, BitError>
     where
-        ByteInput: StreamIsPartial + Stream<Token = u8, Slice = &'input [u8]> + Clone + UpdateSlice,
+        ByteInput: StreamIsPartial
+            + Stream<Token = u8, Slice = &'input [u8]>
+            + BytesSource
+            + Clone
+            + UpdateSlice,
         ByteError: ParserError<ByteInput>
-            + FromExternalError<ByteInput, Utf8Error>
             + FromExternalError<ByteInput, Utf8Error>
             + FromExternalError<ByteInput, InvalidQosError>
             + FromExternalError<ByteInput, InvalidPropertyTypeError>
@@ -46,12 +49,11 @@ impl Subscribe {
             + FromExternalError<ByteInput, TryFromIntError>
             + FromExternalError<ByteInput, BinaryDataError>
             + AddContext<ByteInput, StrContext>,
-        BitError: ParserError<bits::Bits<ByteInput>>
+        BitError: ParserError<Bits<ByteInput>>
             + ErrorConvert<ByteError>
-            + FromExternalError<bits::Bits<ByteInput>, InvalidRetainHandlingError>
-            + FromExternalError<bits::Bits<ByteInput>, InvalidQosError>
-            + AddContext<bits::Bits<ByteInput>, StrContext>,
-        BitError: ParserError<bits::Bits<ByteInput>> + ErrorConvert<ByteError>,
+            + FromExternalError<Bits<ByteInput>, InvalidRetainHandlingError>
+            + FromExternalError<Bits<ByteInput>, InvalidQosError>
+            + AddContext<Bits<ByteInput>, StrContext>,
     {
         combinator::trace(
             type_name::<Self>(),
@@ -93,7 +95,11 @@ impl SubscribeProperties {
         parser_settings: &'settings ParserSettings,
     ) -> impl Parser<Input, Self, Error> + use<'input, 'settings, Input, Error>
     where
-        Input: Stream<Token = u8, Slice = &'input [u8]> + UpdateSlice + StreamIsPartial + Clone,
+        Input: Stream<Token = u8, Slice = &'input [u8]>
+            + BytesSource
+            + UpdateSlice
+            + StreamIsPartial
+            + Clone,
         Error: ParserError<Input>
             + AddContext<Input, StrContext>
             + FromExternalError<Input, Utf8Error>
@@ -116,26 +122,17 @@ impl SubscribeProperties {
                         |mut properties, property| {
                             let property_type = PropertyType::from(&property);
                             match property {
-                                Property::SubscriptionIdentifier(value) => {
-                                    match &mut properties.subscription_identifier {
-                                        slot @ None => *slot = Some(value),
-                                        _ => {
-                                            return Err(PropertiesError::from(
-                                                DuplicatedPropertyError { property_type },
-                                            ));
-                                        }
-                                    }
-                                }
-                                Property::UserProperty(key, value) => {
-                                    if properties.user_properties.len()
-                                        >= parser_settings.max_user_properties_len
-                                    {
-                                        return Err(PropertiesError::from(
-                                            TooManyUserPropertiesError,
-                                        ));
-                                    }
-                                    properties.user_properties.push((key, value))
-                                }
+                                Property::SubscriptionIdentifier(value) => set_once(
+                                    &mut properties.subscription_identifier,
+                                    value,
+                                    property_type,
+                                )?,
+                                Property::UserProperty(key, value) => push_capped(
+                                    &mut properties.user_properties,
+                                    (key, value),
+                                    parser_settings.max_user_properties_len,
+                                    PropertiesError::from(TooManyUserPropertiesError),
+                                )?,
                                 _ => {
                                     return Err(PropertiesError::from(UnsupportedPropertyError {
                                         property_type,

@@ -211,7 +211,6 @@ pub struct UnsupportedPropertyError {
 /// Used to guard against resource-exhaustion on the parse side.
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Error)]
 #[error("The number of user properties exceeds the maximum allowed")]
-#[repr(transparent)]
 pub struct TooManyUserPropertiesError;
 
 /// Error returned when the parsed Subscription Identifier count
@@ -219,7 +218,6 @@ pub struct TooManyUserPropertiesError;
 /// `ParserSettings::max_subscription_identifiers_len` limit.
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Error)]
 #[error("The number of subscription identifiers exceeds the maximum allowed")]
-#[repr(transparent)]
 pub struct TooManySubscriptionIdentifiersError;
 
 /// Error returned when Authentication Data is present without the
@@ -232,7 +230,6 @@ pub struct TooManySubscriptionIdentifiersError;
     PropertyType::AuthenticationData,
     PropertyType::AuthenticationMethod
 )]
-#[repr(transparent)]
 pub struct MissingAuthenticationMethodError;
 
 /// Errors raised while aggregating an individual [`Property`] stream

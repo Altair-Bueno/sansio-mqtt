@@ -7,11 +7,7 @@ where
     type Error = EncodeError;
 
     fn encode(&self, encoder: &mut E) -> Result<(), Self::Error> {
-        let mut header_flags = 0u8;
-        header_flags |= u8::from(ControlPacketType::PingReq) << 4;
-        header_flags |= u8::from(PingReqHeaderFlags);
-
-        header_flags.encode(encoder)?;
+        fixed_header(ControlPacketType::PingReq, u8::from(PingReqHeaderFlags)).encode(encoder)?;
         encode::combinators::LengthPrefix::<_, VariableByteInteger, Self::Error>::new(())
             .encode(encoder)
     }

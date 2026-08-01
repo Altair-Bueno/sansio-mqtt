@@ -7,13 +7,14 @@ edition = "2021"
 [package.metadata]
 cargo-fuzz = true
 
-[workspace]
-
 [dependencies]
-libfuzzer-sys = "0.4"
-sansio-mqtt-v5-types = { path = "../crates/sansio-mqtt-v5-types" }
-winnow = { version = "0.7.0", features = ["alloc"] }
-encode = { version = "1.0.0", features = ["alloc"] }
+# `link_libfuzzer` is a default feature, and the workspace declares every
+# dependency with `default-features = false`, so it must be named here:
+# without it the fuzz binaries have no `main` and fail to link.
+libfuzzer-sys = { workspace = true, features = ["link_libfuzzer"] }
+sansio-mqtt-v5-types = { workspace = true }
+winnow = { workspace = true, features = ["alloc"] }
+encode = { workspace = true, features = ["alloc"] }
 
 [[bin]]
 name = "parse_control_packet"

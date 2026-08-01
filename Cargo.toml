@@ -1,5 +1,10 @@
 [workspace]
-members = ["crates/*"]
+members = ["crates/*", "fuzz"]
+# `fuzz` is a member so it inherits `[workspace.dependencies]`, but it is kept
+# out of the default set: it pulls in `libfuzzer-sys`, whose C++ build would
+# otherwise be required by every plain `cargo build` / `cargo clippy` at the
+# repository root.
+default-members = ["crates/*"]
 resolver = "2"
 
 [workspace.package]
@@ -15,6 +20,7 @@ sansio-mqtt-v5-types = { path = "crates/sansio-mqtt-v5-types", default-features 
 bon = { version = "3.9.3", default-features = false }
 bytes = { version = "1", default-features = false }
 encode = { version = "1.0.0", default-features = false }
+libfuzzer-sys = { version = "0.4", default-features = false }
 rstest = { version = "0.26.0", default-features = false }
 sansio = { version = "1.0.1", default-features = false }
 strum = { version = "0.28.0", default-features = false }
@@ -25,7 +31,3 @@ tokio = { version = "1", default-features = false }
 tracing = { version = "0.1.41", default-features = false }
 tracing-subscriber = { version = "0.3.23", default-features = false }
 winnow = { version = "1.0.0", default-features = false }
-
-[profile.dev]
-debug = "none"
-opt-level = 1

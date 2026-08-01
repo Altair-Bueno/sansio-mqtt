@@ -11,12 +11,7 @@ where
         let subscription_identifier = self
             .subscription_identifier
             .map(Property::SubscriptionIdentifier);
-        let user_properties = encode::combinators::Iter::new(
-            self.user_properties
-                .iter()
-                .cloned()
-                .map(|(k, v)| Property::UserProperty(k, v)),
-        );
+        let user_properties = user_properties_iter(&self.user_properties);
 
         encode::combinators::LengthPrefix::<_, VariableByteInteger, _>::new((
             subscription_identifier,
@@ -34,10 +29,8 @@ where
     type Error = EncodeError;
 
     fn encode(&self, encoder: &mut E) -> Result<(), Self::Error> {
-        let mut header_flags = 0u8;
-        header_flags |= u8::from(ControlPacketType::Subscribe) << 4;
-        header_flags |= u8::from(SubscribeHeaderFlags);
-        header_flags.encode(encoder)?;
+        fixed_header(ControlPacketType::Subscribe, u8::from(SubscribeHeaderFlags))
+            .encode(encoder)?;
 
         encode::combinators::LengthPrefix::<_, VariableByteInteger, Self::Error>::new((
             encode::combinators::FromError::new(TwoByteInteger::new(self.packet_id.get())),

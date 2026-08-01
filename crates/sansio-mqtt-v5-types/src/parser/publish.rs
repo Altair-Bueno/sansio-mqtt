@@ -7,12 +7,12 @@ impl PublishHeaderFlags {
     ///
     /// Enforces [MQTT-3.3.1-2]: the DUP flag MUST be `0` for QoS 0 packets.
     #[inline]
-    pub fn parser<Input, Error>(input: &mut bits::Bits<Input>) -> Result<Self, Error>
+    pub fn parser<Input, Error>(input: &mut Bits<Input>) -> Result<Self, Error>
     where
         Input: Stream<Token = u8> + StreamIsPartial + Clone,
-        Error: ParserError<bits::Bits<Input>>
-            + FromExternalError<bits::Bits<Input>, InvalidQosError>
-            + AddContext<bits::Bits<Input>, StrContext>,
+        Error: ParserError<Bits<Input>>
+            + FromExternalError<Bits<Input>, InvalidQosError>
+            + AddContext<Bits<Input>, StrContext>,
     {
         combinator::trace(
             type_name::<Self>(),
@@ -51,9 +51,12 @@ impl Publish {
         header_flags: PublishHeaderFlags,
     ) -> impl Parser<ByteInput, Self, ByteError> + use<'input, 'settings, ByteInput, ByteError, BitError>
     where
-        ByteInput: StreamIsPartial + Stream<Token = u8, Slice = &'input [u8]> + Clone + UpdateSlice,
+        ByteInput: StreamIsPartial
+            + Stream<Token = u8, Slice = &'input [u8]>
+            + BytesSource
+            + Clone
+            + UpdateSlice,
         ByteError: ParserError<ByteInput>
-            + FromExternalError<ByteInput, Utf8Error>
             + FromExternalError<ByteInput, Utf8Error>
             + FromExternalError<ByteInput, InvalidQosError>
             + FromExternalError<ByteInput, InvalidPropertyTypeError>
@@ -64,10 +67,10 @@ impl Publish {
             + FromExternalError<ByteInput, TryFromIntError>
             + FromExternalError<ByteInput, BinaryDataError>
             + AddContext<ByteInput, StrContext>,
-        BitError: ParserError<bits::Bits<ByteInput>> + ErrorConvert<ByteError>,
+        BitError: ParserError<Bits<ByteInput>> + ErrorConvert<ByteError>,
     {
         combinator::trace(type_name::<Self>(), move |input: &mut ByteInput| {
-            let PublishHeaderFlags { kind, retain } = header_flags.clone();
+            let PublishHeaderFlags { kind, retain } = header_flags;
             let topic = Topic::parser(parser_settings).parse_next(input)?;
             let kind = match kind {
                 PublishHeaderFlagsKind::Simple => PublishKind::FireAndForget,
@@ -103,7 +106,11 @@ impl PublishProperties {
         parser_settings: &'settings ParserSettings,
     ) -> impl Parser<Input, Self, Error> + use<'input, 'settings, Input, Error>
     where
-        Input: Stream<Token = u8, Slice = &'input [u8]> + UpdateSlice + StreamIsPartial + Clone,
+        Input: Stream<Token = u8, Slice = &'input [u8]>
+            + BytesSource
+            + UpdateSlice
+            + StreamIsPartial
+            + Clone,
         Error: ParserError<Input>
             + AddContext<Input, StrContext>
             + FromExternalError<Input, Utf8Error>
@@ -126,84 +133,42 @@ impl PublishProperties {
                         |mut properties, property| {
                             let property_type = PropertyType::from(&property);
                             match property {
-                                Property::PayloadFormatIndicator(value) => {
-                                    match &mut properties.payload_format_indicator {
-                                        slot @ None => *slot = Some(value),
-                                        _ => {
-                                            return Err(PropertiesError::from(
-                                                DuplicatedPropertyError { property_type },
-                                            ));
-                                        }
-                                    }
+                                Property::PayloadFormatIndicator(value) => set_once(
+                                    &mut properties.payload_format_indicator,
+                                    value,
+                                    property_type,
+                                )?,
+                                Property::MessageExpiryInterval(value) => set_once(
+                                    &mut properties.message_expiry_interval,
+                                    value,
+                                    property_type,
+                                )?,
+                                Property::TopicAlias(value) => {
+                                    set_once(&mut properties.topic_alias, value, property_type)?
                                 }
-                                Property::MessageExpiryInterval(value) => {
-                                    match &mut properties.message_expiry_interval {
-                                        slot @ None => *slot = Some(value),
-                                        _ => {
-                                            return Err(PropertiesError::from(
-                                                DuplicatedPropertyError { property_type },
-                                            ));
-                                        }
-                                    }
-                                }
-                                Property::TopicAlias(value) => match &mut properties.topic_alias {
-                                    slot @ None => *slot = Some(value),
-                                    _ => {
-                                        return Err(PropertiesError::from(
-                                            DuplicatedPropertyError { property_type },
-                                        ));
-                                    }
-                                },
                                 Property::ResponseTopic(value) => {
-                                    match &mut properties.response_topic {
-                                        slot @ None => *slot = Some(value),
-                                        _ => {
-                                            return Err(PropertiesError::from(
-                                                DuplicatedPropertyError { property_type },
-                                            ));
-                                        }
-                                    }
+                                    set_once(&mut properties.response_topic, value, property_type)?
                                 }
-                                Property::CorrelationData(value) => {
-                                    match &mut properties.correlation_data {
-                                        slot @ None => *slot = Some(value),
-                                        _ => {
-                                            return Err(PropertiesError::from(
-                                                DuplicatedPropertyError { property_type },
-                                            ));
-                                        }
-                                    }
-                                }
-                                Property::SubscriptionIdentifier(value) => {
-                                    if properties.subscription_identifiers.len()
-                                        >= parser_settings.max_subscription_identifiers_len
-                                    {
-                                        return Err(PropertiesError::from(
-                                            TooManySubscriptionIdentifiersError,
-                                        ));
-                                    }
-                                    properties.subscription_identifiers.push(value);
-                                }
+                                Property::CorrelationData(value) => set_once(
+                                    &mut properties.correlation_data,
+                                    value,
+                                    property_type,
+                                )?,
+                                Property::SubscriptionIdentifier(value) => push_capped(
+                                    &mut properties.subscription_identifiers,
+                                    value,
+                                    parser_settings.max_subscription_identifiers_len,
+                                    PropertiesError::from(TooManySubscriptionIdentifiersError),
+                                )?,
                                 Property::ContentType(value) => {
-                                    match &mut properties.content_type {
-                                        slot @ None => *slot = Some(value),
-                                        _ => {
-                                            return Err(PropertiesError::from(
-                                                DuplicatedPropertyError { property_type },
-                                            ));
-                                        }
-                                    }
+                                    set_once(&mut properties.content_type, value, property_type)?
                                 }
-                                Property::UserProperty(key, value) => {
-                                    if properties.user_properties.len()
-                                        >= parser_settings.max_user_properties_len
-                                    {
-                                        return Err(PropertiesError::from(
-                                            TooManyUserPropertiesError,
-                                        ));
-                                    }
-                                    properties.user_properties.push((key, value))
-                                }
+                                Property::UserProperty(key, value) => push_capped(
+                                    &mut properties.user_properties,
+                                    (key, value),
+                                    parser_settings.max_user_properties_len,
+                                    PropertiesError::from(TooManyUserPropertiesError),
+                                )?,
                                 _ => {
                                     return Err(PropertiesError::from(UnsupportedPropertyError {
                                         property_type,

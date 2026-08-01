@@ -21,39 +21,38 @@ use super::*;
     doc = "Control Packet Type discriminant of [`ControlPacket`] ([§2.1.2](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901022)). Identifies a packet type without the payload."
 )]
 #[allow(clippy::large_enum_variant)]
+#[repr(u8)]
 pub enum ControlPacket {
-    /// Reserved type (`0`, [§2.1.2](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901022)).
-    Reserved(Reserved),
     /// [`Connect`] (`1`, [§3.1](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901033)).
-    Connect(Connect),
+    Connect(Connect) = 1,
     /// [`ConnAck`] (`2`, [§3.2](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901074)).
-    ConnAck(ConnAck),
+    ConnAck(ConnAck) = 2,
     /// [`Publish`] (`3`, [§3.3](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901100)).
-    Publish(Publish),
+    Publish(Publish) = 3,
     /// [`PubAck`] (`4`, [§3.4](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901121)).
-    PubAck(PubAck),
+    PubAck(PubAck) = 4,
     /// [`PubRec`] (`5`, [§3.5](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901131)).
-    PubRec(PubRec),
+    PubRec(PubRec) = 5,
     /// [`PubRel`] (`6`, [§3.6](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901141)).
-    PubRel(PubRel),
+    PubRel(PubRel) = 6,
     /// [`PubComp`] (`7`, [§3.7](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901151)).
-    PubComp(PubComp),
+    PubComp(PubComp) = 7,
     /// [`Subscribe`] (`8`, [§3.8](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901161)).
-    Subscribe(Subscribe),
+    Subscribe(Subscribe) = 8,
     /// [`SubAck`] (`9`, [§3.9](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901171)).
-    SubAck(SubAck),
+    SubAck(SubAck) = 9,
     /// [`Unsubscribe`] (`10`, [§3.10](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901179)).
-    Unsubscribe(Unsubscribe),
+    Unsubscribe(Unsubscribe) = 10,
     /// [`UnsubAck`] (`11`, [§3.11](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901187)).
-    UnsubAck(UnsubAck),
+    UnsubAck(UnsubAck) = 11,
     /// [`PingReq`] (`12`, [§3.12](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901195)).
-    PingReq(PingReq),
+    PingReq(PingReq) = 12,
     /// [`PingResp`] (`13`, [§3.13](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901200)).
-    PingResp(PingResp),
+    PingResp(PingResp) = 13,
     /// [`Disconnect`] (`14`, [§3.14](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901205)).
-    Disconnect(Disconnect),
+    Disconnect(Disconnect) = 14,
     /// [`Auth`] (`15`, [§3.15](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901217)).
-    Auth(Auth),
+    Auth(Auth) = 15,
 }
 
 /// Error returned when converting a byte into a [`ControlPacketType`]
@@ -62,7 +61,7 @@ pub enum ControlPacket {
 /// [§2.1.2](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901022).
 ///
 /// Conformance: `[MQTT-2.1.3-1]`.
-#[derive(Debug, PartialEq, Clone, Copy, Error)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Error)]
 #[error("Invalid control packet type: {value}")]
 #[repr(transparent)]
 pub struct InvalidControlPacketTypeError {
@@ -96,7 +95,6 @@ mod derive_guards {
     impl<T: Default> MustNotImplementDefault for T {}
 
     impl MustNotImplementDefault for ControlPacket {}
-    impl MustNotImplementDefault for Reserved {}
     impl MustNotImplementDefault for Connect {}
     impl MustNotImplementDefault for ConnAck {}
     impl MustNotImplementDefault for Publish {}
@@ -118,7 +116,6 @@ mod derive_guards {
     #[test]
     fn control_packets_do_not_derive_default() {
         assert_not_default::<ControlPacket>();
-        assert_not_default::<Reserved>();
         assert_not_default::<Connect>();
         assert_not_default::<ConnAck>();
         assert_not_default::<Publish>();

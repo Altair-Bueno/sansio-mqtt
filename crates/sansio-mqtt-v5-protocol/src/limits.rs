@@ -117,10 +117,10 @@ pub(crate) fn validate_outbound_packet_size<Time>(
     scratchpad: &ClientScratchpad<Time>,
     packet_size_bytes: usize,
 ) -> Result<(), Error> {
-    if let Some(maximum_packet_size) = scratchpad.effective_broker_maximum_packet_size {
-        if packet_size_bytes > maximum_packet_size.get() as usize {
-            return Err(Error::PacketTooLarge);
-        }
+    if let Some(maximum_packet_size) = scratchpad.negotiated_maximum_packet_size
+        && packet_size_bytes > maximum_packet_size.get() as usize
+    {
+        return Err(Error::PacketTooLarge);
     }
 
     Ok(())

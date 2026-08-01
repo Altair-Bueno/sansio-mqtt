@@ -1,7 +1,13 @@
 mod basic;
+mod bytes_source;
+mod error;
 mod properties;
 
 pub use basic::*;
+pub use bytes_source::BytesSource;
+pub use error::DecodeError;
+use properties::push_capped;
+use properties::set_once;
 
 mod auth;
 mod connack;
@@ -15,7 +21,6 @@ mod pubcomp;
 mod publish;
 mod pubrec;
 mod pubrel;
-mod reserved;
 mod suback;
 mod subscribe;
 mod unsuback;
@@ -28,6 +33,7 @@ use core::num::TryFromIntError;
 use core::str::Utf8Error;
 use winnow::binary;
 use winnow::binary::bits;
+use winnow::binary::bits::Bits;
 use winnow::combinator;
 use winnow::error::*;
 use winnow::prelude::*;

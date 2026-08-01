@@ -23,12 +23,7 @@ where
                 .copied()
                 .map(Property::SubscriptionIdentifier),
         );
-        let user_properties = encode::combinators::Iter::new(
-            self.user_properties
-                .iter()
-                .cloned()
-                .map(|(k, v)| Property::UserProperty(k, v)),
-        );
+        let user_properties = user_properties_iter(&self.user_properties);
         let content_type = self.content_type.clone().map(Property::ContentType);
 
         encode::combinators::LengthPrefix::<_, VariableByteInteger, _>::new((
@@ -65,13 +60,14 @@ where
             ),
         };
 
-        let mut header_flags = 0u8;
-        header_flags |= u8::from(ControlPacketType::Publish) << 4;
-        header_flags |= u8::from(PublishHeaderFlags {
-            kind,
-            retain: self.retain,
-        });
-        header_flags.encode(encoder)?;
+        fixed_header(
+            ControlPacketType::Publish,
+            u8::from(PublishHeaderFlags {
+                kind,
+                retain: self.retain,
+            }),
+        )
+        .encode(encoder)?;
 
         encode::combinators::LengthPrefix::<_, VariableByteInteger, Self::Error>::new((
             &self.topic,

@@ -30,159 +30,269 @@ fn value_types_support_hash_and_order_where_semantic() {
     assert_hash_and_ord(&reason);
 }
 
+/// Fixed-header flags are `Copy`.
+///
+/// Fourteen of them are zero-sized and the fifteenth
+/// ([`PublishHeaderFlags`]) holds only DUP, QoS and RETAIN, so there is
+/// nothing to own and no reason to make callers clone or borrow them —
+/// [`Publish::parser`] takes its flags by value and reads them inside a
+/// closure. This guards against a future field that would silently make
+/// the type expensive to pass around.
+#[test]
+fn header_flags_are_copy() {
+    fn assert_copy<T: Copy>(_value: T) {}
+
+    assert_copy(ConnectHeaderFlags);
+    assert_copy(ConnAckHeaderFlags);
+    assert_copy(PubAckHeaderFlags);
+    assert_copy(PubRecHeaderFlags);
+    assert_copy(PubRelHeaderFlags);
+    assert_copy(PubCompHeaderFlags);
+    assert_copy(SubscribeHeaderFlags);
+    assert_copy(SubAckHeaderFlags);
+    assert_copy(UnsubscribeHeaderFlags);
+    assert_copy(UnsubAckHeaderFlags);
+    assert_copy(PingReqHeaderFlags);
+    assert_copy(PingRespHeaderFlags);
+    assert_copy(DisconnectHeaderFlags);
+    assert_copy(AuthHeaderFlags);
+    assert_copy(PublishHeaderFlags {
+        kind: PublishHeaderFlagsKind::Simple,
+        retain: false,
+    });
+
+    // Copy is what lets a value be read twice without cloning.
+    let flags = PublishHeaderFlags {
+        kind: PublishHeaderFlagsKind::Simple,
+        retain: true,
+    };
+    let first = flags;
+    assert_eq!(first, flags);
+}
+
+/// Decodes `bytes`, asserting it fails, and returns the cause.
+fn decode_err(bytes: &[u8]) -> DecodeError {
+    let settings = ParserSettings::default();
+    ControlPacket::parser::<_, DecodeError, DecodeError>(&settings)
+        .parse(bytes)
+        .expect_err("fixture is expected to be an invalid packet")
+        .into_inner()
+}
+
+/// Asserts the packet is rejected *because the property is not
+/// permitted*, rather than because the fixture is malformed some other
+/// way.
+///
+/// "A Control Packet which contains an Identifier which is not valid
+/// for its packet type … is a Malformed Packet"
+/// ([§2.2.2.2](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901029)).
+///
+/// Checking the specific cause matters: these fixtures previously
+/// declared a Remaining Length that did not match their contents, so
+/// they were rejected before the property was ever examined and an
+/// `is_err()` assertion still passed.
+fn assert_unsupported_property(bytes: &[u8]) {
+    let error = decode_err(bytes);
+    assert!(
+        matches!(
+            error,
+            DecodeError::Properties(PropertiesError::UnsupportedProperty(_))
+        ),
+        "expected UnsupportedProperty, got {error:?}"
+    );
+}
+
+/// Asserts rejection because a property that may appear at most once
+/// was repeated — a Protocol Error, stated per property (e.g.
+/// [§3.1.2.11.2](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901048)).
+fn assert_duplicated_property(bytes: &[u8]) {
+    let error = decode_err(bytes);
+    assert!(
+        matches!(
+            error,
+            DecodeError::Properties(PropertiesError::DuplicatedProperty(_))
+        ),
+        "expected DuplicatedProperty, got {error:?}"
+    );
+}
+
+/// The same packets the tests below start from, with a valid property
+/// section, MUST parse.
+///
+/// This pins the baseline: if one of these ever fails, the
+/// corresponding rejection test is no longer proving anything about the
+/// property it names.
+
 #[rstest]
-#[case::content_type(vec![16, 27, 0, 4, 77, 81, 84, 84, 5, 2, 0, 60, 11, 3, 0, 4, 116, 101, 115, 116, 0, 0])]
-#[case::reason_string(vec![16, 27, 0, 4, 77, 81, 84, 84, 5, 2, 0, 60, 11, 31, 0, 4, 116, 101, 115, 116, 0, 0])]
-#[case::assigned_client_identifier(vec![16, 27, 0, 4, 77, 81, 84, 84, 5, 2, 0, 60, 11, 18, 0, 4, 116, 101, 115, 116, 0, 0])]
-#[case::wildcard_subscription_available(vec![16, 23, 0, 4, 77, 81, 84, 84, 5, 2, 0, 60, 7, 40, 1, 0, 0])]
-#[case::maximum_qos(vec![16, 23, 0, 4, 77, 81, 84, 84, 5, 2, 0, 60, 7, 36, 1, 0, 0])]
-#[case::subscription_identifier(vec![16, 23, 0, 4, 77, 81, 84, 84, 5, 2, 0, 60, 7, 11, 1, 0, 0])]
-#[case::topic_alias(vec![16, 23, 0, 4, 77, 81, 84, 84, 5, 2, 0, 60, 7, 35, 0, 100, 0, 0])]
-#[case::response_topic(vec![16, 27, 0, 4, 77, 81, 84, 84, 5, 2, 0, 60, 11, 8, 0, 5, 116, 111, 112, 105, 99, 0, 0])]
-#[case::authentication_data_without_method(vec![16, 27, 0, 4, 77, 81, 84, 84, 5, 2, 0, 60, 11, 22, 0, 4, 1, 2, 3, 4, 0, 0])]
+#[case::connect(vec![16, 13, 0, 4, 77, 81, 84, 84, 5, 2, 0, 60, 0, 0, 0])]
+#[case::connect_with_will(vec![16, 27, 0, 4, 77, 81, 84, 84, 5, 6, 0, 60, 0, 0, 0, 0, 0, 5, 116, 111, 112, 105, 99, 0, 4, 116, 101, 115, 116])]
+#[case::connack(vec![32, 3, 0, 0, 0])]
+#[case::publish(vec![48, 11, 0, 4, 116, 101, 115, 116, 0, 116, 101, 115, 116])]
+#[case::puback(vec![64, 4, 0, 1, 0, 0])]
+#[case::pubrec(vec![80, 4, 0, 1, 0, 0])]
+#[case::pubrel(vec![98, 4, 0, 1, 0, 0])]
+#[case::pubcomp(vec![112, 4, 0, 1, 0, 0])]
+#[case::subscribe(vec![130, 10, 0, 1, 0, 0, 4, 116, 101, 115, 116, 0])]
+#[case::suback(vec![144, 4, 0, 1, 0, 0])]
+#[case::unsubscribe(vec![162, 9, 0, 1, 0, 0, 4, 116, 101, 115, 116])]
+#[case::unsuback(vec![176, 4, 0, 1, 0, 0])]
+#[case::disconnect(vec![224, 2, 0, 0])]
+#[case::auth(vec![240, 9, 24, 7, 21, 0, 4, 116, 101, 115, 116])]
+fn baseline_packets_are_valid(#[case] bytes: Vec<u8>) {
+    let settings = ParserSettings::default();
+    ControlPacket::parser::<_, DecodeError, DecodeError>(&settings)
+        .parse(&bytes[..])
+        .expect("baseline packet should parse");
+}
+
+#[rstest]
+#[case::content_type(vec![16, 20, 0, 4, 77, 81, 84, 84, 5, 2, 0, 60, 7, 3, 0, 4, 116, 101, 115, 116, 0, 0])]
+#[case::reason_string(vec![16, 20, 0, 4, 77, 81, 84, 84, 5, 2, 0, 60, 7, 31, 0, 4, 116, 101, 115, 116, 0, 0])]
+#[case::assigned_client_identifier(vec![16, 20, 0, 4, 77, 81, 84, 84, 5, 2, 0, 60, 7, 18, 0, 4, 116, 101, 115, 116, 0, 0])]
+#[case::wildcard_subscription_available(vec![16, 15, 0, 4, 77, 81, 84, 84, 5, 2, 0, 60, 2, 40, 1, 0, 0])]
+#[case::maximum_qos(vec![16, 15, 0, 4, 77, 81, 84, 84, 5, 2, 0, 60, 2, 36, 1, 0, 0])]
+#[case::subscription_identifier(vec![16, 15, 0, 4, 77, 81, 84, 84, 5, 2, 0, 60, 2, 11, 1, 0, 0])]
+#[case::topic_alias(vec![16, 16, 0, 4, 77, 81, 84, 84, 5, 2, 0, 60, 3, 35, 0, 100, 0, 0])]
+#[case::response_topic(vec![16, 21, 0, 4, 77, 81, 84, 84, 5, 2, 0, 60, 8, 8, 0, 5, 116, 111, 112, 105, 99, 0, 0])]
 fn connect_rejects_invalid_property(#[case] bytes: Vec<u8>) {
-    let settings = ParserSettings::default();
-    let mut parser = ControlPacket::parser::<_, ContextError, ContextError>(&settings);
-    assert!(parser.parse(&bytes[..]).is_err());
+    assert_unsupported_property(&bytes);
 }
 
 #[rstest]
-#[case::session_expiry_interval(vec![16, 36, 0, 4, 77, 81, 84, 84, 5, 54, 0, 60, 5, 0, 0, 11, 17, 0, 0, 0, 100, 0, 5, 116, 111, 112, 105, 99, 0, 4, 116, 101, 115, 116])]
-#[case::reason_string(vec![16, 36, 0, 4, 77, 81, 84, 84, 5, 54, 0, 60, 5, 0, 0, 11, 31, 0, 4, 116, 101, 115, 116, 0, 5, 116, 111, 112, 105, 99, 0, 4, 116, 101, 115, 116])]
-#[case::receive_maximum(vec![16, 32, 0, 4, 77, 81, 84, 84, 5, 54, 0, 60, 5, 0, 0, 7, 33, 0, 100, 0, 5, 116, 111, 112, 105, 99, 0, 4, 116, 101, 115, 116])]
+#[case::session_expiry_interval(vec![16, 32, 0, 4, 77, 81, 84, 84, 5, 6, 0, 60, 0, 0, 0, 5, 17, 0, 0, 0, 100, 0, 5, 116, 111, 112, 105, 99, 0, 4, 116, 101, 115, 116])]
+#[case::reason_string(vec![16, 34, 0, 4, 77, 81, 84, 84, 5, 6, 0, 60, 0, 0, 0, 7, 31, 0, 4, 116, 101, 115, 116, 0, 5, 116, 111, 112, 105, 99, 0, 4, 116, 101, 115, 116])]
+#[case::receive_maximum(vec![16, 30, 0, 4, 77, 81, 84, 84, 5, 6, 0, 60, 0, 0, 0, 3, 33, 0, 100, 0, 5, 116, 111, 112, 105, 99, 0, 4, 116, 101, 115, 116])]
 fn will_rejects_invalid_property(#[case] bytes: Vec<u8>) {
-    let settings = ParserSettings::default();
-    let mut parser = ControlPacket::parser::<_, ContextError, ContextError>(&settings);
-    assert!(parser.parse(&bytes[..]).is_err());
+    assert_unsupported_property(&bytes);
 }
 
 #[rstest]
-#[case::will_delay_interval(vec![32, 13, 0, 0, 9, 24, 0, 0, 0, 100])]
-#[case::payload_format_indicator(vec![32, 7, 0, 0, 3, 1, 1])]
-#[case::request_response_information(vec![32, 7, 0, 0, 3, 25, 1])]
-#[case::request_problem_information(vec![32, 7, 0, 0, 3, 23, 1])]
-#[case::topic_alias(vec![32, 9, 0, 0, 5, 35, 0, 100])]
+#[case::will_delay_interval(vec![32, 8, 0, 0, 5, 24, 0, 0, 0, 100])]
+#[case::payload_format_indicator(vec![32, 5, 0, 0, 2, 1, 1])]
+#[case::request_response_information(vec![32, 5, 0, 0, 2, 25, 1])]
+#[case::request_problem_information(vec![32, 5, 0, 0, 2, 23, 1])]
+#[case::topic_alias(vec![32, 6, 0, 0, 3, 35, 0, 100])]
 fn connack_rejects_invalid_property(#[case] bytes: Vec<u8>) {
-    let settings = ParserSettings::default();
-    let mut parser = ControlPacket::parser::<_, ContextError, ContextError>(&settings);
-    assert!(parser.parse(&bytes[..]).is_err());
+    assert_unsupported_property(&bytes);
 }
 
 #[rstest]
-#[case::session_expiry_interval(vec![48, 22, 0, 4, 116, 101, 115, 116, 0, 1, 10, 17, 0, 0, 0, 100, 116, 101, 115, 116])]
-#[case::receive_maximum(vec![48, 18, 0, 4, 116, 101, 115, 116, 0, 1, 6, 33, 0, 100, 116, 101, 115, 116])]
-#[case::assigned_client_identifier(vec![48, 22, 0, 4, 116, 101, 115, 116, 0, 1, 10, 18, 0, 4, 116, 101, 115, 116, 116, 101, 115, 116])]
-#[case::reason_string(vec![48, 22, 0, 4, 116, 101, 115, 116, 0, 1, 10, 31, 0, 4, 116, 101, 115, 116, 116, 101, 115, 116])]
-#[case::wildcard_subscription_available(vec![48, 17, 0, 4, 116, 101, 115, 116, 0, 1, 5, 40, 1, 116, 101, 115, 116])]
-#[case::authentication_method(vec![48, 22, 0, 4, 116, 101, 115, 116, 0, 1, 10, 21, 0, 4, 116, 101, 115, 116, 116, 101, 115, 116])]
+#[case::session_expiry_interval(vec![48, 16, 0, 4, 116, 101, 115, 116, 5, 17, 0, 0, 0, 100, 116, 101, 115, 116])]
+#[case::receive_maximum(vec![48, 14, 0, 4, 116, 101, 115, 116, 3, 33, 0, 100, 116, 101, 115, 116])]
+#[case::assigned_client_identifier(vec![48, 18, 0, 4, 116, 101, 115, 116, 7, 18, 0, 4, 116, 101, 115, 116, 116, 101, 115, 116])]
+#[case::reason_string(vec![48, 18, 0, 4, 116, 101, 115, 116, 7, 31, 0, 4, 116, 101, 115, 116, 116, 101, 115, 116])]
+#[case::wildcard_subscription_available(vec![48, 13, 0, 4, 116, 101, 115, 116, 2, 40, 1, 116, 101, 115, 116])]
+#[case::authentication_method(vec![48, 18, 0, 4, 116, 101, 115, 116, 7, 21, 0, 4, 116, 101, 115, 116, 116, 101, 115, 116])]
 fn publish_rejects_invalid_property(#[case] bytes: Vec<u8>) {
-    let settings = ParserSettings::default();
-    let mut parser = ControlPacket::parser::<_, ContextError, ContextError>(&settings);
-    assert!(parser.parse(&bytes[..]).is_err());
+    assert_unsupported_property(&bytes);
 }
 
 #[rstest]
-#[case::payload_format_indicator(vec![130, 8, 0, 1, 3, 1, 1, 5, 0, 4, 116, 101, 115, 116, 0])]
-#[case::reason_string(vec![130, 11, 0, 1, 6, 31, 0, 4, 116, 101, 115, 116, 5, 0, 4, 116, 101, 115, 116, 0])]
-#[case::message_expiry_interval(vec![130, 11, 0, 1, 6, 2, 0, 0, 0, 100, 5, 0, 4, 116, 101, 115, 116, 0])]
+#[case::payload_format_indicator(vec![130, 12, 0, 1, 2, 1, 1, 0, 4, 116, 101, 115, 116, 0])]
+#[case::reason_string(vec![130, 17, 0, 1, 7, 31, 0, 4, 116, 101, 115, 116, 0, 4, 116, 101, 115, 116, 0])]
+#[case::message_expiry_interval(vec![130, 15, 0, 1, 5, 2, 0, 0, 0, 100, 0, 4, 116, 101, 115, 116, 0])]
 fn subscribe_rejects_invalid_property(#[case] bytes: Vec<u8>) {
-    let settings = ParserSettings::default();
-    let mut parser = ControlPacket::parser::<_, ContextError, ContextError>(&settings);
-    assert!(parser.parse(&bytes[..]).is_err());
+    assert_unsupported_property(&bytes);
 }
 
 #[rstest]
-#[case::payload_format_indicator(vec![144, 8, 0, 1, 4, 1, 1, 1, 0])]
-#[case::session_expiry_interval(vec![144, 12, 0, 1, 8, 17, 0, 0, 0, 100, 1, 0])]
-#[case::subscription_identifier(vec![144, 8, 0, 1, 4, 11, 42, 1, 0])]
+#[case::payload_format_indicator(vec![144, 6, 0, 1, 2, 1, 1, 0])]
+#[case::session_expiry_interval(vec![144, 9, 0, 1, 5, 17, 0, 0, 0, 100, 0])]
+#[case::subscription_identifier(vec![144, 6, 0, 1, 2, 11, 42, 0])]
 fn suback_rejects_invalid_property(#[case] bytes: Vec<u8>) {
-    let settings = ParserSettings::default();
-    let mut parser = ControlPacket::parser::<_, ContextError, ContextError>(&settings);
-    assert!(parser.parse(&bytes[..]).is_err());
+    assert_unsupported_property(&bytes);
 }
 
 #[rstest]
-#[case::payload_format_indicator(vec![96, 10, 0, 1, 0, 4, 1, 1])]
-#[case::message_expiry_interval(vec![96, 13, 0, 1, 0, 8, 2, 0, 0, 0, 100])]
-#[case::topic_alias(vec![96, 12, 0, 1, 0, 7, 35, 0, 100])]
+#[case::payload_format_indicator(vec![64, 6, 0, 1, 0, 2, 1, 1])]
+#[case::message_expiry_interval(vec![64, 9, 0, 1, 0, 5, 2, 0, 0, 0, 100])]
+#[case::topic_alias(vec![64, 7, 0, 1, 0, 3, 35, 0, 100])]
 fn puback_rejects_invalid_property(#[case] bytes: Vec<u8>) {
-    let settings = ParserSettings::default();
-    let mut parser = ControlPacket::parser::<_, ContextError, ContextError>(&settings);
-    assert!(parser.parse(&bytes[..]).is_err());
+    assert_unsupported_property(&bytes);
 }
 
 #[rstest]
-#[case::subscription_identifier(vec![85, 10, 0, 1, 0, 4, 11, 42])]
+#[case::subscription_identifier(vec![80, 6, 0, 1, 0, 2, 11, 42])]
 fn pubrec_rejects_invalid_property(#[case] bytes: Vec<u8>) {
-    let settings = ParserSettings::default();
-    let mut parser = ControlPacket::parser::<_, ContextError, ContextError>(&settings);
-    assert!(parser.parse(&bytes[..]).is_err());
+    assert_unsupported_property(&bytes);
 }
 
 #[rstest]
-#[case::content_type(vec![98, 13, 0, 1, 0, 7, 3, 0, 4, 116, 101, 115, 116])]
+#[case::content_type(vec![98, 11, 0, 1, 0, 7, 3, 0, 4, 116, 101, 115, 116])]
 fn pubrel_rejects_invalid_property(#[case] bytes: Vec<u8>) {
-    let settings = ParserSettings::default();
-    let mut parser = ControlPacket::parser::<_, ContextError, ContextError>(&settings);
-    assert!(parser.parse(&bytes[..]).is_err());
+    assert_unsupported_property(&bytes);
 }
 
 #[rstest]
-#[case::topic_alias(vec![112, 12, 0, 1, 0, 7, 35, 0, 100])]
+#[case::topic_alias(vec![112, 7, 0, 1, 0, 3, 35, 0, 100])]
 fn pubcomp_rejects_invalid_property(#[case] bytes: Vec<u8>) {
-    let settings = ParserSettings::default();
-    let mut parser = ControlPacket::parser::<_, ContextError, ContextError>(&settings);
-    assert!(parser.parse(&bytes[..]).is_err());
+    assert_unsupported_property(&bytes);
 }
 
 #[rstest]
-#[case::reason_string(vec![162, 17, 0, 1, 11, 31, 0, 4, 116, 101, 115, 116, 5, 0, 4, 116, 101, 115, 116])]
-#[case::subscription_identifier(vec![162, 11, 0, 1, 5, 11, 42, 5, 0, 4, 116, 101, 115, 116])]
+#[case::reason_string(vec![162, 16, 0, 1, 7, 31, 0, 4, 116, 101, 115, 116, 0, 4, 116, 101, 115, 116])]
+#[case::subscription_identifier(vec![162, 11, 0, 1, 2, 11, 42, 0, 4, 116, 101, 115, 116])]
 fn unsubscribe_rejects_invalid_property(#[case] bytes: Vec<u8>) {
-    let settings = ParserSettings::default();
-    let mut parser = ControlPacket::parser::<_, ContextError, ContextError>(&settings);
-    assert!(parser.parse(&bytes[..]).is_err());
+    assert_unsupported_property(&bytes);
 }
 
 #[rstest]
-#[case::payload_format_indicator(vec![176, 8, 0, 1, 4, 1, 1, 1, 0])]
-#[case::subscription_identifier(vec![176, 8, 0, 1, 4, 11, 42, 1, 0])]
+#[case::payload_format_indicator(vec![176, 6, 0, 1, 2, 1, 1, 0])]
+#[case::subscription_identifier(vec![176, 6, 0, 1, 2, 11, 42, 0])]
 fn unsuback_rejects_invalid_property(#[case] bytes: Vec<u8>) {
-    let settings = ParserSettings::default();
-    let mut parser = ControlPacket::parser::<_, ContextError, ContextError>(&settings);
-    assert!(parser.parse(&bytes[..]).is_err());
+    assert_unsupported_property(&bytes);
 }
 
 #[rstest]
-#[case::payload_format_indicator(vec![224, 7, 0, 3, 1, 1])]
-#[case::message_expiry_interval(vec![224, 10, 0, 6, 2, 0, 0, 0, 100])]
-#[case::subscription_identifier(vec![224, 7, 0, 3, 11, 42])]
-#[case::topic_alias(vec![224, 9, 0, 5, 35, 0, 100])]
-#[case::authentication_method(vec![224, 13, 0, 9, 21, 0, 4, 116, 101, 115, 116])]
+#[case::payload_format_indicator(vec![224, 4, 0, 2, 1, 1])]
+#[case::message_expiry_interval(vec![224, 7, 0, 5, 2, 0, 0, 0, 100])]
+#[case::subscription_identifier(vec![224, 4, 0, 2, 11, 42])]
+#[case::topic_alias(vec![224, 5, 0, 3, 35, 0, 100])]
+#[case::authentication_method(vec![224, 9, 0, 7, 21, 0, 4, 116, 101, 115, 116])]
 fn disconnect_rejects_invalid_property(#[case] bytes: Vec<u8>) {
-    let settings = ParserSettings::default();
-    let mut parser = ControlPacket::parser::<_, ContextError, ContextError>(&settings);
-    assert!(parser.parse(&bytes[..]).is_err());
+    assert_unsupported_property(&bytes);
 }
 
 #[rstest]
-#[case::authentication_data_without_method(vec![240, 11, 0, 7, 22, 0, 4, 1, 2, 3, 4])]
-#[case::payload_format_indicator(vec![240, 10, 0, 6, 21, 0, 4, 116, 101, 115, 116, 1, 1])]
-#[case::message_expiry_interval(vec![240, 13, 0, 9, 21, 0, 4, 116, 101, 115, 116, 2, 0, 0, 0, 100])]
-#[case::subscription_identifier(vec![240, 11, 0, 7, 21, 0, 4, 116, 101, 115, 116, 11, 42])]
+#[case::payload_format_indicator(vec![240, 11, 24, 9, 21, 0, 4, 116, 101, 115, 116, 1, 1])]
+#[case::message_expiry_interval(vec![240, 14, 24, 12, 21, 0, 4, 116, 101, 115, 116, 2, 0, 0, 0, 100])]
+#[case::subscription_identifier(vec![240, 11, 24, 9, 21, 0, 4, 116, 101, 115, 116, 11, 42])]
 fn auth_rejects_invalid_property(#[case] bytes: Vec<u8>) {
-    let settings = ParserSettings::default();
-    let mut parser = ControlPacket::parser::<_, ContextError, ContextError>(&settings);
-    assert!(parser.parse(&bytes[..]).is_err());
+    assert_unsupported_property(&bytes);
+}
+
+/// Authentication Data without Authentication Method is a Protocol
+/// Error ([§3.1.2.11.10](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901056)),
+/// distinct from the "property not permitted here" cases above.
+#[rstest]
+#[case::connect(vec![16, 20, 0, 4, 77, 81, 84, 84, 5, 2, 0, 60, 7, 22, 0, 4, 1, 2, 3, 4, 0, 0])]
+#[case::auth(vec![240, 9, 24, 7, 22, 0, 4, 1, 2, 3, 4])]
+fn authentication_data_without_method_is_rejected(#[case] bytes: Vec<u8>) {
+    let error = decode_err(&bytes);
+    assert!(
+        matches!(
+            error,
+            DecodeError::Properties(PropertiesError::MissingAuthenticationMethod(_))
+        ),
+        "expected MissingAuthenticationMethod, got {error:?}"
+    );
 }
 
 #[rstest]
-#[case::session_expiry_interval(vec![16, 37, 0, 4, 77, 81, 84, 84, 5, 2, 0, 60, 21, 17, 0, 0, 0, 100, 17, 0, 0, 0, 200, 0, 0])]
-#[case::receive_maximum(vec![16, 31, 0, 4, 77, 81, 84, 84, 5, 2, 0, 60, 15, 33, 0, 100, 33, 0, 200, 0, 0])]
+#[case::session_expiry_interval(vec![16, 23, 0, 4, 77, 81, 84, 84, 5, 2, 0, 60, 10, 17, 0, 0, 0, 100, 17, 0, 0, 0, 100, 0, 0])]
+#[case::receive_maximum(vec![16, 19, 0, 4, 77, 81, 84, 84, 5, 2, 0, 60, 6, 33, 0, 100, 33, 0, 100, 0, 0])]
 fn connect_rejects_duplicate_property(#[case] bytes: Vec<u8>) {
-    let settings = ParserSettings::default();
-    let mut parser = ControlPacket::parser::<_, ContextError, ContextError>(&settings);
-    assert!(parser.parse(&bytes[..]).is_err());
+    assert_duplicated_property(&bytes);
+}
+
+/// The acknowledgement packets permit Reason String at most once.
+#[rstest]
+#[case::puback(vec![64, 18, 0, 1, 0, 14, 31, 0, 4, 116, 101, 115, 116, 31, 0, 4, 97, 98, 99, 100])]
+#[case::pubrec(vec![80, 18, 0, 1, 0, 14, 31, 0, 4, 116, 101, 115, 116, 31, 0, 4, 97, 98, 99, 100])]
+#[case::pubrel(vec![98, 18, 0, 1, 0, 14, 31, 0, 4, 116, 101, 115, 116, 31, 0, 4, 97, 98, 99, 100])]
+#[case::pubcomp(vec![112, 18, 0, 1, 0, 14, 31, 0, 4, 116, 101, 115, 116, 31, 0, 4, 97, 98, 99, 100])]
+fn ack_packets_reject_duplicate_property(#[case] bytes: Vec<u8>) {
+    assert_duplicated_property(&bytes);
 }
 
 fn roundtrip(packet: &ControlPacket) -> Result<(), String> {
@@ -642,36 +752,6 @@ fn pubrel_properties_is_empty() {
 }
 
 #[test]
-fn pubcomp_rejects_duplicate_property() {
-    let bytes = vec![
-        112, 17, 0, 1, 11, 31, 0, 4, 116, 101, 115, 116, 31, 0, 4, 97, 98, 99, 100,
-    ];
-    let settings = ParserSettings::default();
-    let mut parser = ControlPacket::parser::<_, ContextError, ContextError>(&settings);
-    parser.parse(&bytes[..]).unwrap_err();
-}
-
-#[test]
-fn pubrec_rejects_duplicate_property() {
-    let bytes = vec![
-        85, 17, 0, 1, 11, 31, 0, 4, 116, 101, 115, 116, 31, 0, 4, 97, 98, 99, 100,
-    ];
-    let settings = ParserSettings::default();
-    let mut parser = ControlPacket::parser::<_, ContextError, ContextError>(&settings);
-    parser.parse(&bytes[..]).unwrap_err();
-}
-
-#[test]
-fn pubrel_rejects_duplicate_property() {
-    let bytes = vec![
-        98, 17, 0, 1, 0, 11, 31, 0, 4, 116, 101, 115, 116, 31, 0, 4, 97, 98, 99, 100,
-    ];
-    let settings = ParserSettings::default();
-    let mut parser = ControlPacket::parser::<_, ContextError, ContextError>(&settings);
-    parser.parse(&bytes[..]).unwrap_err();
-}
-
-#[test]
 fn pingreq_encode_and_decode() {
     let pingreq = PingReq {};
     let packet = ControlPacket::PingReq(pingreq);
@@ -685,30 +765,60 @@ fn pingresp_encode_and_decode() {
     roundtrip(&packet).unwrap();
 }
 
-#[test]
-fn reserved_packet_parsing() {
-    let bytes = [0, 0];
+/// Control Packet Type 0 is "Reserved" with a direction of flow of
+/// "Forbidden"
+/// ([§2.1.2](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901022)),
+/// so it can never appear on the wire. Receiving one is a Malformed
+/// Packet and MUST be rejected at the point the Fixed Header is
+/// decoded, rather than surfacing an unusable packet to the caller.
+#[rstest]
+#[case::empty_remaining_length(&[0, 0])]
+#[case::with_payload(&[0, 1, 0])]
+#[case::flags_set(&[0b0000_0010, 0])]
+fn reserved_packet_type_is_rejected(#[case] bytes: &[u8]) {
     let settings = ParserSettings::default();
     let mut parser = ControlPacket::parser::<_, ContextError, ContextError>(&settings);
-    assert!(matches!(
-        parser.parse(&bytes[..]),
-        Ok(ControlPacket::Reserved(_))
-    ));
+    parser.parse(bytes).unwrap_err();
 }
 
-#[test]
-fn reserved_packet_rejects_with_payload() {
-    let bytes = [0, 1, 0];
-    let settings = ParserSettings::default();
-    let mut parser = ControlPacket::parser::<_, ContextError, ContextError>(&settings);
-    parser.parse(&bytes[..]).unwrap_err();
+/// The Control Packet Type nibble is fixed by
+/// [§2.1.2 Table 2-1](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901022).
+/// [`ControlPacket`] pins these as explicit `#[repr(u8)]`
+/// discriminants, so this guards against a variant being reordered,
+/// inserted, or removed and silently shifting every packet type on the
+/// wire.
+#[rstest]
+#[case(ControlPacketType::Connect, 1)]
+#[case(ControlPacketType::ConnAck, 2)]
+#[case(ControlPacketType::Publish, 3)]
+#[case(ControlPacketType::PubAck, 4)]
+#[case(ControlPacketType::PubRec, 5)]
+#[case(ControlPacketType::PubRel, 6)]
+#[case(ControlPacketType::PubComp, 7)]
+#[case(ControlPacketType::Subscribe, 8)]
+#[case(ControlPacketType::SubAck, 9)]
+#[case(ControlPacketType::Unsubscribe, 10)]
+#[case(ControlPacketType::UnsubAck, 11)]
+#[case(ControlPacketType::PingReq, 12)]
+#[case(ControlPacketType::PingResp, 13)]
+#[case(ControlPacketType::Disconnect, 14)]
+#[case(ControlPacketType::Auth, 15)]
+fn control_packet_type_matches_spec_wire_value(
+    #[case] packet_type: ControlPacketType,
+    #[case] wire_value: u8,
+) {
+    assert_eq!(u8::from(packet_type), wire_value);
+    assert_eq!(
+        ControlPacketType::try_from(wire_value).unwrap(),
+        packet_type
+    );
 }
 
+/// Value 0 is Reserved / Forbidden, so it MUST NOT decode to any
+/// packet type ([§2.1.2](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901022)).
 #[test]
-fn reserved_packet_roundtrip() {
-    let reserved = Reserved {};
-    let packet = ControlPacket::Reserved(reserved);
-    roundtrip(&packet).unwrap();
+fn control_packet_type_rejects_reserved_zero() {
+    ControlPacketType::try_from(0u8).unwrap_err();
 }
 
 #[test]

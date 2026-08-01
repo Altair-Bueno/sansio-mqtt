@@ -18,7 +18,7 @@ pub struct PingResp {}
 /// ([§3.13.1](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901201)).
 ///
 /// MUST be `0b0000`; any other value is Malformed Packet.
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub struct PingRespHeaderFlags;
 
 impl From<PingRespHeaderFlags> for u8 {
