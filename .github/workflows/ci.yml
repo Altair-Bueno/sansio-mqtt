@@ -61,7 +61,7 @@ jobs:
       - uses: actions/checkout@v6
       - name: Read rust-version from Cargo.toml
         id: msrv
-        shell: python3
+        shell: python3 {0}
         run: |
           import os
           import tomllib
@@ -151,10 +151,10 @@ jobs:
             ~/.cargo/registry/index/
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
+            target/
             fuzz/target/
           key:
-            ${{ runner.os }}-${{ github.job }}-${{ hashFiles('fuzz/Cargo.lock')
-            }}
+            ${{ runner.os }}-${{ github.job }}-${{ hashFiles('**/Cargo.toml') }}
       - uses: taiki-e/install-action@v2
         with:
           tool: cargo-fuzz@0.12
@@ -181,10 +181,10 @@ jobs:
             ~/.cargo/registry/index/
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
+            target/
             fuzz/target/
           key:
-            ${{ runner.os }}-${{ github.job }}-${{ hashFiles('fuzz/Cargo.lock')
-            }}
+            ${{ runner.os }}-${{ github.job }}-${{ hashFiles('**/Cargo.toml') }}
       - uses: taiki-e/install-action@v2
         with:
           tool: cargo-fuzz@0.12

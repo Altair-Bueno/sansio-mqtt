@@ -11,8 +11,8 @@ use winnow::Parser;
 fuzz_target!(|data: &[u8]| {
     let settings = ParserSettings::new();
     let mut input = data;
-    let Ok(packet) = ControlPacket::parser::<_, ContextError, ContextError>(&settings)
-        .parse_next(&mut input)
+    let Ok(packet) =
+        ControlPacket::parser::<_, ContextError, ContextError>(&settings).parse_next(&mut input)
     else {
         return;
     };
