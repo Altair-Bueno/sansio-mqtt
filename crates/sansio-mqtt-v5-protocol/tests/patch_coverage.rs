@@ -10,12 +10,15 @@ use encode::Encodable;
 use sansio::Protocol;
 use sansio_mqtt_v5_protocol::Client;
 use sansio_mqtt_v5_protocol::ClientMessage;
+use sansio_mqtt_v5_protocol::ClientSession;
 use sansio_mqtt_v5_protocol::ClientSettings;
 use sansio_mqtt_v5_protocol::ConnectionOptions;
 use sansio_mqtt_v5_protocol::DriverEventIn;
 use sansio_mqtt_v5_protocol::DriverEventOut;
 use sansio_mqtt_v5_protocol::Error;
+use sansio_mqtt_v5_protocol::InboundMessageId;
 use sansio_mqtt_v5_protocol::IncomingData;
+use sansio_mqtt_v5_protocol::IncomingRejectReason;
 use sansio_mqtt_v5_protocol::OutboundInflightState;
 use sansio_mqtt_v5_protocol::SubscribeOptions;
 use sansio_mqtt_v5_protocol::UserWriteIn;
@@ -222,13 +225,131 @@ fn acknowledgement_exceeding_broker_maximum_packet_size_fails_the_connection() {
     ));
 }
 
+/// Deciding twice on the same message is API misuse, not a protocol violation:
+/// it is reported without touching the connection.
+#[test]
+fn deciding_twice_on_a_message_is_an_invalid_state_transition() {
+    let mut client = connected_client(ConnAckProperties::default());
+
+    assert_eq!(
+        client.handle_read(IncomingData {
+            bytes: encode_packet(&inbound_publish(packet_id(1), GuaranteedQoS::ExactlyOnce)),
+            received_at: Duration::ZERO,
+        }),
+        Ok(())
+    );
+    let id = match client.poll_read() {
+        Some(UserWriteOut::ReceivedMessageWithRequiredAcknowledgement(id, _)) => id,
+        other => panic!("expected an ack-required message, got {other:?}"),
+    };
+
+    // First decision moves the QoS2 exchange on to awaiting PUBREL.
+    assert_eq!(
+        client.handle_write(UserWriteIn::AcknowledgeMessage(id)),
+        Ok(())
+    );
+    assert!(client.poll_write().is_some(), "PUBREC should be queued");
+
+    assert_eq!(
+        client.handle_write(UserWriteIn::AcknowledgeMessage(id)),
+        Err(Error::InvalidStateTransition),
+        "the peer did nothing wrong, so this is not a protocol error"
+    );
+    assert_eq!(
+        client.handle_write(UserWriteIn::RejectMessage(
+            id,
+            IncomingRejectReason::UnspecifiedError
+        )),
+        Err(Error::InvalidStateTransition)
+    );
+
+    // The connection is untouched: no DISCONNECT, no close, still usable.
+    assert!(client.poll_write().is_none());
+    assert!(client.poll_event().is_none());
+    assert!(client.poll_read().is_none());
+
+    let pubrel = ControlPacket::PubRel(PubRel {
+        packet_id: packet_id(1),
+        reason_code: PubRelReasonCode::Success,
+        properties: PubRelProperties::default(),
+    });
+    assert_eq!(
+        client.handle_read(IncomingData {
+            bytes: encode_packet(&pubrel),
+            received_at: Duration::ZERO,
+        }),
+        Ok(())
+    );
+    assert!(client.poll_write().is_some(), "PUBCOMP should be queued");
+}
+
+/// Deciding on a packet id that was never delivered is likewise API misuse.
+#[test]
+fn deciding_on_an_undelivered_packet_id_is_an_invalid_state_transition() {
+    let mut client = connected_client(ConnAckProperties::default());
+
+    assert_eq!(
+        client.handle_write(UserWriteIn::AcknowledgeMessage(InboundMessageId::new(
+            packet_id(9)
+        ))),
+        Err(Error::InvalidStateTransition)
+    );
+    assert!(
+        client.poll_event().is_none(),
+        "an unknown id must not close the socket"
+    );
+}
+
+/// An inbound exchange restored from a persisted session can be acknowledged,
+/// which is only possible because the id is publicly constructible.
+#[test]
+fn restored_session_inbound_message_can_be_acknowledged() {
+    let mut session = ClientSession::default();
+    session.on_flight_received.insert(
+        packet_id(4),
+        sansio_mqtt_v5_protocol::InboundInflightState::Qos1AwaitAppDecision,
+    );
+
+    let mut client =
+        Client::<Duration>::with_settings_and_session(ClientSettings::default(), session);
+    assert_eq!(
+        client.handle_write(UserWriteIn::Connect(ConnectionOptions {
+            session_expiry_interval: Some(30),
+            ..ConnectionOptions::default()
+        })),
+        Ok(())
+    );
+    assert!(matches!(
+        client.poll_event(),
+        Some(DriverEventOut::OpenSocket)
+    ));
+    assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
+    assert!(client.poll_write().is_some(), "CONNECT should be queued");
+    assert_eq!(
+        client.handle_read(IncomingData {
+            bytes: encode_packet(&ControlPacket::ConnAck(ConnAck {
+                kind: ConnAckKind::ResumePreviousSession,
+                properties: ConnAckProperties::default(),
+            })),
+            received_at: Duration::ZERO,
+        }),
+        Ok(())
+    );
+    assert!(matches!(client.poll_read(), Some(UserWriteOut::Connected)));
+
+    // The application never saw this message in this process, but it can still
+    // settle the exchange and free the packet id.
+    assert_eq!(
+        client.handle_write(UserWriteIn::AcknowledgeMessage(InboundMessageId::new(
+            packet_id(4)
+        ))),
+        Ok(())
+    );
+    assert!(client.poll_write().is_some(), "PUBACK should be queued");
+    assert!(client.session().on_flight_received.is_empty());
+}
+
 /// Acknowledging a QoS2 message moves the exchange to awaiting PUBREL.
-///
-/// The sibling branch — a second decision on the same packet id — is
-/// unreachable from outside the crate: [`InboundMessageId`] has no public
-/// constructor and is neither `Copy` nor `Clone`, so an application cannot hold
-/// an id past the single `AcknowledgeMessage`/`RejectMessage` that consumes it.
-/// That branch stays defensive until the type gains a public constructor.
 #[test]
 fn acknowledging_a_qos2_message_moves_it_to_awaiting_pubrel() {
     let mut client = connected_client(ConnAckProperties::default());
@@ -354,6 +475,21 @@ fn server_bound_packet_received_while_connected_is_a_protocol_error() {
             received_at: Duration::ZERO,
         }),
         Err(Error::ProtocolError)
+    );
+}
+
+/// A second SocketConnected while already Connected is driver misuse.
+#[test]
+fn socket_connected_while_already_connected_is_an_invalid_state_transition() {
+    let mut client = connected_client(ConnAckProperties::default());
+
+    assert_eq!(
+        client.handle_event(DriverEventIn::SocketConnected),
+        Err(Error::InvalidStateTransition)
+    );
+    assert!(
+        client.poll_event().is_none(),
+        "the established connection must be left alone"
     );
 }
 

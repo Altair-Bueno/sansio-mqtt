@@ -228,9 +228,14 @@ fn respond_to_inbound_publish<Time>(
             stay_or_disconnect(result)
         }
         // The application has already decided on this packet id, or never
-        // received it.
+        // received it. Nothing arrived from the peer, so this is API misuse
+        // rather than a protocol violation: report it without disturbing the
+        // connection.
         Some(InboundInflightState::Qos2AwaitPubRel | InboundInflightState::Qos2Rejected(_))
-        | None => (ClientState::Connected(Connected), Err(Error::ProtocolError)),
+        | None => (
+            ClientState::Connected(Connected),
+            Err(Error::InvalidStateTransition),
+        ),
     }
 }
 

@@ -187,16 +187,49 @@ pub struct BrokerMessage {
     pub content_type: Option<Utf8String>,
 }
 
-#[derive(Debug)]
+/// Identifies an inbound QoS1/QoS2 message that is awaiting the application's
+/// accept-or-reject decision.
+///
+/// Handed out with
+/// [`UserWriteOut::ReceivedMessageWithRequiredAcknowledgement`] and passed back
+/// through [`UserWriteIn::AcknowledgeMessage`] or
+/// [`UserWriteIn::RejectMessage`].
+///
+/// The type is `Copy` so an application can correlate a message (log it, key a
+/// map by it) and still acknowledge it, and constructible so a session restored
+/// through
+/// [`Client::with_settings_and_session`](crate::Client::with_settings_and_session)
+/// can acknowledge inbound exchanges that were already in flight when the
+/// process stopped. Deciding twice on the same id is therefore possible, and is
+/// reported as [`Error::InvalidStateTransition`] rather than being prevented by
+/// the type.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct InboundMessageId(NonZero<u16>);
 
 impl InboundMessageId {
-    pub(crate) fn new(id: NonZero<u16>) -> Self {
+    /// Wraps a Packet Identifier.
+    ///
+    /// [MQTT-2.2.1-3] A Packet Identifier is never zero, which [`NonZero`]
+    /// enforces.
+    pub const fn new(id: NonZero<u16>) -> Self {
         Self(id)
     }
 
-    pub(crate) fn get(self) -> NonZero<u16> {
+    /// The Packet Identifier of the message.
+    pub const fn get(self) -> NonZero<u16> {
         self.0
+    }
+}
+
+impl From<NonZero<u16>> for InboundMessageId {
+    fn from(id: NonZero<u16>) -> Self {
+        Self::new(id)
+    }
+}
+
+impl From<InboundMessageId> for NonZero<u16> {
+    fn from(id: InboundMessageId) -> Self {
+        id.get()
     }
 }
 
