@@ -9,7 +9,7 @@ pub use sansio_mqtt_v5_types::AuthenticationKind;
 pub use sansio_mqtt_v5_types::BinaryData;
 pub use sansio_mqtt_v5_types::DisconnectReasonCode;
 pub use sansio_mqtt_v5_types::FormatIndicator;
-use sansio_mqtt_v5_types::MaximumQoS;
+pub use sansio_mqtt_v5_types::MaximumQoS;
 use sansio_mqtt_v5_types::ParserSettings;
 pub use sansio_mqtt_v5_types::Payload;
 pub use sansio_mqtt_v5_types::PubAckReasonCode;
@@ -240,6 +240,10 @@ pub enum UserWriteOut {
     Auth(AuthPacket),
 }
 
+/// The reason an application refuses an inbound QoS>0 message.
+///
+/// Only the subset of Reason Codes a receiving client may return in PUBACK or
+/// PUBREC ([§3.4.2.1](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901124)).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum IncomingRejectReason {
     UnspecifiedError,
@@ -248,6 +252,32 @@ pub enum IncomingRejectReason {
     TopicNameInvalid,
     QuotaExceeded,
     PayloadFormatInvalid,
+}
+
+impl From<IncomingRejectReason> for PubAckReasonCode {
+    fn from(reason: IncomingRejectReason) -> Self {
+        match reason {
+            IncomingRejectReason::UnspecifiedError => Self::UnspecifiedError,
+            IncomingRejectReason::ImplementationSpecificError => Self::ImplementationSpecificError,
+            IncomingRejectReason::NotAuthorized => Self::NotAuthorized,
+            IncomingRejectReason::TopicNameInvalid => Self::TopicNameInvalid,
+            IncomingRejectReason::QuotaExceeded => Self::QuotaExceeded,
+            IncomingRejectReason::PayloadFormatInvalid => Self::PayloadFormatInvalid,
+        }
+    }
+}
+
+impl From<IncomingRejectReason> for PubRecReasonCode {
+    fn from(reason: IncomingRejectReason) -> Self {
+        match reason {
+            IncomingRejectReason::UnspecifiedError => Self::UnspecifiedError,
+            IncomingRejectReason::ImplementationSpecificError => Self::ImplementationSpecificError,
+            IncomingRejectReason::NotAuthorized => Self::NotAuthorized,
+            IncomingRejectReason::TopicNameInvalid => Self::TopicNameInvalid,
+            IncomingRejectReason::QuotaExceeded => Self::QuotaExceeded,
+            IncomingRejectReason::PayloadFormatInvalid => Self::PayloadFormatInvalid,
+        }
+    }
 }
 
 // Things that the client can write to the socket (via the driver)

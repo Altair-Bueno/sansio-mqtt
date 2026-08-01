@@ -7,6 +7,7 @@ use crate::state::ClientState;
 use crate::state::StateHandler;
 use crate::state::connected::Connected;
 use crate::state::disconnected::Disconnected;
+use crate::state::fail_with_protocol_error;
 use crate::types::ClientSettings;
 use crate::types::ConnectionOptions;
 use crate::types::DriverEventIn;
@@ -16,22 +17,24 @@ use crate::types::ProtocolTime;
 use crate::types::UserWriteIn;
 use crate::types::UserWriteOut;
 use core::num::NonZero;
+use sansio_mqtt_v5_types::AuthReasonCode;
 use sansio_mqtt_v5_types::BinaryData;
+use sansio_mqtt_v5_types::ConnAck;
 use sansio_mqtt_v5_types::ConnAckKind;
 use sansio_mqtt_v5_types::ConnackReasonCode;
 use sansio_mqtt_v5_types::Connect;
 use sansio_mqtt_v5_types::ConnectProperties;
 use sansio_mqtt_v5_types::ControlPacket;
-use sansio_mqtt_v5_types::Disconnect;
-use sansio_mqtt_v5_types::DisconnectProperties;
-use sansio_mqtt_v5_types::DisconnectReasonCode;
 use sansio_mqtt_v5_types::Utf8String;
 use sansio_mqtt_v5_types::Will as ConnectWill;
 use sansio_mqtt_v5_types::WillProperties;
 
+/// Awaiting CONNACK.
+///
+/// The connect options live in `scratchpad.pending_connect_options` for the
+/// whole client lifetime, so this state carries none of its own.
 #[derive(Debug)]
 pub(crate) struct Connecting {
-    pub(crate) pending_connect_options: ConnectionOptions,
     /// Set to `true` after the CONNECT packet has been sent (i.e., after
     /// SocketConnected fires and the CONNECT is enqueued). Used to reject a
     /// second SocketConnected in Connecting state.
@@ -98,16 +101,7 @@ fn build_connect(settings: &ClientSettings, options: &ConnectionOptions) -> Resu
             .into_iter()
             .flatten()
             .min(),
-            topic_alias_maximum: options
-                .topic_alias_maximum
-                .or(settings.max_incoming_topic_alias_maximum)
-                .map(|topic_alias_maximum| {
-                    topic_alias_maximum.min(
-                        settings
-                            .max_incoming_topic_alias_maximum
-                            .unwrap_or(u16::MAX),
-                    )
-                }),
+            topic_alias_maximum: limits::client_topic_alias_maximum(settings, options),
             request_response_information: options
                 .request_response_information
                 .or(settings.default_request_response_information),
@@ -125,7 +119,6 @@ fn build_connect(settings: &ClientSettings, options: &ConnectionOptions) -> Resu
 /// Resets negotiated limits, builds and enqueues the CONNECT packet, and
 /// resets keepalive tracking flags. On error, stays in Connecting.
 pub(crate) fn on_socket_connected<Time>(
-    connecting: Connecting,
     settings: &ClientSettings,
     session: &mut ClientSession,
     scratchpad: &mut ClientScratchpad<Time>,
@@ -134,33 +127,41 @@ where
     Time: ProtocolTime,
 {
     limits::reset_negotiated_limits(settings, session, scratchpad);
-    let connect = match build_connect(settings, &connecting.pending_connect_options) {
+    let connect = match build_connect(settings, &scratchpad.pending_connect_options) {
         Ok(packet) => packet,
-        Err(e) => return (ClientState::Connecting(connecting), Err(e)),
+        Err(e) => {
+            return (
+                ClientState::Connecting(Connecting {
+                    connect_sent: false,
+                }),
+                Err(e),
+            );
+        }
     };
     match queues::enqueue_packet(scratchpad, &ControlPacket::Connect(connect)) {
         Ok(()) => {
             scratchpad.keep_alive_saw_network_activity = false;
             scratchpad.keep_alive_ping_outstanding = false;
             (
-                ClientState::Connecting(Connecting {
-                    connect_sent: true,
-                    ..connecting
-                }),
+                ClientState::Connecting(Connecting { connect_sent: true }),
                 Ok(()),
             )
         }
-        Err(e) => (ClientState::Connecting(connecting), Err(e)),
+        Err(e) => (
+            ClientState::Connecting(Connecting {
+                connect_sent: false,
+            }),
+            Err(e),
+        ),
     }
 }
 
 /// Handles `SocketClosed` or `SocketError` events while in the Connecting
 /// state.
 ///
-/// Clears the read buffer, resets keepalive, negotiated limits, and session
-/// state, then emits `Disconnected`. On error, also enqueues `CloseSocket` and
-/// returns `ProtocolError`.
-fn on_socket_closed_or_error<Time>(
+/// Resets all connection state, then emits `Disconnected`. On error, instead
+/// enqueues `CloseSocket` and returns `ProtocolError`.
+pub(crate) fn on_socket_closed_or_error<Time>(
     settings: &ClientSettings,
     session: &mut ClientSession,
     scratchpad: &mut ClientScratchpad<Time>,
@@ -169,10 +170,7 @@ fn on_socket_closed_or_error<Time>(
 where
     Time: ProtocolTime,
 {
-    scratchpad.read_buffer.clear();
-    session_ops::reset_keepalive(scratchpad);
-    limits::reset_negotiated_limits(settings, session, scratchpad);
-    session_ops::maybe_reset_session_state(session, scratchpad);
+    queues::reset_connection_state(settings, session, scratchpad);
     if is_error {
         // Socket error does not emit Disconnected; only enqueues CloseSocket.
         scratchpad
@@ -190,26 +188,46 @@ where
     }
 }
 
-/// Handles a successful CONNACK (reason code Success or ResumePreviousSession).
+/// Handles a CONNACK.
 ///
-/// Populates negotiated scratchpad fields from CONNACK properties, recomputes
-/// effective limits, sets keep-alive from server or options, resets keepalive
-/// tracking, then transitions to Connected and emits `UserWriteOut::Connected`.
-fn on_connack_success<Time>(
-    connecting: Connecting,
+/// On a successful reason code, populates the negotiated limits, recomputes the
+/// effective ones, arms keep-alive and transitions to Connected. Any other
+/// reason code closes the connection.
+fn on_connack<Time>(
     settings: &ClientSettings,
     session: &mut ClientSession,
     scratchpad: &mut ClientScratchpad<Time>,
-    connack: sansio_mqtt_v5_types::ConnAck,
+    connack: ConnAck,
     received_at: Time,
 ) -> (ClientState, Result<(), Error>)
 where
     Time: ProtocolTime,
 {
+    // [MQTT-3.2.2-2] Session Present reports whether the server resumed an
+    // existing Session.
+    let session_present = match connack.kind {
+        ConnAckKind::ResumePreviousSession => true,
+        ConnAckKind::Other {
+            reason_code: ConnackReasonCode::Success,
+        } => false,
+        // [MQTT-3.2.2-7] A CONNACK with a non-Success Reason Code means the
+        // server has closed the Network Connection.
+        ConnAckKind::Other { .. } => {
+            limits::reset_negotiated_limits(settings, session, scratchpad);
+            scratchpad
+                .action_queue
+                .push_back(DriverEventOut::CloseSocket);
+            return (
+                ClientState::Disconnected(Disconnected),
+                Err(Error::ProtocolError),
+            );
+        }
+    };
+
     scratchpad.negotiated_receive_maximum = connack
         .properties
         .receive_maximum
-        .unwrap_or(NonZero::new(u16::MAX).expect("u16::MAX is always non-zero"));
+        .unwrap_or(NonZero::<u16>::MAX);
     scratchpad.negotiated_maximum_packet_size = connack.properties.maximum_packet_size;
     scratchpad.negotiated_topic_alias_maximum = connack.properties.topic_alias_maximum.unwrap_or(0);
     scratchpad.negotiated_server_keep_alive = connack.properties.server_keep_alive;
@@ -227,7 +245,6 @@ where
         .properties
         .shared_subscription_available
         .unwrap_or(true);
-    scratchpad.pending_connect_options = connecting.pending_connect_options;
     limits::recompute_effective_limits(settings, scratchpad);
 
     // [MQTT-3.1.2-4] The server may override the session expiry interval in
@@ -255,52 +272,26 @@ where
     scratchpad.keep_alive_saw_network_activity = false;
     scratchpad.keep_alive_ping_outstanding = false;
 
-    let mut connected_emitted = false;
-
-    match connack.kind {
-        ConnAckKind::ResumePreviousSession => {
-            // [MQTT-3.2.2-2] Session Present=1 is only valid when CONNECT had Clean
-            // Start=0.
-            if scratchpad.pending_connect_options.clean_start {
-                let _ = queues::fail_protocol_and_disconnect(
-                    settings,
-                    session,
-                    scratchpad,
-                    DisconnectReasonCode::ProtocolError,
-                );
-                return (
-                    ClientState::Disconnected(Disconnected),
-                    Err(Error::ProtocolError),
-                );
-            }
-            // [MQTT-4.4.0-1] [MQTT-4.4.0-2] Session Present=1 resumes in-flight QoS
-            // transactions and replay path.
-            if session_ops::replay_outbound_inflight_with_dup(session, scratchpad).is_err() {
-                let _ = queues::fail_protocol_and_disconnect(
-                    settings,
-                    session,
-                    scratchpad,
-                    DisconnectReasonCode::ProtocolError,
-                );
-                return (
-                    ClientState::Disconnected(Disconnected),
-                    Err(Error::ProtocolError),
-                );
-            }
+    if session_present {
+        // [MQTT-3.2.2-2] Session Present=1 is only valid when CONNECT had Clean
+        // Start=0.
+        if scratchpad.pending_connect_options.clean_start {
+            return fail_with_protocol_error(settings, session, scratchpad);
         }
-        ConnAckKind::Other {
-            reason_code: ConnackReasonCode::Success,
-        } => {
-            scratchpad.read_queue.push_back(UserWriteOut::Connected);
-            connected_emitted = true;
-            session_ops::emit_publish_dropped_for_all_inflight(session, scratchpad);
-            session_ops::reset_session_state(session);
+        // [MQTT-4.4.0-1] [MQTT-4.4.0-2] Session Present=1 resumes in-flight QoS
+        // transactions and replay path.
+        if session_ops::replay_outbound_inflight_with_dup(session, scratchpad).is_err() {
+            return fail_with_protocol_error(settings, session, scratchpad);
         }
-        _ => unreachable!("successful CONNACK kind already matched"),
     }
 
-    if !connected_emitted {
-        scratchpad.read_queue.push_back(UserWriteOut::Connected);
+    scratchpad.read_queue.push_back(UserWriteOut::Connected);
+
+    if !session_present {
+        // [MQTT-3.2.2-2] Session Present=0 means the server discarded any prior
+        // session, so nothing in flight can still be delivered.
+        session_ops::emit_publish_dropped_for_all_inflight(session, scratchpad);
+        session_ops::reset_session_state(session);
     }
 
     // [MQTT-3.1.2-22] Arm the keep-alive timer from the CONNACK arrival
@@ -327,69 +318,17 @@ where
     ) -> (ClientState, Result<(), Error>) {
         match packet {
             ControlPacket::ConnAck(connack) => {
-                if matches!(
-                    connack.kind,
-                    ConnAckKind::ResumePreviousSession
-                        | ConnAckKind::Other {
-                            reason_code: ConnackReasonCode::Success
-                        }
-                ) {
-                    on_connack_success(self, settings, session, scratchpad, connack, received_at)
-                } else {
-                    limits::reset_negotiated_limits(settings, session, scratchpad);
-                    scratchpad
-                        .action_queue
-                        .push_back(DriverEventOut::CloseSocket);
-                    (
-                        ClientState::Disconnected(Disconnected),
-                        Err(Error::ProtocolError),
-                    )
-                }
+                on_connack(settings, session, scratchpad, connack, received_at)
             }
-            ControlPacket::Auth(auth) => {
-                if self.pending_connect_options.authentication.is_none() {
-                    let _ = queues::fail_protocol_and_disconnect(
-                        settings,
-                        session,
-                        scratchpad,
-                        DisconnectReasonCode::ProtocolError,
-                    );
-                    return (
-                        ClientState::Disconnected(Disconnected),
-                        Err(Error::ProtocolError),
-                    );
-                }
-
-                if !matches!(
-                    auth.reason_code,
-                    sansio_mqtt_v5_types::AuthReasonCode::ContinueAuthentication
-                ) {
-                    let _ = queues::fail_protocol_and_disconnect(
-                        settings,
-                        session,
-                        scratchpad,
-                        DisconnectReasonCode::ProtocolError,
-                    );
-                    return (
-                        ClientState::Disconnected(Disconnected),
-                        Err(Error::ProtocolError),
-                    );
-                }
-
+            // [MQTT-3.15.4-1] AUTH is only valid mid-handshake when the CONNECT
+            // requested enhanced authentication and asks to continue it.
+            ControlPacket::Auth(auth)
+                if scratchpad.pending_connect_options.authentication.is_some()
+                    && matches!(auth.reason_code, AuthReasonCode::ContinueAuthentication) =>
+            {
                 (ClientState::Connecting(self), Ok(()))
             }
-            _ => {
-                let _ = queues::fail_protocol_and_disconnect(
-                    settings,
-                    session,
-                    scratchpad,
-                    DisconnectReasonCode::ProtocolError,
-                );
-                (
-                    ClientState::Disconnected(Disconnected),
-                    Err(Error::ProtocolError),
-                )
-            }
+            _ => fail_with_protocol_error(settings, session, scratchpad),
         }
     }
 
@@ -401,27 +340,8 @@ where
         msg: UserWriteIn,
     ) -> (ClientState, Result<(), Error>) {
         match msg {
-            UserWriteIn::Disconnect => {
-                scratchpad.pending_connect_options = self.pending_connect_options;
-                let _ = queues::enqueue_packet(
-                    scratchpad,
-                    &ControlPacket::Disconnect(Disconnect {
-                        reason_code: DisconnectReasonCode::NormalDisconnection,
-                        properties: DisconnectProperties::default(),
-                    }),
-                );
-                scratchpad
-                    .action_queue
-                    .push_back(DriverEventOut::CloseSocket);
-                scratchpad.read_buffer.clear();
-                session_ops::reset_keepalive(scratchpad);
-                limits::reset_negotiated_limits(settings, session, scratchpad);
-                session_ops::maybe_reset_session_state(session, scratchpad);
-                scratchpad
-                    .read_queue
-                    .push_back(UserWriteOut::Disconnected(None));
-                (ClientState::Disconnected(Disconnected), Ok(()))
-            }
+            // A user-requested disconnect is the same teardown as `close`.
+            UserWriteIn::Disconnect => self.close(settings, session, scratchpad),
             _ => (
                 ClientState::Connecting(self),
                 Err(Error::InvalidStateTransition),
@@ -447,15 +367,13 @@ where
                 } else {
                     // CONNECT not yet sent (transition came from handle_write(Connect));
                     // send CONNECT now.
-                    on_socket_connected(self, settings, session, scratchpad)
+                    on_socket_connected(settings, session, scratchpad)
                 }
             }
             DriverEventIn::SocketClosed => {
-                scratchpad.pending_connect_options = self.pending_connect_options;
                 on_socket_closed_or_error(settings, session, scratchpad, false)
             }
             DriverEventIn::SocketError => {
-                scratchpad.pending_connect_options = self.pending_connect_options;
                 on_socket_closed_or_error(settings, session, scratchpad, true)
             }
         }
@@ -471,7 +389,6 @@ where
         // [MQTT-3.1.4-5] A timeout in the Connecting state means the server did not
         // respond with CONNACK within the caller-imposed deadline. Close the
         // socket and signal the error.
-        scratchpad.pending_connect_options = self.pending_connect_options;
         scratchpad
             .action_queue
             .push_back(DriverEventOut::CloseSocket);
@@ -487,24 +404,7 @@ where
         session: &mut ClientSession,
         scratchpad: &mut ClientScratchpad<Time>,
     ) -> (ClientState, Result<(), Error>) {
-        scratchpad.pending_connect_options = self.pending_connect_options;
-        let _ = queues::enqueue_packet(
-            scratchpad,
-            &ControlPacket::Disconnect(Disconnect {
-                reason_code: DisconnectReasonCode::NormalDisconnection,
-                properties: DisconnectProperties::default(),
-            }),
-        );
-        scratchpad
-            .action_queue
-            .push_back(DriverEventOut::CloseSocket);
-        scratchpad.read_buffer.clear();
-        session_ops::reset_keepalive(scratchpad);
-        limits::reset_negotiated_limits(settings, session, scratchpad);
-        session_ops::maybe_reset_session_state(session, scratchpad);
-        scratchpad
-            .read_queue
-            .push_back(UserWriteOut::Disconnected(None));
+        queues::graceful_disconnect(settings, session, scratchpad);
         (ClientState::Disconnected(Disconnected), Ok(()))
     }
 }

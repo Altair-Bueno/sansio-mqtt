@@ -2,7 +2,6 @@ use crate::scratchpad::ClientScratchpad;
 use crate::session::ClientSession;
 use crate::state::ClientState;
 use crate::state::StateHandler;
-use crate::state::connecting::Connecting;
 use crate::types::ClientSettings;
 use crate::types::DriverEventIn;
 use crate::types::DriverEventOut;
@@ -11,7 +10,7 @@ use crate::types::ProtocolTime;
 use crate::types::UserWriteIn;
 use sansio_mqtt_v5_types::ControlPacket;
 
-#[allow(dead_code)]
+/// No live connection; a `Connect` write can start a new one.
 #[derive(Debug)]
 pub(crate) struct Disconnected;
 
@@ -60,14 +59,8 @@ where
     ) -> (ClientState, Result<(), Error>) {
         match evt {
             DriverEventIn::SocketConnected => {
-                // Use stored pending_connect_options (from before disconnection) to reconnect.
-                let connecting = Connecting {
-                    pending_connect_options: scratchpad.pending_connect_options.clone(),
-                    connect_sent: false,
-                };
-                crate::state::connecting::on_socket_connected(
-                    connecting, settings, session, scratchpad,
-                )
+                // Reconnect with the options stored before the disconnection.
+                crate::state::connecting::on_socket_connected(settings, session, scratchpad)
             }
             DriverEventIn::SocketClosed => {
                 // Socket closed while already disconnected; no duplicate Disconnected event.

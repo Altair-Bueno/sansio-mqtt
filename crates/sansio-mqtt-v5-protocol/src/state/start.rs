@@ -2,10 +2,8 @@ use crate::limits;
 use crate::queues;
 use crate::scratchpad::ClientScratchpad;
 use crate::session::ClientSession;
-use crate::session_ops;
 use crate::state::ClientState;
 use crate::state::StateHandler;
-use crate::state::connecting::Connecting;
 use crate::state::disconnected::Disconnected;
 use crate::types::ClientSettings;
 use crate::types::ConnectionOptions;
@@ -16,9 +14,8 @@ use crate::types::ProtocolTime;
 use crate::types::UserWriteIn;
 use crate::types::UserWriteOut;
 use sansio_mqtt_v5_types::ControlPacket;
-use sansio_mqtt_v5_types::DisconnectReasonCode;
 
-#[allow(dead_code)]
+/// Initial state: no socket has ever been opened.
 #[derive(Debug)]
 pub(crate) struct Start;
 
@@ -75,16 +72,7 @@ where
         _packet: ControlPacket,
         _received_at: Time,
     ) -> (ClientState, Result<(), Error>) {
-        let _ = queues::fail_protocol_and_disconnect(
-            settings,
-            session,
-            scratchpad,
-            DisconnectReasonCode::ProtocolError,
-        );
-        (
-            ClientState::Disconnected(Disconnected),
-            Err(Error::ProtocolError),
-        )
+        crate::state::fail_with_protocol_error(settings, session, scratchpad)
     }
 
     fn handle_write(
@@ -114,15 +102,9 @@ where
     ) -> (ClientState, Result<(), Error>) {
         match evt {
             DriverEventIn::SocketConnected => {
-                // In Start state the user may not have called Connect first; use stored
-                // pending_connect_options (defaults when never set).
-                let connecting = Connecting {
-                    pending_connect_options: scratchpad.pending_connect_options.clone(),
-                    connect_sent: false,
-                };
-                crate::state::connecting::on_socket_connected(
-                    connecting, settings, session, scratchpad,
-                )
+                // In Start state the user may not have called Connect first; the
+                // stored pending_connect_options default when never set.
+                crate::state::connecting::on_socket_connected(settings, session, scratchpad)
             }
             DriverEventIn::SocketClosed => {
                 // Socket closed unexpectedly in Start state; emit Disconnected and transition.
@@ -169,9 +151,7 @@ where
         session: &mut ClientSession,
         scratchpad: &mut ClientScratchpad<Time>,
     ) -> (ClientState, Result<(), Error>) {
-        session_ops::reset_keepalive(scratchpad);
-        limits::reset_negotiated_limits(settings, session, scratchpad);
-        session_ops::maybe_reset_session_state(session, scratchpad);
+        queues::reset_connection_state(settings, session, scratchpad);
         (ClientState::Disconnected(Disconnected), Ok(()))
     }
 }

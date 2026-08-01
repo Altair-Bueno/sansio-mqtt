@@ -2,50 +2,57 @@ use crate::scratchpad::ClientScratchpad;
 use crate::session::ClientSession;
 use crate::types::ClientMessage;
 use crate::types::ClientSettings;
+use crate::types::ConnectionOptions;
 use crate::types::Error;
+use crate::types::SubscribeOptions;
 use core::num::NonZero;
-use sansio_mqtt_v5_types::MaximumQoS;
 use sansio_mqtt_v5_types::Publish;
+use sansio_mqtt_v5_types::Qos;
+use sansio_mqtt_v5_types::Subscription;
 
+/// The Topic Alias Maximum the client advertises in CONNECT, or `None` when the
+/// property is omitted (equivalent to 0).
+///
+/// [MQTT-3.1.2-25] Topic Alias Maximum is the highest value the Client will
+/// accept from the Server; local policy (`ClientSettings`) caps whatever the
+/// caller asked for.
+pub(crate) fn client_topic_alias_maximum(
+    settings: &ClientSettings,
+    options: &ConnectionOptions,
+) -> Option<u16> {
+    options
+        .topic_alias_maximum
+        .or(settings.max_incoming_topic_alias_maximum)
+        .map(|topic_alias_maximum| {
+            topic_alias_maximum.min(
+                settings
+                    .max_incoming_topic_alias_maximum
+                    .unwrap_or(u16::MAX),
+            )
+        })
+}
+
+/// Recomputes the limits that depend on both local policy and the values
+/// negotiated in CONNACK.
+///
+/// Limits that are a verbatim copy of `ClientSettings` are not cached: they are
+/// read from the settings at the point of use.
 pub(crate) fn recompute_effective_limits<Time>(
     settings: &ClientSettings,
     scratchpad: &mut ClientScratchpad<Time>,
 ) {
-    scratchpad.effective_client_max_bytes_string = settings.max_bytes_string;
-    scratchpad.effective_client_max_bytes_binary_data = settings.max_bytes_binary_data;
     scratchpad.effective_client_max_remaining_bytes = settings.max_remaining_bytes.min(
         scratchpad
             .effective_client_maximum_packet_size
             .map(|x| u64::from(x.get()))
             .unwrap_or(u64::MAX),
     );
-    scratchpad.effective_client_max_subscriptions_len = settings.max_subscriptions_len;
-    scratchpad.effective_client_max_user_properties_len = settings.max_user_properties_len;
-    scratchpad.effective_client_max_subscription_identifiers_len =
-        settings.max_subscription_identifiers_len;
-    scratchpad.effective_client_receive_maximum = settings
-        .max_incoming_receive_maximum
-        .min(scratchpad.pending_connect_options.receive_maximum)
-        .or(NonZero::new(u16::MAX))
-        .expect("u16::MAX is always non-zero for receive_maximum");
     scratchpad.effective_client_maximum_packet_size = settings
         .max_incoming_packet_size
         .min(scratchpad.pending_connect_options.maximum_packet_size);
+    scratchpad.effective_client_topic_alias_maximum =
+        client_topic_alias_maximum(settings, &scratchpad.pending_connect_options).unwrap_or(0);
 
-    scratchpad.effective_client_topic_alias_maximum = settings
-        .max_incoming_topic_alias_maximum
-        .unwrap_or(u16::MAX)
-        .min(
-            scratchpad
-                .pending_connect_options
-                .topic_alias_maximum
-                .or(settings.max_incoming_topic_alias_maximum)
-                .unwrap_or(0),
-        );
-
-    scratchpad.effective_broker_receive_maximum = scratchpad.negotiated_receive_maximum;
-    scratchpad.effective_broker_maximum_packet_size = scratchpad.negotiated_maximum_packet_size;
-    scratchpad.effective_broker_topic_alias_maximum = scratchpad.negotiated_topic_alias_maximum;
     scratchpad.effective_broker_maximum_qos =
         [settings.max_outgoing_qos, scratchpad.negotiated_maximum_qos]
             .into_iter()
@@ -67,8 +74,7 @@ pub(crate) fn reset_negotiated_limits<Time>(
     session: &mut ClientSession,
     scratchpad: &mut ClientScratchpad<Time>,
 ) {
-    scratchpad.negotiated_receive_maximum =
-        NonZero::new(u16::MAX).expect("u16::MAX is always non-zero for receive_maximum");
+    scratchpad.negotiated_receive_maximum = NonZero::<u16>::MAX;
     scratchpad.negotiated_maximum_packet_size = None;
     scratchpad.negotiated_topic_alias_maximum = 0;
     scratchpad.negotiated_server_keep_alive = None;
@@ -90,9 +96,7 @@ pub(crate) fn ensure_outbound_receive_maximum_capacity<Time>(
 ) -> Result<(), Error> {
     // [MQTT-4.9.0-2] [MQTT-4.9.0-3] Sender enforces peer Receive Maximum by
     // limiting concurrent QoS>0 in-flight PUBLISH packets.
-    if session.on_flight_sent.len()
-        >= usize::from(scratchpad.effective_broker_receive_maximum.get())
-    {
+    if session.on_flight_sent.len() >= usize::from(scratchpad.negotiated_receive_maximum.get()) {
         return Err(Error::ReceiveMaximumExceeded);
     }
 
@@ -104,7 +108,7 @@ pub(crate) fn validate_outbound_topic_alias<Time>(
     topic_alias: Option<NonZero<u16>>,
 ) -> Result<(), Error> {
     if let Some(alias) = topic_alias {
-        let topic_alias_maximum = scratchpad.effective_broker_topic_alias_maximum;
+        let topic_alias_maximum = scratchpad.negotiated_topic_alias_maximum;
         if topic_alias_maximum == 0 || alias.get() > topic_alias_maximum {
             return Err(Error::ProtocolError);
         }
@@ -130,17 +134,12 @@ pub(crate) fn validate_outbound_publish_capabilities<Time>(
     scratchpad: &ClientScratchpad<Time>,
     msg: &ClientMessage,
 ) -> Result<(), Error> {
-    use sansio_mqtt_v5_types::Qos;
-
-    if let Some(maximum_qos) = scratchpad.effective_broker_maximum_qos {
-        let exceeds = match maximum_qos {
-            MaximumQoS::AtMostOnce => !matches!(msg.qos, Qos::AtMostOnce),
-            MaximumQoS::AtLeastOnce => matches!(msg.qos, Qos::ExactlyOnce),
-        };
-
-        if exceeds {
-            return Err(Error::ProtocolError);
-        }
+    // [MQTT-3.2.2-11] A Client MUST NOT send a PUBLISH with a QoS above the
+    // Maximum QoS the Server advertised.
+    if let Some(maximum_qos) = scratchpad.effective_broker_maximum_qos
+        && msg.qos > Qos::from(maximum_qos)
+    {
+        return Err(Error::ProtocolError);
     }
 
     if msg.retain && !scratchpad.effective_retain_available {
@@ -148,6 +147,52 @@ pub(crate) fn validate_outbound_publish_capabilities<Time>(
     }
 
     Ok(())
+}
+
+/// Checks one subscription against the capabilities the server advertised.
+fn validate_outbound_subscription<Time>(
+    scratchpad: &ClientScratchpad<Time>,
+    subscription: &Subscription,
+) -> Result<(), Error> {
+    let topic_filter: &str = subscription.topic_filter.as_ref();
+    let is_shared = topic_filter.starts_with("$share/");
+    let has_wildcard = topic_filter.contains('+') || topic_filter.contains('#');
+
+    // [MQTT-3.2.2-12] Wildcard Subscription Available=0 forbids wildcard filters.
+    if has_wildcard && !scratchpad.effective_wildcard_subscription_available {
+        return Err(Error::ProtocolError);
+    }
+
+    if is_shared {
+        // [MQTT-3.2.2-13] Shared Subscription Available=0 forbids `$share/` filters.
+        if !scratchpad.effective_shared_subscription_available {
+            return Err(Error::ProtocolError);
+        }
+
+        // [MQTT-3.8.3-4] A Shared Subscription cannot be used with No Local.
+        if subscription.no_local {
+            return Err(Error::ProtocolError);
+        }
+    }
+
+    Ok(())
+}
+
+/// Checks a SUBSCRIBE against the capabilities the server advertised.
+pub(crate) fn validate_outbound_subscribe<Time>(
+    scratchpad: &ClientScratchpad<Time>,
+    options: &SubscribeOptions,
+) -> Result<(), Error> {
+    // [MQTT-3.2.2-14] Subscription Identifiers Available=0 forbids the property.
+    if options.subscription_identifier.is_some()
+        && !scratchpad.effective_subscription_identifiers_available
+    {
+        return Err(Error::ProtocolError);
+    }
+
+    core::iter::once(&options.subscription)
+        .chain(&options.extra_subscriptions)
+        .try_for_each(|subscription| validate_outbound_subscription(scratchpad, subscription))
 }
 
 pub(crate) fn apply_inbound_publish_topic_alias<Time>(

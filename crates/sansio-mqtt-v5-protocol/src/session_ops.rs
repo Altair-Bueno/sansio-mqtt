@@ -14,7 +14,7 @@ use sansio_mqtt_v5_types::PublishKind;
 ///
 /// [MQTT-3.1.2-22] [MQTT-3.1.2-23] Keep Alive tracking resets on connection
 /// lifecycle boundaries.
-pub(crate) fn reset_keepalive<Time: 'static>(scratchpad: &mut ClientScratchpad<Time>) {
+pub(crate) fn reset_keepalive<Time>(scratchpad: &mut ClientScratchpad<Time>) {
     scratchpad.keep_alive_interval_secs = None;
     scratchpad.keep_alive_saw_network_activity = false;
     scratchpad.keep_alive_ping_outstanding = false;
@@ -25,7 +25,7 @@ pub(crate) fn reset_keepalive<Time: 'static>(scratchpad: &mut ClientScratchpad<T
 ///
 /// [MQTT-3.1.2-4] Clean Start controls whether prior session state is
 /// discarded.
-pub(crate) fn maybe_reset_session_state<Time: 'static>(
+pub(crate) fn maybe_reset_session_state<Time>(
     session: &mut ClientSession,
     scratchpad: &ClientScratchpad<Time>,
 ) {
@@ -55,7 +55,8 @@ pub(crate) fn next_packet_id(session: &mut ClientSession) -> NonZero<u16> {
     NonZero::new(packet_id).expect("packet identifier is always non-zero")
 }
 
-/// Loops to find an unused packet id.
+/// Loops to find a packet id that is not already claimed by an in-flight
+/// PUBLISH, SUBSCRIBE, or UNSUBSCRIBE exchange.
 ///
 /// [MQTT-2.2.1-2] Packet Identifier MUST be unused while an exchange is
 /// in-flight.
@@ -63,25 +64,8 @@ pub(crate) fn next_packet_id_checked(session: &mut ClientSession) -> Result<NonZ
     for _ in 0..u16::MAX {
         let packet_id = next_packet_id(session);
         if !session.on_flight_sent.contains_key(&packet_id)
-            && !session.pending_subscribe.contains_key(&packet_id)
-            && !session.pending_unsubscribe.contains_key(&packet_id)
-        {
-            return Ok(packet_id);
-        }
-    }
-
-    Err(Error::ReceiveMaximumExceeded)
-}
-
-/// Same as `next_packet_id_checked` but for publish.
-pub(crate) fn next_outbound_publish_packet_id(
-    session: &mut ClientSession,
-) -> Result<NonZero<u16>, Error> {
-    for _ in 0..u16::MAX {
-        let packet_id = next_packet_id(session);
-        if !session.on_flight_sent.contains_key(&packet_id)
-            && !session.pending_subscribe.contains_key(&packet_id)
-            && !session.pending_unsubscribe.contains_key(&packet_id)
+            && !session.pending_subscribe.contains(&packet_id)
+            && !session.pending_unsubscribe.contains(&packet_id)
         {
             return Ok(packet_id);
         }
@@ -92,7 +76,7 @@ pub(crate) fn next_outbound_publish_packet_id(
 
 /// Pushes `UserWriteOut::PublishDroppedDueToSessionNotResumed` for every
 /// in-flight packet.
-pub(crate) fn emit_publish_dropped_for_all_inflight<Time: 'static>(
+pub(crate) fn emit_publish_dropped_for_all_inflight<Time>(
     session: &ClientSession,
     scratchpad: &mut ClientScratchpad<Time>,
 ) {
@@ -109,44 +93,34 @@ pub(crate) fn emit_publish_dropped_for_all_inflight<Time: 'static>(
 ///
 /// [MQTT-4.4.0-1] [MQTT-4.4.0-2] On session resume, retransmit unacknowledged
 /// QoS1/QoS2 PUBLISH with DUP=1.
-pub(crate) fn replay_outbound_inflight_with_dup<Time: 'static>(
+pub(crate) fn replay_outbound_inflight_with_dup<Time>(
     session: &mut ClientSession,
     scratchpad: &mut ClientScratchpad<Time>,
 ) -> Result<(), Error> {
-    for (packet_id, state) in session.on_flight_sent.clone() {
-        let publish = match state {
-            OutboundInflightState::Qos1AwaitPubAck { mut publish }
-            | OutboundInflightState::Qos2AwaitPubRec { mut publish } => {
+    // `session` and `scratchpad` are distinct borrows, so the retained packets
+    // can be marked and re-enqueued in place — no copy of the in-flight map.
+    for (packet_id, state) in session.on_flight_sent.iter_mut() {
+        match state {
+            OutboundInflightState::Qos1AwaitPubAck { publish }
+            | OutboundInflightState::Qos2AwaitPubRec { publish } => {
                 if let PublishKind::Repetible { dup, .. } = &mut publish.kind {
                     *dup = true;
                 }
-                publish
+                crate::queues::enqueue_packet(
+                    scratchpad,
+                    &ControlPacket::Publish(publish.clone()),
+                )?;
             }
             OutboundInflightState::Qos2AwaitPubComp => {
                 crate::queues::enqueue_packet(
                     scratchpad,
                     &ControlPacket::PubRel(PubRel {
-                        packet_id,
+                        packet_id: *packet_id,
                         reason_code: PubRelReasonCode::Success,
                         properties: PubRelProperties::default(),
                     }),
                 )?;
-                continue;
             }
-        };
-
-        crate::queues::enqueue_packet(scratchpad, &ControlPacket::Publish(publish.clone()))?;
-
-        match session.on_flight_sent.get_mut(&packet_id) {
-            Some(OutboundInflightState::Qos1AwaitPubAck {
-                publish: stored_publish,
-            })
-            | Some(OutboundInflightState::Qos2AwaitPubRec {
-                publish: stored_publish,
-            }) => {
-                *stored_publish = publish;
-            }
-            _ => {}
         }
     }
 

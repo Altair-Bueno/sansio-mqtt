@@ -1,4 +1,5 @@
 use alloc::collections::btree_map::BTreeMap;
+use alloc::collections::btree_set::BTreeSet;
 use core::num::NonZero;
 use sansio_mqtt_v5_types::PubRecReasonCode;
 use sansio_mqtt_v5_types::Publish;
@@ -33,8 +34,8 @@ pub(crate) enum InboundInflightState {
 pub struct ClientSession {
     pub(crate) on_flight_sent: BTreeMap<NonZero<u16>, OutboundInflightState>,
     pub(crate) on_flight_received: BTreeMap<NonZero<u16>, InboundInflightState>,
-    pub(crate) pending_subscribe: BTreeMap<NonZero<u16>, ()>,
-    pub(crate) pending_unsubscribe: BTreeMap<NonZero<u16>, ()>,
+    pub(crate) pending_subscribe: BTreeSet<NonZero<u16>>,
+    pub(crate) pending_unsubscribe: BTreeSet<NonZero<u16>>,
     pub(crate) inbound_topic_aliases: BTreeMap<NonZero<u16>, Topic>,
     pub(crate) next_packet_id: u16,
 }
@@ -44,8 +45,8 @@ impl Default for ClientSession {
         Self {
             on_flight_sent: BTreeMap::new(),
             on_flight_received: BTreeMap::new(),
-            pending_subscribe: BTreeMap::new(),
-            pending_unsubscribe: BTreeMap::new(),
+            pending_subscribe: BTreeSet::new(),
+            pending_unsubscribe: BTreeSet::new(),
             inbound_topic_aliases: BTreeMap::new(),
             next_packet_id: 1,
         }
