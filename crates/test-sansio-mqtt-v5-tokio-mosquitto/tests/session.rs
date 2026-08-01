@@ -21,7 +21,7 @@ async fn clean_start_clears_session() {
         .subscribe(sub_qos1("test/clean-start"))
         .await
         .expect("subscribe");
-    tokio::time::sleep(Duration::from_millis(150)).await;
+    let _ = tokio::time::timeout(Duration::from_millis(500), el1.poll()).await;
 
     client1.disconnect().await.expect("disconnect phase 1");
     let _ = tokio::time::timeout(Duration::from_secs(1), el1.poll()).await;
@@ -81,7 +81,7 @@ async fn session_resumption() {
         .subscribe(sub_qos1("test/resume"))
         .await
         .expect("subscribe");
-    tokio::time::sleep(Duration::from_millis(150)).await;
+    let _ = tokio::time::timeout(Duration::from_millis(500), el1.poll()).await;
 
     client1.disconnect().await.expect("disconnect");
     let _ = tokio::time::timeout(Duration::from_secs(1), el1.poll()).await;
