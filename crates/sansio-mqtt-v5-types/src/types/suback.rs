@@ -40,7 +40,7 @@ pub struct SubAckProperties {
 /// ([§3.9.1](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901172)).
 ///
 /// MUST be `0b0000`; any other value is Malformed Packet.
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub struct SubAckHeaderFlags;
 
 impl From<SubAckHeaderFlags> for u8 {

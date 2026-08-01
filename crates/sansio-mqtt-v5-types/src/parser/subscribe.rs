@@ -5,10 +5,10 @@ impl SubscribeHeaderFlags {
     /// ([§3.8.1](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901162),
     /// [MQTT-3.8.1-1]). The bit pattern `0b0010` is required.
     #[inline]
-    pub fn parser<Input, Error>(input: &mut bits::Bits<Input>) -> Result<Self, Error>
+    pub fn parser<Input, Error>(input: &mut Bits<Input>) -> Result<Self, Error>
     where
         Input: Stream<Token = u8> + StreamIsPartial + Clone,
-        Error: ParserError<bits::Bits<Input>> + AddContext<bits::Bits<Input>, StrContext>,
+        Error: ParserError<Bits<Input>> + AddContext<Bits<Input>, StrContext>,
     {
         combinator::trace(
             type_name::<Self>(),
@@ -49,11 +49,11 @@ impl Subscribe {
             + FromExternalError<ByteInput, TryFromIntError>
             + FromExternalError<ByteInput, BinaryDataError>
             + AddContext<ByteInput, StrContext>,
-        BitError: ParserError<bits::Bits<ByteInput>>
+        BitError: ParserError<Bits<ByteInput>>
             + ErrorConvert<ByteError>
-            + FromExternalError<bits::Bits<ByteInput>, InvalidRetainHandlingError>
-            + FromExternalError<bits::Bits<ByteInput>, InvalidQosError>
-            + AddContext<bits::Bits<ByteInput>, StrContext>,
+            + FromExternalError<Bits<ByteInput>, InvalidRetainHandlingError>
+            + FromExternalError<Bits<ByteInput>, InvalidQosError>
+            + AddContext<Bits<ByteInput>, StrContext>,
     {
         combinator::trace(
             type_name::<Self>(),

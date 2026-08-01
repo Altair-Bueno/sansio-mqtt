@@ -27,7 +27,7 @@ pub struct Auth {
 ///
 /// MUST be `0b0000`; any other value is Malformed Packet
 /// ([MQTT-3.15.1-1]).
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub struct AuthHeaderFlags;
 
 impl From<AuthHeaderFlags> for u8 {

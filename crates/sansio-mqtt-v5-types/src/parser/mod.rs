@@ -33,6 +33,7 @@ use core::num::TryFromIntError;
 use core::str::Utf8Error;
 use winnow::binary;
 use winnow::binary::bits;
+use winnow::binary::bits::Bits;
 use winnow::combinator;
 use winnow::error::*;
 use winnow::prelude::*;

@@ -73,7 +73,7 @@ pub enum PublishKind {
 /// Unlike other packets, `PUBLISH` header flags are not fixed: they
 /// carry DUP, QoS and RETAIN. Conformance: `[MQTT-3.3.1-1]`,
 /// `[MQTT-3.3.1-2]`, `[MQTT-3.3.1-3]`, `[MQTT-3.3.1-4]`.
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub struct PublishHeaderFlags {
     /// Split-out DUP and QoS fields.
     pub kind: PublishHeaderFlagsKind,
@@ -103,7 +103,7 @@ impl From<PublishHeaderFlags> for u8 {
 ///
 /// DUP MUST be 0 for QoS 0 messages ([MQTT-3.3.1-2]); modelled with
 /// separate `Simple` / `Advanced` variants.
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum PublishHeaderFlagsKind {
     /// QoS 0 PUBLISH; DUP MUST be 0 ([MQTT-3.3.1-2]).
     Simple,

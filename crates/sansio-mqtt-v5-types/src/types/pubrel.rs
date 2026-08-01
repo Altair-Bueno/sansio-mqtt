@@ -29,7 +29,7 @@ pub struct PubRel {
 ///
 /// MUST be `0b0010`; any other value is Malformed Packet
 /// ([MQTT-3.6.1-1]).
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub struct PubRelHeaderFlags;
 
 impl From<PubRelHeaderFlags> for u8 {

@@ -28,7 +28,7 @@ pub struct PubRec {
 /// ([§3.5.1](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901132)).
 ///
 /// MUST be `0b0000`; any other value is Malformed Packet.
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub struct PubRecHeaderFlags;
 
 impl From<PubRecHeaderFlags> for u8 {

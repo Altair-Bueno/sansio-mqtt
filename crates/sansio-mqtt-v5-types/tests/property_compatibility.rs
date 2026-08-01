@@ -30,6 +30,46 @@ fn value_types_support_hash_and_order_where_semantic() {
     assert_hash_and_ord(&reason);
 }
 
+/// Fixed-header flags are `Copy`.
+///
+/// Fourteen of them are zero-sized and the fifteenth
+/// ([`PublishHeaderFlags`]) holds only DUP, QoS and RETAIN, so there is
+/// nothing to own and no reason to make callers clone or borrow them —
+/// [`Publish::parser`] takes its flags by value and reads them inside a
+/// closure. This guards against a future field that would silently make
+/// the type expensive to pass around.
+#[test]
+fn header_flags_are_copy() {
+    fn assert_copy<T: Copy>(_value: T) {}
+
+    assert_copy(ConnectHeaderFlags);
+    assert_copy(ConnAckHeaderFlags);
+    assert_copy(PubAckHeaderFlags);
+    assert_copy(PubRecHeaderFlags);
+    assert_copy(PubRelHeaderFlags);
+    assert_copy(PubCompHeaderFlags);
+    assert_copy(SubscribeHeaderFlags);
+    assert_copy(SubAckHeaderFlags);
+    assert_copy(UnsubscribeHeaderFlags);
+    assert_copy(UnsubAckHeaderFlags);
+    assert_copy(PingReqHeaderFlags);
+    assert_copy(PingRespHeaderFlags);
+    assert_copy(DisconnectHeaderFlags);
+    assert_copy(AuthHeaderFlags);
+    assert_copy(PublishHeaderFlags {
+        kind: PublishHeaderFlagsKind::Simple,
+        retain: false,
+    });
+
+    // Copy is what lets a value be read twice without cloning.
+    let flags = PublishHeaderFlags {
+        kind: PublishHeaderFlagsKind::Simple,
+        retain: true,
+    };
+    let first = flags;
+    assert_eq!(first, flags);
+}
+
 /// Decodes `bytes`, asserting it fails, and returns the cause.
 fn decode_err(bytes: &[u8]) -> DecodeError {
     let settings = ParserSettings::default();

@@ -8,20 +8,6 @@ use super::*;
 /// the information needed to pick the Reason Code for the DISCONNECT
 /// that [§4.13 — Handling errors](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901252)
 /// requires. Use [`DecodeError::disconnect_reason_code`] to obtain it.
-///
-/// Wrap it in [`winnow::error::ErrMode`] to parse incrementally —
-/// `ErrMode` models "need more bytes" (`Incomplete`), so this type does
-/// not need to:
-///
-/// ```ignore
-/// use winnow::error::ErrMode;
-/// let mut parser =
-///     ControlPacket::parser::<_, ErrMode<DecodeError>, ErrMode<DecodeError>>(&settings);
-/// ```
-///
-/// Named to pair with [`EncodeError`], and to avoid shadowing
-/// [`winnow::error::ParseError`], which is the unrelated wrapper
-/// `Parser::parse` returns.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[non_exhaustive]
 pub enum DecodeError {
@@ -157,24 +143,21 @@ impl DecodeError {
             | Self::UnknownFormatIndicator(_)
             | Self::InvalidReasonCode(_)
             | Self::InvalidControlPacketType(_) => DisconnectReasonCode::MalformedPacket,
-
             // Parsed, but the value is not allowed by the protocol.
             Self::Topic(_) | Self::InvalidRetainHandling(_) | Self::OutOfRange(_) => {
                 DisconnectReasonCode::ProtocolError
             }
-
-            Self::Properties(error) => match error {
-                PropertiesError::UnsupportedProperty(_) => DisconnectReasonCode::MalformedPacket,
+            Self::Properties(PropertiesError::UnsupportedProperty(_)) => {
+                DisconnectReasonCode::MalformedPacket
+            }
+            Self::Properties(
                 PropertiesError::DuplicatedProperty(_)
-                | PropertiesError::MissingAuthenticationMethod(_) => {
-                    DisconnectReasonCode::ProtocolError
-                }
-                // Ceilings chosen by this implementation, not the spec.
+                | PropertiesError::MissingAuthenticationMethod(_),
+            ) => DisconnectReasonCode::ProtocolError,
+            Self::Properties(
                 PropertiesError::TooManyUserProperties(_)
-                | PropertiesError::TooManySubscriptionIdentifiers(_) => {
-                    DisconnectReasonCode::ImplementationSpecificError
-                }
-            },
+                | PropertiesError::TooManySubscriptionIdentifiers(_),
+            ) => DisconnectReasonCode::ImplementationSpecificError,
         }
     }
 

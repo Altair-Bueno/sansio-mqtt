@@ -62,7 +62,7 @@ pub struct Connect {
 ///
 /// MUST be `0b0000` for `CONNECT`; any other value is a Malformed
 /// Packet ([MQTT-3.1.1-1]).
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub struct ConnectHeaderFlags;
 
 impl From<ConnectHeaderFlags> for u8 {

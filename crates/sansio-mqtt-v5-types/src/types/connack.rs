@@ -50,7 +50,7 @@ pub enum ConnAckKind {
 ///
 /// MUST be `0b0000`; any other value is Malformed Packet
 /// ([MQTT-3.2.1-1]).
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub struct ConnAckHeaderFlags;
 
 impl From<ConnAckHeaderFlags> for u8 {
