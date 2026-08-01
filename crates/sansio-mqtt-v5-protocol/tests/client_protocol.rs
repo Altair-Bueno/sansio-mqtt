@@ -6272,6 +6272,267 @@ fn socket_connected_preserves_connect_options_for_effective_limit_recomputation(
     ));
 }
 
+// ── Keep-alive: internally-generated outbound packets ──────────────────────
+
+/// [MQTT-3.1.2-22] An internally-generated PUBREL (sent in response to an
+/// inbound PUBREC during the outbound QoS 2 flow) is an outgoing MQTT control
+/// packet and MUST count as keep-alive activity so that a PINGREQ is not sent
+/// unnecessarily while the client is actively communicating.
+///
+/// Sequence:
+///   t=0:  CONNACK (interval=10) → deadline=10
+///   t=0:  App publishes QoS 2 → PUBLISH sent,
+/// keep_alive_saw_network_activity=true   t=10: handle_timeout → activity flag
+/// set → reschedule to t=20, flag cleared, no PINGREQ
+///   t=12: handle_read(PUBREC) → PUBREL sent internally via enqueue_packet
+///   t=20: handle_timeout → activity flag must be true (PUBREL counts) → no
+/// PINGREQ
+#[test]
+fn internally_generated_pubrel_counts_as_keep_alive_activity() {
+    let mut client = make_connected_client_with_keep_alive(Some(10));
+    assert_eq!(client.poll_timeout(), Some(Duration::from_secs(10)));
+
+    // Outbound QoS 2 PUBLISH sets the activity flag via handle_write.
+    let packet_id = NonZero::new(1).expect("non-zero");
+    assert_eq!(
+        client.handle_write(UserWriteIn::PublishMessage(ClientMessage {
+            qos: Qos::ExactlyOnce,
+            topic: Topic::try_new("a/b").expect("valid"),
+            ..ClientMessage::default()
+        })),
+        Ok(())
+    );
+    let _ = client.poll_write(); // drain PUBLISH
+
+    // t=10: activity flag is set → reschedule to t=20, flag cleared, no PINGREQ.
+    assert_eq!(client.handle_timeout(Duration::from_secs(10)), Ok(()));
+    assert_eq!(
+        client.poll_write(),
+        None,
+        "no PINGREQ when publish was sent"
+    );
+    assert_eq!(client.poll_timeout(), Some(Duration::from_secs(20)));
+
+    // t=12: broker sends PUBREC → PUBREL is enqueued internally via enqueue_packet.
+    let pubrec = ControlPacket::PubRec(PubRec {
+        packet_id,
+        reason_code: PubRecReasonCode::Success,
+        properties: PubRecProperties::default(),
+    });
+    assert_eq!(
+        client.handle_read(IncomingData {
+            bytes: encode_packet(&pubrec),
+            received_at: Duration::from_secs(12)
+        }),
+        Ok(())
+    );
+    let _ = client.poll_write(); // drain PUBREL
+
+    // t=20: PUBREL was an outgoing control packet → activity flag must be set →
+    // no PINGREQ, deadline rescheduled.
+    assert_eq!(client.handle_timeout(Duration::from_secs(20)), Ok(()));
+    assert_eq!(
+        client.poll_write(),
+        None,
+        "PINGREQ must NOT be sent: PUBREL counts as keep-alive activity"
+    );
+    assert_eq!(client.poll_timeout(), Some(Duration::from_secs(30)));
+}
+
+/// [MQTT-3.1.2-22] An internally-generated PUBCOMP (sent in response to an
+/// inbound PUBREL during the inbound QoS 2 flow) is an outgoing MQTT control
+/// packet and MUST count as keep-alive activity.
+///
+/// Sequence:
+///   t=0:  CONNACK (interval=10) → deadline=10
+///   t=0:  App acknowledges QoS 2 PUBLISH → PUBREC sent via handle_write,
+/// flag=true   t=10: handle_timeout → activity flag set → reschedule to t=20,
+/// flag cleared   t=12: handle_read(PUBREL) → PUBCOMP sent internally via
+/// enqueue_packet   t=20: handle_timeout → activity flag must be true (PUBCOMP
+/// counts) → no PINGREQ
+#[test]
+fn internally_generated_pubcomp_counts_as_keep_alive_activity() {
+    let mut client = make_connected_client_with_keep_alive(Some(10));
+    assert_eq!(client.poll_timeout(), Some(Duration::from_secs(10)));
+
+    // Inbound QoS 2 PUBLISH.
+    let packet_id = NonZero::new(7).expect("non-zero");
+    let publish = ControlPacket::Publish(Publish {
+        kind: PublishKind::Repetible {
+            packet_id,
+            qos: GuaranteedQoS::ExactlyOnce,
+            dup: false,
+        },
+        retain: false,
+        topic: Topic::try_new("x/y").expect("valid"),
+        payload: Payload::new(b"data".as_slice()),
+        properties: PublishProperties::default(),
+    });
+    assert_eq!(
+        client.handle_read(IncomingData {
+            bytes: encode_packet(&publish),
+            received_at: Duration::from_secs(1)
+        }),
+        Ok(())
+    );
+    let inbound_id = match client.poll_read() {
+        Some(UserWriteOut::ReceivedMessageWithRequiredAcknowledgement(id, _)) => id,
+        other => panic!("expected inbound QoS 2 message, got {other:?}"),
+    };
+
+    // App acknowledges → PUBREC sent via handle_write → activity flag set.
+    assert_eq!(
+        client.handle_write(UserWriteIn::AcknowledgeMessage(inbound_id)),
+        Ok(())
+    );
+    let _ = client.poll_write(); // drain PUBREC
+
+    // t=10: activity flag is set → reschedule to t=20, flag cleared, no PINGREQ.
+    assert_eq!(client.handle_timeout(Duration::from_secs(10)), Ok(()));
+    assert_eq!(client.poll_write(), None, "no PINGREQ when PUBREC was sent");
+    assert_eq!(client.poll_timeout(), Some(Duration::from_secs(20)));
+
+    // t=12: broker sends PUBREL → PUBCOMP is enqueued internally via
+    // enqueue_packet.
+    let pubrel = ControlPacket::PubRel(PubRel {
+        packet_id,
+        reason_code: PubRelReasonCode::Success,
+        properties: PubRelProperties::default(),
+    });
+    assert_eq!(
+        client.handle_read(IncomingData {
+            bytes: encode_packet(&pubrel),
+            received_at: Duration::from_secs(12)
+        }),
+        Ok(())
+    );
+    let _ = client.poll_write(); // drain PUBCOMP
+
+    // t=20: PUBCOMP was an outgoing control packet → activity flag must be set →
+    // no PINGREQ, deadline rescheduled.
+    assert_eq!(client.handle_timeout(Duration::from_secs(20)), Ok(()));
+    assert_eq!(
+        client.poll_write(),
+        None,
+        "PINGREQ must NOT be sent: PUBCOMP counts as keep-alive activity"
+    );
+    assert_eq!(client.poll_timeout(), Some(Duration::from_secs(30)));
+}
+
+// ── Keep-alive: reconnect lifecycle ────────────────────────────────────────
+
+/// After a disconnect and reconnect, the keep-alive timer MUST be re-armed
+/// using the arrival timestamp of the second CONNACK, not the first.
+#[test]
+fn keep_alive_timer_rearmed_after_reconnect_uses_new_received_at() {
+    // First connection: CONNACK at t=0, interval=10 → deadline=10.
+    let mut client = make_connected_client_with_keep_alive(Some(10));
+    assert_eq!(client.poll_timeout(), Some(Duration::from_secs(10)));
+
+    // Socket closes → keep-alive state must be fully reset.
+    assert_eq!(client.handle_event(DriverEventIn::SocketClosed), Ok(()));
+    assert!(matches!(
+        client.poll_read(),
+        Some(UserWriteOut::Disconnected(_))
+    ));
+    assert_eq!(
+        client.poll_timeout(),
+        None,
+        "timer must be cleared after disconnect"
+    );
+
+    // Reconnect.
+    assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
+    let _ = client.poll_write(); // drain CONNECT frame
+
+    // Second CONNACK arrives at t=50 with interval=20 → deadline must be 70.
+    let connack = ControlPacket::ConnAck(ConnAck {
+        kind: ConnAckKind::Other {
+            reason_code: ConnackReasonCode::Success,
+        },
+        properties: ConnAckProperties {
+            server_keep_alive: Some(20),
+            ..ConnAckProperties::default()
+        },
+    });
+    assert_eq!(
+        client.handle_read(IncomingData {
+            bytes: encode_packet(&connack),
+            received_at: Duration::from_secs(50)
+        }),
+        Ok(())
+    );
+    assert!(matches!(client.poll_read(), Some(UserWriteOut::Connected)));
+
+    // Timer = second_connack_received_at + second_interval = 50 + 20 = 70.
+    assert_eq!(
+        client.poll_timeout(),
+        Some(Duration::from_secs(70)),
+        "timer must use the second CONNACK's received_at, not the first"
+    );
+}
+
+/// When the socket closes while a PINGREQ is outstanding (no PINGRESP yet),
+/// reconnecting and firing handle_timeout MUST send a fresh PINGREQ rather
+/// than closing the connection — `keep_alive_ping_outstanding` must be cleared
+/// by the disconnect.
+#[test]
+fn reconnect_clears_ping_outstanding_allowing_fresh_pingreq() {
+    let mut client = make_connected_client_with_keep_alive(Some(10));
+    assert_eq!(client.poll_timeout(), Some(Duration::from_secs(10)));
+
+    // t=10: no traffic → PINGREQ sent, ping_outstanding=true, deadline=15.
+    assert_eq!(client.handle_timeout(Duration::from_secs(10)), Ok(()));
+    assert!(client.poll_write().is_some(), "PINGREQ must be sent");
+    assert_eq!(client.poll_timeout(), Some(Duration::from_secs(15)));
+
+    // Socket closes before PINGRESP arrives.
+    assert_eq!(client.handle_event(DriverEventIn::SocketClosed), Ok(()));
+    assert!(matches!(
+        client.poll_read(),
+        Some(UserWriteOut::Disconnected(_))
+    ));
+    assert_eq!(
+        client.poll_timeout(),
+        None,
+        "timer and ping_outstanding must be cleared by disconnect"
+    );
+
+    // Reconnect, CONNACK at t=20 with interval=10 → deadline=30.
+    assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
+    let _ = client.poll_write(); // drain CONNECT frame
+    let connack = ControlPacket::ConnAck(ConnAck {
+        kind: ConnAckKind::Other {
+            reason_code: ConnackReasonCode::Success,
+        },
+        properties: ConnAckProperties {
+            server_keep_alive: Some(10),
+            ..ConnAckProperties::default()
+        },
+    });
+    assert_eq!(
+        client.handle_read(IncomingData {
+            bytes: encode_packet(&connack),
+            received_at: Duration::from_secs(20)
+        }),
+        Ok(())
+    );
+    assert!(matches!(client.poll_read(), Some(UserWriteOut::Connected)));
+    assert_eq!(client.poll_timeout(), Some(Duration::from_secs(30)));
+
+    // t=30: ping_outstanding was cleared → connection NOT closed, fresh PINGREQ
+    // sent.
+    assert_eq!(
+        client.handle_timeout(Duration::from_secs(30)),
+        Ok(()),
+        "connection must NOT close: ping_outstanding was reset on disconnect"
+    );
+    assert!(
+        client.poll_write().is_some(),
+        "fresh PINGREQ must be sent after reconnect"
+    );
+}
+
 /// Companion to
 /// `socket_connected_preserves_connect_options_for_effective_limit_recomputation`:
 /// covers the `Disconnected → SocketConnected` reconnect path in
