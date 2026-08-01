@@ -9,7 +9,7 @@ pub use sansio_mqtt_v5_types::AuthenticationKind;
 pub use sansio_mqtt_v5_types::BinaryData;
 pub use sansio_mqtt_v5_types::DisconnectReasonCode;
 pub use sansio_mqtt_v5_types::FormatIndicator;
-use sansio_mqtt_v5_types::MaximumQoS;
+pub use sansio_mqtt_v5_types::MaximumQoS;
 use sansio_mqtt_v5_types::ParserSettings;
 pub use sansio_mqtt_v5_types::Payload;
 pub use sansio_mqtt_v5_types::PubAckReasonCode;
@@ -187,16 +187,49 @@ pub struct BrokerMessage {
     pub content_type: Option<Utf8String>,
 }
 
-#[derive(Debug)]
+/// Identifies an inbound QoS1/QoS2 message that is awaiting the application's
+/// accept-or-reject decision.
+///
+/// Handed out with
+/// [`UserWriteOut::ReceivedMessageWithRequiredAcknowledgement`] and passed back
+/// through [`UserWriteIn::AcknowledgeMessage`] or
+/// [`UserWriteIn::RejectMessage`].
+///
+/// The type is `Copy` so an application can correlate a message (log it, key a
+/// map by it) and still acknowledge it, and constructible so a session restored
+/// through
+/// [`Client::with_settings_and_session`](crate::Client::with_settings_and_session)
+/// can acknowledge inbound exchanges that were already in flight when the
+/// process stopped. Deciding twice on the same id is therefore possible, and is
+/// reported as [`Error::InvalidStateTransition`] rather than being prevented by
+/// the type.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct InboundMessageId(NonZero<u16>);
 
 impl InboundMessageId {
-    pub(crate) fn new(id: NonZero<u16>) -> Self {
+    /// Wraps a Packet Identifier.
+    ///
+    /// [MQTT-2.2.1-3] A Packet Identifier is never zero, which [`NonZero`]
+    /// enforces.
+    pub const fn new(id: NonZero<u16>) -> Self {
         Self(id)
     }
 
-    pub(crate) fn get(self) -> NonZero<u16> {
+    /// The Packet Identifier of the message.
+    pub const fn get(self) -> NonZero<u16> {
         self.0
+    }
+}
+
+impl From<NonZero<u16>> for InboundMessageId {
+    fn from(id: NonZero<u16>) -> Self {
+        Self::new(id)
+    }
+}
+
+impl From<InboundMessageId> for NonZero<u16> {
+    fn from(id: InboundMessageId) -> Self {
+        id.get()
     }
 }
 
@@ -240,6 +273,10 @@ pub enum UserWriteOut {
     Auth(AuthPacket),
 }
 
+/// The reason an application refuses an inbound QoS>0 message.
+///
+/// Only the subset of Reason Codes a receiving client may return in PUBACK or
+/// PUBREC ([§3.4.2.1](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901124)).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum IncomingRejectReason {
     UnspecifiedError,
@@ -248,6 +285,32 @@ pub enum IncomingRejectReason {
     TopicNameInvalid,
     QuotaExceeded,
     PayloadFormatInvalid,
+}
+
+impl From<IncomingRejectReason> for PubAckReasonCode {
+    fn from(reason: IncomingRejectReason) -> Self {
+        match reason {
+            IncomingRejectReason::UnspecifiedError => Self::UnspecifiedError,
+            IncomingRejectReason::ImplementationSpecificError => Self::ImplementationSpecificError,
+            IncomingRejectReason::NotAuthorized => Self::NotAuthorized,
+            IncomingRejectReason::TopicNameInvalid => Self::TopicNameInvalid,
+            IncomingRejectReason::QuotaExceeded => Self::QuotaExceeded,
+            IncomingRejectReason::PayloadFormatInvalid => Self::PayloadFormatInvalid,
+        }
+    }
+}
+
+impl From<IncomingRejectReason> for PubRecReasonCode {
+    fn from(reason: IncomingRejectReason) -> Self {
+        match reason {
+            IncomingRejectReason::UnspecifiedError => Self::UnspecifiedError,
+            IncomingRejectReason::ImplementationSpecificError => Self::ImplementationSpecificError,
+            IncomingRejectReason::NotAuthorized => Self::NotAuthorized,
+            IncomingRejectReason::TopicNameInvalid => Self::TopicNameInvalid,
+            IncomingRejectReason::QuotaExceeded => Self::QuotaExceeded,
+            IncomingRejectReason::PayloadFormatInvalid => Self::PayloadFormatInvalid,
+        }
+    }
 }
 
 // Things that the client can write to the socket (via the driver)

@@ -3,6 +3,7 @@ use crate::session::ClientSession;
 use crate::types::ClientSettings;
 use crate::types::DriverEventOut;
 use crate::types::Error;
+use crate::types::UserWriteOut;
 use alloc::vec::Vec;
 use bytes::Bytes;
 use core::num::NonZero;
@@ -34,7 +35,7 @@ pub(crate) fn encode_control_packet(packet: &ControlPacket) -> Result<Bytes, Err
     Ok(Bytes::from(encoded))
 }
 
-pub(crate) fn enqueue_packet<Time: 'static>(
+pub(crate) fn enqueue_packet<Time>(
     scratchpad: &mut ClientScratchpad<Time>,
     packet: &ControlPacket,
 ) -> Result<(), Error> {
@@ -50,18 +51,35 @@ pub(crate) fn enqueue_packet<Time: 'static>(
     Ok(())
 }
 
-/// Enqueues DISCONNECT best-effort, closes socket, transitions lifecycle to
-/// Disconnected, and resets keepalive + negotiated limits + session state.
+/// Clears the read buffer and resets keep-alive, negotiated limits, and (unless
+/// the session must persist) session state.
 ///
-/// NOTE: During Tasks 4–11 this function still sets scratchpad.lifecycle_state
-/// directly. In Task 12 (FSM cutover) that line is removed and callers return
-/// ClientState::Disconnected.
-pub(crate) fn fail_protocol_and_disconnect<Time: 'static>(
+/// Every connection teardown path funnels through here so the reset ordering
+/// stays identical; `reset_negotiated_limits` also clears inbound topic aliases
+/// per [MQTT-3.8.2-1].
+pub(crate) fn reset_connection_state<Time>(
+    settings: &ClientSettings,
+    session: &mut ClientSession,
+    scratchpad: &mut ClientScratchpad<Time>,
+) {
+    scratchpad.read_buffer.clear();
+    crate::session_ops::reset_keepalive(scratchpad);
+    crate::limits::reset_negotiated_limits(settings, session, scratchpad);
+    crate::session_ops::maybe_reset_session_state(session, scratchpad);
+}
+
+/// Enqueues a DISCONNECT carrying `reason` best-effort, asks the driver to
+/// close the socket, and resets all connection state.
+///
+/// Reason-code agnostic: used both for protocol failures and for a normal
+/// client-initiated disconnect. It reports nothing to the application, so
+/// callers tearing down on the user's behalf use [`graceful_disconnect`].
+pub(crate) fn disconnect_and_reset<Time>(
     settings: &ClientSettings,
     session: &mut ClientSession,
     scratchpad: &mut ClientScratchpad<Time>,
     reason: DisconnectReasonCode,
-) -> Result<(), Error> {
+) {
     let _ = enqueue_packet(
         scratchpad,
         &ControlPacket::Disconnect(Disconnect {
@@ -72,121 +90,83 @@ pub(crate) fn fail_protocol_and_disconnect<Time: 'static>(
     scratchpad
         .action_queue
         .push_back(DriverEventOut::CloseSocket);
-    scratchpad.read_buffer.clear();
-    crate::session_ops::reset_keepalive(scratchpad);
-    // reset negotiated limits (also clears inbound topic aliases)
-    crate::limits::reset_negotiated_limits(settings, session, scratchpad);
-    crate::session_ops::maybe_reset_session_state(session, scratchpad);
+    reset_connection_state(settings, session, scratchpad);
+}
+
+/// Performs a client-initiated normal disconnect and reports it to the
+/// application.
+///
+/// [MQTT-3.14.4-1] After sending DISCONNECT the client MUST close the Network
+/// Connection and MUST NOT send any more packets on it.
+pub(crate) fn graceful_disconnect<Time>(
+    settings: &ClientSettings,
+    session: &mut ClientSession,
+    scratchpad: &mut ClientScratchpad<Time>,
+) {
+    disconnect_and_reset(
+        settings,
+        session,
+        scratchpad,
+        DisconnectReasonCode::NormalDisconnection,
+    );
+    scratchpad
+        .read_queue
+        .push_back(UserWriteOut::Disconnected(None));
+}
+
+/// Enqueues an acknowledgement packet, tearing the connection down if it cannot
+/// be sent.
+///
+/// An acknowledgement that cannot be encoded or exceeds the broker's maximum
+/// packet size leaves the QoS exchange unresolvable, so the only correct
+/// response is to fail the connection.
+pub(crate) fn enqueue_ack_or_fail_protocol<Time>(
+    settings: &ClientSettings,
+    session: &mut ClientSession,
+    scratchpad: &mut ClientScratchpad<Time>,
+    packet: &ControlPacket,
+) -> Result<(), Error> {
+    if enqueue_packet(scratchpad, packet).is_err() {
+        disconnect_and_reset(
+            settings,
+            session,
+            scratchpad,
+            DisconnectReasonCode::ProtocolError,
+        );
+        return Err(Error::ProtocolError);
+    }
+
     Ok(())
 }
 
-pub(crate) fn enqueue_pubrel_or_fail_protocol<Time: 'static>(
-    settings: &ClientSettings,
-    session: &mut ClientSession,
-    scratchpad: &mut ClientScratchpad<Time>,
-    packet_id: NonZero<u16>,
-) -> Result<(), Error> {
-    match enqueue_packet(
-        scratchpad,
-        &ControlPacket::PubRel(PubRel {
-            packet_id,
-            reason_code: PubRelReasonCode::Success,
-            properties: PubRelProperties::default(),
-        }),
-    ) {
-        Ok(()) => Ok(()),
-        Err(_) => {
-            fail_protocol_and_disconnect(
-                settings,
-                session,
-                scratchpad,
-                DisconnectReasonCode::ProtocolError,
-            )?;
-            Err(Error::ProtocolError)
-        }
-    }
+pub(crate) fn pubrel(packet_id: NonZero<u16>) -> ControlPacket {
+    ControlPacket::PubRel(PubRel {
+        packet_id,
+        reason_code: PubRelReasonCode::Success,
+        properties: PubRelProperties::default(),
+    })
 }
 
-pub(crate) fn enqueue_puback_or_fail_protocol<Time: 'static>(
-    settings: &ClientSettings,
-    session: &mut ClientSession,
-    scratchpad: &mut ClientScratchpad<Time>,
-    packet_id: NonZero<u16>,
-    reason_code: PubAckReasonCode,
-) -> Result<(), Error> {
-    match enqueue_packet(
-        scratchpad,
-        &ControlPacket::PubAck(PubAck {
-            packet_id,
-            reason_code,
-            properties: PubAckProperties::default(),
-        }),
-    ) {
-        Ok(()) => Ok(()),
-        Err(_) => {
-            fail_protocol_and_disconnect(
-                settings,
-                session,
-                scratchpad,
-                DisconnectReasonCode::ProtocolError,
-            )?;
-            Err(Error::ProtocolError)
-        }
-    }
+pub(crate) fn puback(packet_id: NonZero<u16>, reason_code: PubAckReasonCode) -> ControlPacket {
+    ControlPacket::PubAck(PubAck {
+        packet_id,
+        reason_code,
+        properties: PubAckProperties::default(),
+    })
 }
 
-pub(crate) fn enqueue_pubrec_or_fail_protocol<Time: 'static>(
-    settings: &ClientSettings,
-    session: &mut ClientSession,
-    scratchpad: &mut ClientScratchpad<Time>,
-    packet_id: NonZero<u16>,
-    reason_code: PubRecReasonCode,
-) -> Result<(), Error> {
-    match enqueue_packet(
-        scratchpad,
-        &ControlPacket::PubRec(PubRec {
-            packet_id,
-            reason_code,
-            properties: PubRecProperties::default(),
-        }),
-    ) {
-        Ok(()) => Ok(()),
-        Err(_) => {
-            fail_protocol_and_disconnect(
-                settings,
-                session,
-                scratchpad,
-                DisconnectReasonCode::ProtocolError,
-            )?;
-            Err(Error::ProtocolError)
-        }
-    }
+pub(crate) fn pubrec(packet_id: NonZero<u16>, reason_code: PubRecReasonCode) -> ControlPacket {
+    ControlPacket::PubRec(PubRec {
+        packet_id,
+        reason_code,
+        properties: PubRecProperties::default(),
+    })
 }
 
-pub(crate) fn enqueue_pubcomp_or_fail_protocol<Time: 'static>(
-    settings: &ClientSettings,
-    session: &mut ClientSession,
-    scratchpad: &mut ClientScratchpad<Time>,
-    packet_id: NonZero<u16>,
-    reason_code: PubCompReasonCode,
-) -> Result<(), Error> {
-    match enqueue_packet(
-        scratchpad,
-        &ControlPacket::PubComp(PubComp {
-            packet_id,
-            reason_code,
-            properties: PubCompProperties::default(),
-        }),
-    ) {
-        Ok(()) => Ok(()),
-        Err(_) => {
-            fail_protocol_and_disconnect(
-                settings,
-                session,
-                scratchpad,
-                DisconnectReasonCode::ProtocolError,
-            )?;
-            Err(Error::ProtocolError)
-        }
-    }
+pub(crate) fn pubcomp(packet_id: NonZero<u16>, reason_code: PubCompReasonCode) -> ControlPacket {
+    ControlPacket::PubComp(PubComp {
+        packet_id,
+        reason_code,
+        properties: PubCompProperties::default(),
+    })
 }
