@@ -29,7 +29,7 @@ pub(crate) fn fail_with_protocol_error<Time>(
     session: &mut ClientSession,
     scratchpad: &mut ClientScratchpad<Time>,
 ) -> (ClientState, Result<(), Error>) {
-    queues::fail_protocol_and_disconnect(
+    queues::disconnect_and_reset(
         settings,
         session,
         scratchpad,

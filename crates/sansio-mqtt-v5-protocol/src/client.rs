@@ -138,7 +138,7 @@ where
                     // [MQTT-4.13.1-1] Malformed Control Packet is a protocol error and requires
                     // disconnect.
                     let _ = self.dispatch(|_s, set, ses, sp| {
-                        queues::fail_protocol_and_disconnect(
+                        queues::disconnect_and_reset(
                             set,
                             ses,
                             sp,

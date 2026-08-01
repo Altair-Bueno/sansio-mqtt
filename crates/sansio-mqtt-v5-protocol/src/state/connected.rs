@@ -43,8 +43,8 @@ pub(crate) struct Connected;
 /// Applies the uniform `Connected` transition rule to a fallible operation.
 ///
 /// Every failure path in this state has already torn the connection down via
-/// [`queues::fail_protocol_and_disconnect`], so an error always means the FSM
-/// has moved to `Disconnected`.
+/// [`queues::disconnect_and_reset`], so an error always means the FSM has moved
+/// to `Disconnected`.
 fn stay_or_disconnect(result: Result<(), Error>) -> (ClientState, Result<(), Error>) {
     match result {
         Ok(()) => (ClientState::Connected(Connected), Ok(())),
@@ -126,7 +126,7 @@ fn handle_inbound_qos1_publish<Time>(
             | InboundInflightState::Qos2AwaitPubRel
             | InboundInflightState::Qos2Rejected(_),
         ) => {
-            queues::fail_protocol_and_disconnect(
+            queues::disconnect_and_reset(
                 settings,
                 session,
                 scratchpad,
@@ -161,7 +161,7 @@ fn handle_inbound_qos2_publish<Time>(
             )
         }
         Some(InboundInflightState::Qos1AwaitAppDecision) => {
-            queues::fail_protocol_and_disconnect(
+            queues::disconnect_and_reset(
                 settings,
                 session,
                 scratchpad,
@@ -683,7 +683,7 @@ where
             // connection. The timer was set to interval/2 after sending
             // PINGREQ, so we have now waited a total of 1.5× the keep-alive
             // interval since the last packet was received.
-            queues::fail_protocol_and_disconnect(
+            queues::disconnect_and_reset(
                 settings,
                 session,
                 scratchpad,

@@ -68,12 +68,13 @@ pub(crate) fn reset_connection_state<Time>(
     crate::session_ops::maybe_reset_session_state(session, scratchpad);
 }
 
-/// Enqueues a DISCONNECT with `reason` best-effort, asks the driver to close
-/// the socket, and resets all connection state.
+/// Enqueues a DISCONNECT carrying `reason` best-effort, asks the driver to
+/// close the socket, and resets all connection state.
 ///
-/// Does not report anything to the application: callers that tear down on the
-/// user's behalf use [`graceful_disconnect`] instead.
-pub(crate) fn fail_protocol_and_disconnect<Time>(
+/// Reason-code agnostic: used both for protocol failures and for a normal
+/// client-initiated disconnect. It reports nothing to the application, so
+/// callers tearing down on the user's behalf use [`graceful_disconnect`].
+pub(crate) fn disconnect_and_reset<Time>(
     settings: &ClientSettings,
     session: &mut ClientSession,
     scratchpad: &mut ClientScratchpad<Time>,
@@ -102,7 +103,7 @@ pub(crate) fn graceful_disconnect<Time>(
     session: &mut ClientSession,
     scratchpad: &mut ClientScratchpad<Time>,
 ) {
-    fail_protocol_and_disconnect(
+    disconnect_and_reset(
         settings,
         session,
         scratchpad,
@@ -126,7 +127,7 @@ pub(crate) fn enqueue_ack_or_fail_protocol<Time>(
     packet: &ControlPacket,
 ) -> Result<(), Error> {
     if enqueue_packet(scratchpad, packet).is_err() {
-        fail_protocol_and_disconnect(
+        disconnect_and_reset(
             settings,
             session,
             scratchpad,
