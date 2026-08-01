@@ -46,12 +46,7 @@ where
             ),
             None => (None, None),
         };
-        let user_properties = encode::combinators::Iter::new(
-            self.user_properties
-                .iter()
-                .cloned()
-                .map(|(k, v)| Property::UserProperty(k, v)),
-        );
+        let user_properties = user_properties_iter(&self.user_properties);
 
         encode::combinators::LengthPrefix::<_, VariableByteInteger, _>::new((
             session_expiry_interval,
@@ -83,10 +78,7 @@ where
     type Error = EncodeError;
 
     fn encode(&self, encoder: &mut E) -> Result<(), Self::Error> {
-        let mut header_flags = 0u8;
-        header_flags |= u8::from(ControlPacketType::ConnAck) << 4;
-        header_flags |= u8::from(ConnAckHeaderFlags);
-        header_flags.encode(encoder)?;
+        fixed_header(ControlPacketType::ConnAck, u8::from(ConnAckHeaderFlags)).encode(encoder)?;
 
         let ack_flags = [
             false,

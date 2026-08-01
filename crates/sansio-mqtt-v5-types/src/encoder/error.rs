@@ -29,7 +29,7 @@ pub enum EncodeError {
 }
 
 impl From<Infallible> for EncodeError {
-    fn from(_: Infallible) -> Self {
-        unreachable!("Infallible cannot be constructed")
+    fn from(value: Infallible) -> Self {
+        match value {}
     }
 }

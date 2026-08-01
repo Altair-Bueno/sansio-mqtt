@@ -5,6 +5,29 @@ use super::*;
 pub type TwoByteInteger = encode::combinators::BE<u16>;
 pub type FourByteInteger = encode::combinators::BE<u32>;
 
+/// Builds the Fixed Header byte from a Control Packet type and its
+/// 4-bit flags nibble
+/// ([§2.1.1](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901021)).
+#[inline]
+pub const fn fixed_header(packet_type: ControlPacketType, flags: u8) -> u8 {
+    ((packet_type as u8) << 4) | flags
+}
+
+/// Wraps a User Property list as the [`Property`] sequence the
+/// encoders expect
+/// ([§2.2.2.2](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901029)).
+#[inline]
+pub fn user_properties_iter(
+    properties: &[(Utf8String, Utf8String)],
+) -> encode::combinators::Iter<impl Iterator<Item = Property> + Clone + '_> {
+    encode::combinators::Iter::new(
+        properties
+            .iter()
+            .cloned()
+            .map(|(key, value)| Property::UserProperty(key, value)),
+    )
+}
+
 pub struct VariableByteInteger(pub u64);
 
 impl TryFrom<usize> for VariableByteInteger {

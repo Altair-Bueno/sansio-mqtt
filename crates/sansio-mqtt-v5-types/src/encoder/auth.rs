@@ -19,12 +19,7 @@ where
             ),
             None => (None, None),
         };
-        let user_properties = encode::combinators::Iter::new(
-            self.user_properties
-                .iter()
-                .cloned()
-                .map(|(k, v)| Property::UserProperty(k, v)),
-        );
+        let user_properties = user_properties_iter(&self.user_properties);
 
         encode::combinators::LengthPrefix::<_, VariableByteInteger, _>::new((
             reason_string,
@@ -43,10 +38,7 @@ where
     type Error = EncodeError;
 
     fn encode(&self, encoder: &mut E) -> Result<(), Self::Error> {
-        let mut header_flags = 0u8;
-        header_flags |= u8::from(ControlPacketType::Auth) << 4;
-        header_flags |= u8::from(AuthHeaderFlags);
-        header_flags.encode(encoder)?;
+        fixed_header(ControlPacketType::Auth, u8::from(AuthHeaderFlags)).encode(encoder)?;
 
         encode::combinators::LengthPrefix::<_, VariableByteInteger, Self::Error>::new(
             encode::combinators::Cond::new(

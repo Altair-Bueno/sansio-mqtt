@@ -732,7 +732,10 @@ impl TryFrom<u8> for MaximumQoS {
 impl From<MaximumQoS> for Qos {
     #[inline]
     fn from(value: MaximumQoS) -> Self {
-        Self::try_from(u8::from(value)).expect("Should be a valid QoS value")
+        match value {
+            MaximumQoS::AtMostOnce => Self::AtMostOnce,
+            MaximumQoS::AtLeastOnce => Self::AtLeastOnce,
+        }
     }
 }
 
@@ -766,7 +769,10 @@ impl TryFrom<u8> for GuaranteedQoS {
 impl From<GuaranteedQoS> for Qos {
     #[inline]
     fn from(value: GuaranteedQoS) -> Self {
-        Self::try_from(u8::from(value)).expect("Should be a valid QoS value")
+        match value {
+            GuaranteedQoS::AtLeastOnce => Self::AtLeastOnce,
+            GuaranteedQoS::ExactlyOnce => Self::ExactlyOnce,
+        }
     }
 }
 

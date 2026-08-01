@@ -11,7 +11,11 @@ impl ControlPacket {
         parser_settings: &'settings ParserSettings,
     ) -> impl Parser<ByteInput, Self, ByteError> + use<'input, 'settings, ByteInput, ByteError, BitError>
     where
-        ByteInput: StreamIsPartial + Stream<Token = u8, Slice = &'input [u8]> + Clone + UpdateSlice,
+        ByteInput: StreamIsPartial
+            + Stream<Token = u8, Slice = &'input [u8]>
+            + BytesSource
+            + Clone
+            + UpdateSlice,
         ByteError: ParserError<ByteInput>
             + FromExternalError<ByteInput, Utf8Error>
             + FromExternalError<ByteInput, InvalidQosError>
@@ -43,16 +47,6 @@ impl ControlPacket {
             .context(StrContext::Label("Remaining length"));
 
             match control_packet_type {
-                ControlPacketType::Reserved => {
-                    let (_, _header_flags) = bits::bits((
-                        bits::take::<_, u8, _, BitError>(4usize),
-                        ReservedHeaderFlags::parser,
-                    ))
-                    .parse_next(input)?;
-                    binary::length_and_then(remaining_len_parser, Reserved::parser(parser_settings))
-                        .map(ControlPacket::Reserved)
-                        .parse_next(input)
-                }
                 ControlPacketType::Connect => {
                     let (_, _header_flags) = bits::bits((
                         bits::take::<_, u8, _, BitError>(4usize),

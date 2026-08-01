@@ -1,5 +1,40 @@
 use super::*;
 
+/// Stores `value` in `slot`, rejecting a property that is only allowed
+/// to appear once but was seen again
+/// ([§2.2.2.1](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901028),
+/// [MQTT-2.2.2-2]).
+#[inline]
+pub(crate) fn set_once<T>(
+    slot: &mut Option<T>,
+    value: T,
+    property_type: PropertyType,
+) -> Result<(), PropertiesError> {
+    match slot {
+        None => {
+            *slot = Some(value);
+            Ok(())
+        }
+        Some(_) => Err(DuplicatedPropertyError { property_type }.into()),
+    }
+}
+
+/// Appends `value` to `dst` unless that would exceed `max_len`,
+/// guarding against resource-exhaustion from a repeated property.
+#[inline]
+pub(crate) fn push_capped<T>(
+    dst: &mut Vec<T>,
+    value: T,
+    max_len: usize,
+    on_overflow: PropertiesError,
+) -> Result<(), PropertiesError> {
+    if dst.len() >= max_len {
+        return Err(on_overflow);
+    }
+    dst.push(value);
+    Ok(())
+}
+
 impl PropertyType {
     /// Parses a property identifier (Variable Byte Integer)
     /// ([§2.2.2.2](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901029),
@@ -32,7 +67,7 @@ impl Property {
         parser_settings: &'settings ParserSettings,
     ) -> impl Parser<Input, Self, Error> + use<'input, 'settings, Input, Error>
     where
-        Input: Stream<Token = u8, Slice = &'input [u8]> + StreamIsPartial + Clone,
+        Input: Stream<Token = u8, Slice = &'input [u8]> + BytesSource + StreamIsPartial + Clone,
         Error: ParserError<Input>
             + FromExternalError<Input, Utf8Error>
             + FromExternalError<Input, InvalidQosError>
@@ -115,10 +150,10 @@ impl Property {
                 )))
                 .parse_next(input),
                 PropertyType::AssignedClientIdentifier => combinator::trace(
-                    "assignedClientIdentifier",
+                    "AssignedClientIdentifier",
                     Utf8String::parser(parser_settings).map(Property::AssignedClientIdentifier),
                 )
-                .context(StrContext::Label("assignedClientIdentifier"))
+                .context(StrContext::Label("AssignedClientIdentifier"))
                 .context(StrContext::Expected(StrContextValue::Description(
                     "an Assigned Client Identifier value",
                 )))
@@ -133,21 +168,21 @@ impl Property {
                 )))
                 .parse_next(input),
                 PropertyType::AuthenticationMethod => combinator::trace(
-                    "authenticationMethod",
+                    "AuthenticationMethod",
                     Utf8String::parser(parser_settings).map(Property::AuthenticationMethod),
                 )
-                .context(StrContext::Label("authenticationMethod"))
+                .context(StrContext::Label("AuthenticationMethod"))
                 .context(StrContext::Expected(StrContextValue::Description(
                     "an Authentication Method value",
                 )))
                 .parse_next(input),
                 PropertyType::AuthenticationData => combinator::trace(
-                    "authenticationData",
+                    "AuthenticationData",
                     BinaryData::parser(parser_settings)
                         .output_into()
                         .map(Property::AuthenticationData),
                 )
-                .context(StrContext::Label("authenticationData"))
+                .context(StrContext::Label("AuthenticationData"))
                 .context(StrContext::Expected(StrContextValue::Description(
                     "an Authentication Data value",
                 )))
@@ -236,6 +271,10 @@ impl Property {
                         .try_map(TryInto::try_into)
                         .map(Property::TopicAlias),
                 )
+                .context(StrContext::Label("TopicAlias"))
+                .context(StrContext::Expected(StrContextValue::Description(
+                    "a Topic Alias value",
+                )))
                 .parse_next(input),
                 PropertyType::MaximumQoS => combinator::trace(
                     "MaximumQoS",
@@ -319,3 +358,98 @@ impl Property {
         )))
     }
 }
+
+/// Generates the properties-section parser shared by the acknowledgement
+/// packets whose only permitted properties are Reason String and User
+/// Property ([§2.2.2](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901027)).
+macro_rules! impl_ack_properties_parser {
+    ($name:ty, $doc:expr) => {
+        impl $name {
+            #[doc = $doc]
+            #[inline]
+            pub fn parser<'input, 'settings, Input, Error>(
+                parser_settings: &'settings ParserSettings,
+            ) -> impl Parser<Input, Self, Error> + use<'input, 'settings, Input, Error>
+            where
+                Input: Stream<Token = u8, Slice = &'input [u8]>
+                    + BytesSource
+                    + UpdateSlice
+                    + StreamIsPartial
+                    + Clone,
+                Error: ParserError<Input>
+                    + AddContext<Input, StrContext>
+                    + FromExternalError<Input, Utf8Error>
+                    + FromExternalError<Input, InvalidQosError>
+                    + FromExternalError<Input, InvalidPropertyTypeError>
+                    + FromExternalError<Input, PropertiesError>
+                    + FromExternalError<Input, UnknownFormatIndicatorError>
+                    + FromExternalError<Input, Utf8StringError>
+                    + FromExternalError<Input, TopicError>
+                    + FromExternalError<Input, BinaryDataError>
+                    + FromExternalError<Input, TryFromIntError>,
+            {
+                combinator::trace(
+                    type_name::<Self>(),
+                    binary::length_and_then(
+                        variable_byte_integer,
+                        (
+                            combinator::repeat(.., Property::parser(parser_settings)).try_fold(
+                                Self::default,
+                                |mut properties, property| {
+                                    let property_type = PropertyType::from(&property);
+                                    match property {
+                                        Property::ReasonString(value) => set_once(
+                                            &mut properties.reason_string,
+                                            value,
+                                            property_type,
+                                        )?,
+                                        Property::UserProperty(key, value) => push_capped(
+                                            &mut properties.user_properties,
+                                            (key, value),
+                                            parser_settings.max_user_properties_len,
+                                            PropertiesError::from(TooManyUserPropertiesError),
+                                        )?,
+                                        _ => {
+                                            return Err(PropertiesError::from(
+                                                UnsupportedPropertyError { property_type },
+                                            ));
+                                        }
+                                    };
+                                    Ok(properties)
+                                },
+                            ),
+                            combinator::eof,
+                        )
+                            .map(|(properties, _)| properties),
+                    ),
+                )
+                .context(StrContext::Label(type_name::<Self>()))
+            }
+        }
+    };
+}
+
+impl_ack_properties_parser!(
+    PubAckProperties,
+    "Returns a parser for the `PUBACK` properties section\n([§3.4.2.2](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901125))."
+);
+impl_ack_properties_parser!(
+    PubRecProperties,
+    "Returns a parser for the `PUBREC` properties section\n([§3.5.2.2](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901135))."
+);
+impl_ack_properties_parser!(
+    PubRelProperties,
+    "Returns a parser for the `PUBREL` properties section\n([§3.6.2.2](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901145))."
+);
+impl_ack_properties_parser!(
+    PubCompProperties,
+    "Returns a parser for the `PUBCOMP` properties section\n([§3.7.2.2](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901155))."
+);
+impl_ack_properties_parser!(
+    SubAckProperties,
+    "Returns a parser for the `SUBACK` properties section\n([§3.9.2.1](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901174))."
+);
+impl_ack_properties_parser!(
+    UnsubAckProperties,
+    "Returns a parser for the `UNSUBACK` properties section\n([§3.11.2.1](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901189))."
+);

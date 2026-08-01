@@ -8,7 +8,6 @@ where
     type Error = EncodeError;
     fn encode(&self, encoder: &mut E) -> Result<(), Self::Error> {
         match self {
-            ControlPacket::Reserved(packet) => packet.encode(encoder),
             ControlPacket::Connect(packet) => packet.encode(encoder),
             ControlPacket::ConnAck(packet) => packet.encode(encoder),
             ControlPacket::Publish(packet) => packet.encode(encoder),

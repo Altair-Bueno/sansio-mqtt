@@ -490,7 +490,8 @@ pub enum AuthReasonCode {
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, thiserror::Error)]
 #[error("Invalid reason code {value}")]
 pub struct InvalidReasonCode {
-    value: u8,
+    /// Offending Reason Code byte.
+    pub value: u8,
 }
 
 macro_rules! impl_reason_code {

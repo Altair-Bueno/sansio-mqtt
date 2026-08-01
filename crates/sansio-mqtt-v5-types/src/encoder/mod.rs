@@ -13,7 +13,6 @@ mod pubcomp;
 mod publish;
 mod pubrec;
 mod pubrel;
-mod reserved;
 mod suback;
 mod subscribe;
 mod unsuback;

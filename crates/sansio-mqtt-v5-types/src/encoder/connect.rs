@@ -30,12 +30,7 @@ where
         let request_problem_information = self
             .request_problem_information
             .map(Property::RequestProblemInformation);
-        let user_properties = encode::combinators::Iter::new(
-            self.user_properties
-                .iter()
-                .cloned()
-                .map(|(k, v)| Property::UserProperty(k, v)),
-        );
+        let user_properties = user_properties_iter(&self.user_properties);
 
         encode::combinators::LengthPrefix::<_, VariableByteInteger, _>::new((
             session_expiry_interval,
@@ -68,12 +63,7 @@ where
         let content_type = self.content_type.clone().map(Property::ContentType);
         let response_topic = self.response_topic.clone().map(Property::ResponseTopic);
         let correlation_data = self.correlation_data.clone().map(Property::CorrelationData);
-        let user_properties = encode::combinators::Iter::new(
-            self.user_properties
-                .iter()
-                .cloned()
-                .map(|(k, v)| Property::UserProperty(k, v)),
-        );
+        let user_properties = user_properties_iter(&self.user_properties);
 
         encode::combinators::LengthPrefix::<_, VariableByteInteger, _>::new((
             will_delay_interval,
@@ -96,10 +86,7 @@ where
     type Error = EncodeError;
 
     fn encode(&self, encoder: &mut E) -> Result<(), Self::Error> {
-        let mut header_flags = 0u8;
-        header_flags |= u8::from(ControlPacketType::Connect) << 4;
-        header_flags |= u8::from(ConnectHeaderFlags);
-        header_flags.encode(encoder)?;
+        fixed_header(ControlPacketType::Connect, u8::from(ConnectHeaderFlags)).encode(encoder)?;
 
         let mut flags = 0u8;
         flags |= u8::from(self.clean_start) << 1;

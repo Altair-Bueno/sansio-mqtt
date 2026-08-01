@@ -13,12 +13,7 @@ where
             .session_expiry_interval
             .map(Property::SessionExpiryInterval);
         let server_reference = self.server_reference.clone().map(Property::ServerReference);
-        let user_properties = encode::combinators::Iter::new(
-            self.user_properties
-                .iter()
-                .cloned()
-                .map(|(k, v)| Property::UserProperty(k, v)),
-        );
+        let user_properties = user_properties_iter(&self.user_properties);
 
         encode::combinators::LengthPrefix::<_, VariableByteInteger, _>::new((
             reason_string,
@@ -38,10 +33,11 @@ where
     type Error = EncodeError;
 
     fn encode(&self, encoder: &mut E) -> Result<(), Self::Error> {
-        let mut header_flags = 0u8;
-        header_flags |= u8::from(ControlPacketType::Disconnect) << 4;
-        header_flags |= u8::from(DisconnectHeaderFlags);
-        header_flags.encode(encoder)?;
+        fixed_header(
+            ControlPacketType::Disconnect,
+            u8::from(DisconnectHeaderFlags),
+        )
+        .encode(encoder)?;
 
         encode::combinators::LengthPrefix::<_, VariableByteInteger, Self::Error>::new(
             encode::combinators::Cond::new(

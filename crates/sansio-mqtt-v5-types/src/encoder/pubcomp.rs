@@ -1,29 +1,5 @@
 use super::*;
 
-impl<E> Encodable<E> for PubCompProperties
-where
-    E: ByteEncoder,
-    EncodeError: From<E::Error>,
-{
-    type Error = EncodeError;
-
-    fn encode(&self, encoder: &mut E) -> Result<(), Self::Error> {
-        let reason_string = self.reason_string.clone().map(Property::ReasonString);
-        let user_properties = encode::combinators::Iter::new(
-            self.user_properties
-                .iter()
-                .cloned()
-                .map(|(k, v)| Property::UserProperty(k, v)),
-        );
-
-        encode::combinators::LengthPrefix::<_, VariableByteInteger, _>::new((
-            reason_string,
-            user_properties,
-        ))
-        .encode(encoder)
-    }
-}
-
 impl<E> Encodable<E> for PubComp
 where
     E: ByteEncoder,
@@ -32,10 +8,7 @@ where
     type Error = EncodeError;
 
     fn encode(&self, encoder: &mut E) -> Result<(), Self::Error> {
-        let mut header_flags = 0u8;
-        header_flags |= u8::from(ControlPacketType::PubComp) << 4;
-        header_flags |= u8::from(PubCompHeaderFlags);
-        header_flags.encode(encoder)?;
+        fixed_header(ControlPacketType::PubComp, u8::from(PubCompHeaderFlags)).encode(encoder)?;
 
         encode::combinators::LengthPrefix::<_, VariableByteInteger, Self::Error>::new((
             encode::combinators::FromError::<_, Self::Error>::new(TwoByteInteger::new(
