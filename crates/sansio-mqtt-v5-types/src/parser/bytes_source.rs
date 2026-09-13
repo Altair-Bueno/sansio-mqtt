@@ -25,12 +25,21 @@
 ///
 /// Passing a plain `&[u8]` still works and still copies, so this is an
 /// opt-in optimisation rather than a required change.
-pub trait BytesSource {
+pub trait BytesSource: sealed::Sealed {
     /// Returns `slice` as owned [`bytes::Bytes`].
     ///
     /// `slice` is expected to be a subslice of this input. Implementors
     /// that cannot prove that MUST copy rather than panic.
     fn owned_slice(&self, slice: &[u8]) -> bytes::Bytes;
+}
+
+mod sealed {
+    pub trait Sealed {}
+
+    impl Sealed for &[u8] {}
+    impl<Input: Sealed> Sealed for winnow::stream::Partial<Input> {}
+    impl<Input> Sealed for winnow::stream::Stateful<Input, &bytes::Bytes> {}
+    impl<Input> Sealed for winnow::stream::Stateful<Input, bytes::Bytes> {}
 }
 
 /// Copies: a bare slice carries no ownership to share.
