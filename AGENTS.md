@@ -78,6 +78,10 @@
 
 - Workspace layout: `crates/*`.
 - Crate naming convention: `sansio-mqtt-<mqtt-version>-<scope>` (crate naming).
+  `sansio-mqtt-protocol` is the one version-neutral crate: it defines the public
+  application API (`Command`, `Event`, `Message`, ...) and the `MqttProtocol`
+  trait that every `sansio-mqtt-<version>-protocol` crate implements; those
+  crates expose only `Client` and `ClientSettings`.
 - Follow existing crate boundaries; add new crates using the naming convention.
 
 ## Protocol and Spec Compliance

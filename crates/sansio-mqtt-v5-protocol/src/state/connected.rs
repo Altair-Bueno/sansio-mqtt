@@ -1,3 +1,5 @@
+use crate::client::ClientSettings;
+use crate::convert;
 use crate::limits;
 use crate::queues;
 use crate::scratchpad::ClientScratchpad;
@@ -9,19 +11,19 @@ use crate::state::ClientState;
 use crate::state::StateHandler;
 use crate::state::disconnected::Disconnected;
 use crate::state::fail_with_protocol_error;
-use crate::types::BrokerMessage;
-use crate::types::ClientMessage;
-use crate::types::ClientSettings;
-use crate::types::DriverEventIn;
-use crate::types::DriverEventOut;
-use crate::types::Error;
-use crate::types::InboundMessageId;
-use crate::types::ProtocolTime;
-use crate::types::UserWriteIn;
-use crate::types::UserWriteOut;
 use core::num::NonZero;
-use core::time::Duration;
+use sansio_mqtt_protocol::Command;
+use sansio_mqtt_protocol::DriverAction;
+use sansio_mqtt_protocol::DriverEvent;
+use sansio_mqtt_protocol::DropReason;
+use sansio_mqtt_protocol::Error;
+use sansio_mqtt_protocol::Event;
+use sansio_mqtt_protocol::Message;
+use sansio_mqtt_protocol::MessageId;
+use sansio_mqtt_protocol::Qos as ProtocolQos;
+use sansio_mqtt_protocol::Time;
 use sansio_mqtt_v5_types::ControlPacket;
+use sansio_mqtt_v5_types::DisconnectReasonCode;
 use sansio_mqtt_v5_types::GuaranteedQoS;
 use sansio_mqtt_v5_types::PingReq;
 use sansio_mqtt_v5_types::PubAckReasonCode;
@@ -29,12 +31,8 @@ use sansio_mqtt_v5_types::PubCompReasonCode;
 use sansio_mqtt_v5_types::PubRecReasonCode;
 use sansio_mqtt_v5_types::Publish;
 use sansio_mqtt_v5_types::PublishKind;
-use sansio_mqtt_v5_types::PublishProperties;
-use sansio_mqtt_v5_types::Qos;
 use sansio_mqtt_v5_types::Subscribe;
-use sansio_mqtt_v5_types::SubscribeProperties;
 use sansio_mqtt_v5_types::Unsubscribe;
-use sansio_mqtt_v5_types::UnsubscribeProperties;
 
 #[derive(Debug)]
 pub(crate) struct Connected;
@@ -51,7 +49,8 @@ fn stay_or_disconnect(result: Result<(), Error>) -> (ClientState, Result<(), Err
     }
 }
 
-/// Which outbound QoS2 stage `packet_id` is in.
+/// Which outbound QoS2 stage `packet_id` is in, plus the correlation token
+/// stored with the exchange.
 ///
 /// Extracted as a `Copy` tag so the caller can release its borrow of `session`
 /// before enqueueing a response; matching the stored [`OutboundInflightState`]
@@ -65,55 +64,33 @@ enum OutboundQos2Stage {
 fn outbound_qos2_stage(
     session: &ClientSession,
     packet_id: NonZero<u16>,
-) -> Option<OutboundQos2Stage> {
+) -> Option<(OutboundQos2Stage, u64)> {
     match session.on_flight_sent.get(&packet_id)? {
-        OutboundInflightState::Qos2AwaitPubRec { .. } => Some(OutboundQos2Stage::AwaitPubRec),
-        OutboundInflightState::Qos2AwaitPubComp => Some(OutboundQos2Stage::AwaitPubComp),
+        OutboundInflightState::Qos2AwaitPubRec { token, .. } => {
+            Some((OutboundQos2Stage::AwaitPubRec, *token))
+        }
+        OutboundInflightState::Qos2AwaitPubComp { token } => {
+            Some((OutboundQos2Stage::AwaitPubComp, *token))
+        }
         OutboundInflightState::Qos1AwaitPubAck { .. } => None,
     }
 }
 
-fn map_inbound_publish_to_broker_message(publish: Publish) -> BrokerMessage {
-    let qos = match &publish.kind {
-        PublishKind::FireAndForget => Qos::AtMostOnce,
-        PublishKind::Repetible { qos, .. } => Qos::from(*qos),
-    };
-    let retain = publish.retain;
-    let properties = publish.properties;
-
-    BrokerMessage {
-        qos,
-        retain,
-        topic: publish.topic,
-        payload: publish.payload,
-        payload_format_indicator: properties.payload_format_indicator,
-        message_expiry_interval: properties
-            .message_expiry_interval
-            .map(|seconds| Duration::from_secs(u64::from(seconds))),
-        topic_alias: properties.topic_alias,
-        response_topic: properties.response_topic,
-        correlation_data: properties.correlation_data,
-        subscription_identifiers: properties.subscription_identifiers,
-        content_type: properties.content_type,
-        user_properties: properties.user_properties,
-    }
-}
-
-fn handle_inbound_qos1_publish<Time>(
+fn handle_inbound_qos1_publish<T>(
     settings: &ClientSettings,
     session: &mut ClientSession,
-    scratchpad: &mut ClientScratchpad<Time>,
+    scratchpad: &mut ClientScratchpad<T>,
     packet_id: NonZero<u16>,
     publish: Publish,
 ) -> Result<(), Error> {
     match session.on_flight_received.get(&packet_id).copied() {
         None => {
-            scratchpad.read_queue.push_back(
-                UserWriteOut::ReceivedMessageWithRequiredAcknowledgement(
-                    InboundMessageId::new(packet_id),
-                    map_inbound_publish_to_broker_message(publish),
-                ),
-            );
+            scratchpad
+                .read_queue
+                .push_back(Event::MessageRequiresAcknowledgement(
+                    MessageId::new(packet_id),
+                    convert::publish_to_message(publish),
+                ));
             session
                 .on_flight_received
                 .insert(packet_id, InboundInflightState::Qos1AwaitAppDecision);
@@ -129,17 +106,17 @@ fn handle_inbound_qos1_publish<Time>(
                 settings,
                 session,
                 scratchpad,
-                sansio_mqtt_v5_types::DisconnectReasonCode::ProtocolError,
+                DisconnectReasonCode::ProtocolError,
             );
             Err(Error::ProtocolError)
         }
     }
 }
 
-fn handle_inbound_qos2_publish<Time>(
+fn handle_inbound_qos2_publish<T>(
     settings: &ClientSettings,
     session: &mut ClientSession,
-    scratchpad: &mut ClientScratchpad<Time>,
+    scratchpad: &mut ClientScratchpad<T>,
     packet_id: NonZero<u16>,
     publish: Publish,
 ) -> Result<(), Error> {
@@ -164,17 +141,17 @@ fn handle_inbound_qos2_publish<Time>(
                 settings,
                 session,
                 scratchpad,
-                sansio_mqtt_v5_types::DisconnectReasonCode::ProtocolError,
+                DisconnectReasonCode::ProtocolError,
             );
             Err(Error::ProtocolError)
         }
         None => {
-            scratchpad.read_queue.push_back(
-                UserWriteOut::ReceivedMessageWithRequiredAcknowledgement(
-                    InboundMessageId::new(packet_id),
-                    map_inbound_publish_to_broker_message(publish),
-                ),
-            );
+            scratchpad
+                .read_queue
+                .push_back(Event::MessageRequiresAcknowledgement(
+                    MessageId::new(packet_id),
+                    convert::publish_to_message(publish),
+                ));
             session
                 .on_flight_received
                 .insert(packet_id, InboundInflightState::Qos2AwaitAppDecision);
@@ -188,10 +165,10 @@ fn handle_inbound_qos2_publish<Time>(
 ///
 /// Acknowledging and rejecting differ only in the reason codes they carry and
 /// in the state a QoS2 exchange moves to, so both share this path.
-fn respond_to_inbound_publish<Time>(
+fn respond_to_inbound_publish<T>(
     settings: &ClientSettings,
     session: &mut ClientSession,
-    scratchpad: &mut ClientScratchpad<Time>,
+    scratchpad: &mut ClientScratchpad<T>,
     packet_id: NonZero<u16>,
     puback_reason_code: PubAckReasonCode,
     pubrec_reason_code: PubRecReasonCode,
@@ -246,24 +223,21 @@ type OutboundInflightEntry = (NonZero<u16>, OutboundInflightState);
 /// Builds the outbound PUBLISH and, for QoS1/QoS2, the in-flight entry to
 /// retain for retransmission.
 fn build_outbound_publish(
-    msg: ClientMessage,
+    token: u64,
+    msg: Message,
     session: &mut ClientSession,
 ) -> Result<(Publish, Option<OutboundInflightEntry>), Error> {
-    let message_expiry_interval = msg
-        .message_expiry_interval
-        .map(|interval| u32::try_from(interval.as_secs()).map_err(|_| Error::ProtocolError))
-        .transpose()?;
-    let properties = PublishProperties::builder()
-        .maybe_payload_format_indicator(msg.payload_format_indicator)
-        .maybe_message_expiry_interval(message_expiry_interval)
-        .maybe_topic_alias(msg.topic_alias)
-        .maybe_response_topic(msg.response_topic)
-        .maybe_correlation_data(msg.correlation_data)
-        .user_properties(msg.user_properties)
-        .maybe_content_type(msg.content_type)
-        .build();
+    let properties = convert::message_properties_to_wire(&msg)?;
+    let wire_qos = convert::qos_to_wire(msg.qos);
+    let retain = msg.retain;
+    // Outbound PUBLISH always carries the full Topic Name: the Topic Alias
+    // property is never set on outbound PUBLISH ([MQTT-3.3.2-8] area — a
+    // Topic Alias the client never advertised would be a protocol error).
+    let topic = convert::topic_to_wire(msg.topic)?;
+    let payload = convert::payload_to_wire(msg.payload);
+
     // [MQTT-2.2.1-2] Only QoS>0 PUBLISH packets carry a Packet Identifier.
-    let kind = match GuaranteedQoS::try_from(msg.qos) {
+    let kind = match GuaranteedQoS::try_from(wire_qos) {
         Ok(qos) => PublishKind::Repetible {
             packet_id: session_ops::next_packet_id_checked(session)?,
             qos,
@@ -273,23 +247,26 @@ fn build_outbound_publish(
     };
     let publish = Publish::builder()
         .kind(kind)
-        .retain(msg.retain)
-        .payload(msg.payload)
-        .topic(msg.topic)
+        .retain(retain)
+        .payload(payload)
+        .topic(topic)
         .properties(properties)
         .build();
 
     // [MQTT-4.4.0-1] QoS0 is fire-and-forget, so nothing is retained; QoS1/QoS2
-    // keep the packet until it is acknowledged.
+    // keep the packet (and the app's correlation token) until it is
+    // acknowledged.
     let inflight_state = match publish.kind {
         PublishKind::FireAndForget => None,
         PublishKind::Repetible { packet_id, qos, .. } => Some((
             packet_id,
             match qos {
                 GuaranteedQoS::AtLeastOnce => OutboundInflightState::Qos1AwaitPubAck {
+                    token,
                     publish: publish.clone(),
                 },
                 GuaranteedQoS::ExactlyOnce => OutboundInflightState::Qos2AwaitPubRec {
+                    token,
                     publish: publish.clone(),
                 },
             },
@@ -299,17 +276,17 @@ fn build_outbound_publish(
     Ok((publish, inflight_state))
 }
 
-impl<Time> StateHandler<Time> for Connected
+impl<T> StateHandler<T> for Connected
 where
-    Time: ProtocolTime,
+    T: Time,
 {
     fn handle_control_packet(
         self,
         settings: &ClientSettings,
         session: &mut ClientSession,
-        scratchpad: &mut ClientScratchpad<Time>,
+        scratchpad: &mut ClientScratchpad<T>,
         packet: ControlPacket,
-        _received_at: Time,
+        _received_at: T,
     ) -> (ClientState, Result<(), Error>) {
         match packet {
             ControlPacket::Publish(mut publish) => {
@@ -323,9 +300,7 @@ where
                     PublishKind::FireAndForget => {
                         scratchpad
                             .read_queue
-                            .push_back(UserWriteOut::ReceivedMessage(
-                                map_inbound_publish_to_broker_message(publish),
-                            ));
+                            .push_back(Event::Message(convert::publish_to_message(publish)));
                         (ClientState::Connected(self), Ok(()))
                     }
                     PublishKind::Repetible {
@@ -383,17 +358,16 @@ where
                 let packet_id = puback.packet_id;
 
                 match session.on_flight_sent.get(&packet_id) {
-                    Some(OutboundInflightState::Qos1AwaitPubAck { .. }) => {
+                    Some(OutboundInflightState::Qos1AwaitPubAck { token, .. }) => {
                         // [MQTT-4.3.2-3] QoS1 sender keeps PUBLISH
                         // unacknowledged until matching
                         // PUBACK is received.
+                        let token = *token;
                         let _ = session.on_flight_sent.remove(&packet_id);
-                        scratchpad
-                            .read_queue
-                            .push_back(UserWriteOut::PublishAcknowledged(
-                                packet_id,
-                                puback.reason_code,
-                            ));
+                        scratchpad.read_queue.push_back(Event::PublishAcknowledged {
+                            token,
+                            reason: convert::puback_reason_to_protocol(puback.reason_code),
+                        });
                         (ClientState::Connected(self), Ok(()))
                     }
                     _ => fail_with_protocol_error(settings, session, scratchpad),
@@ -404,7 +378,7 @@ where
                 let reason_code = pubrec.reason_code;
 
                 match outbound_qos2_stage(session, packet_id) {
-                    Some(OutboundQos2Stage::AwaitPubRec) => {
+                    Some((OutboundQos2Stage::AwaitPubRec, token)) => {
                         // [MQTT-4.3.3-4] QoS2 sender sends PUBREL with the same
                         // Packet Identifier
                         // after PUBREC (Reason Code < 0x80).
@@ -419,25 +393,26 @@ where
                                 &queues::pubrel(packet_id),
                             );
                             if result.is_ok() {
-                                session
-                                    .on_flight_sent
-                                    .insert(packet_id, OutboundInflightState::Qos2AwaitPubComp);
+                                session.on_flight_sent.insert(
+                                    packet_id,
+                                    OutboundInflightState::Qos2AwaitPubComp { token },
+                                );
                             }
                             stay_or_disconnect(result)
                         } else {
                             let _ = session.on_flight_sent.remove(&packet_id);
-                            scratchpad.read_queue.push_back(
-                                UserWriteOut::PublishDroppedDueToBrokerRejectedPubRec(
-                                    packet_id,
-                                    reason_code,
+                            scratchpad.read_queue.push_back(Event::PublishDropped {
+                                token,
+                                reason: DropReason::BrokerRejected(
+                                    convert::pubrec_reason_to_protocol(reason_code),
                                 ),
-                            );
+                            });
                             (ClientState::Connected(self), Ok(()))
                         }
                     }
                     // [MQTT-4.3.3-4] Repeated PUBREC still requires PUBREL with the same Packet
                     // Identifier.
-                    Some(OutboundQos2Stage::AwaitPubComp) => {
+                    Some((OutboundQos2Stage::AwaitPubComp, _)) => {
                         stay_or_disconnect(queues::enqueue_ack_or_fail_protocol(
                             settings,
                             session,
@@ -452,17 +427,16 @@ where
                 let packet_id = pubcomp.packet_id;
 
                 match session.on_flight_sent.get(&packet_id) {
-                    Some(OutboundInflightState::Qos2AwaitPubComp) => {
+                    Some(OutboundInflightState::Qos2AwaitPubComp { token }) => {
                         // [MQTT-4.3.3-5] QoS2 sender treats PUBREL as
                         // unacknowledged until matching
                         // PUBCOMP is received.
+                        let token = *token;
                         let _ = session.on_flight_sent.remove(&packet_id);
-                        scratchpad
-                            .read_queue
-                            .push_back(UserWriteOut::PublishCompleted(
-                                packet_id,
-                                pubcomp.reason_code,
-                            ));
+                        scratchpad.read_queue.push_back(Event::PublishCompleted {
+                            token,
+                            reason: convert::pubcomp_reason_to_protocol(pubcomp.reason_code),
+                        });
                         (ClientState::Connected(self), Ok(()))
                     }
                     _ => fail_with_protocol_error(settings, session, scratchpad),
@@ -499,12 +473,10 @@ where
                 // normal server disconnects from error
                 // conditions.
                 queues::reset_connection_state(settings, session, scratchpad);
-                scratchpad
-                    .read_queue
-                    .push_back(UserWriteOut::Disconnected(Some(disconnect.reason_code)));
-                scratchpad
-                    .action_queue
-                    .push_back(DriverEventOut::CloseSocket);
+                scratchpad.read_queue.push_back(Event::Disconnected(Some(
+                    convert::disconnect_reason_to_protocol(disconnect.reason_code),
+                )));
+                scratchpad.action_queue.push_back(DriverAction::CloseSocket);
                 (ClientState::Disconnected(Disconnected), Ok(()))
             }
             ControlPacket::Auth(auth) => {
@@ -514,7 +486,9 @@ where
                 // the application is responsible for responding with AUTH or
                 // DISCONNECT. [MQTT-4.12.0-4] The client MUST
                 // respond to an AUTH packet from the server.
-                scratchpad.read_queue.push_back(UserWriteOut::Auth(auth));
+                scratchpad
+                    .read_queue
+                    .push_back(convert::auth_packet_to_event(auth));
                 (ClientState::Connected(self), Ok(()))
             }
             _ => fail_with_protocol_error(settings, session, scratchpad),
@@ -525,23 +499,24 @@ where
         self,
         settings: &ClientSettings,
         session: &mut ClientSession,
-        scratchpad: &mut ClientScratchpad<Time>,
-        msg: UserWriteIn,
+        scratchpad: &mut ClientScratchpad<T>,
+        msg: Command,
     ) -> (ClientState, Result<(), Error>) {
         match msg {
-            UserWriteIn::Connect(_) => (
+            Command::Connect(_) => (
                 ClientState::Connected(self),
                 Err(Error::InvalidStateTransition),
             ),
-            UserWriteIn::PublishMessage(msg) => {
-                if let Err(e) = limits::validate_outbound_topic_alias(scratchpad, msg.topic_alias) {
-                    return (ClientState::Connected(self), Err(e));
-                }
-                if let Err(e) = limits::validate_outbound_publish_capabilities(scratchpad, &msg) {
+            Command::Publish { token, message } => {
+                if let Err(e) = limits::validate_outbound_publish_capabilities(scratchpad, &message)
+                {
                     return (ClientState::Connected(self), Err(e));
                 }
 
-                if matches!(msg.qos, Qos::AtLeastOnce | Qos::ExactlyOnce) {
+                if matches!(
+                    message.qos,
+                    ProtocolQos::AtLeastOnce | ProtocolQos::ExactlyOnce
+                ) {
                     // [MQTT-4.9.0-1] Apply peer Receive Maximum before sending
                     // QoS1/QoS2 PUBLISH.
                     if let Err(e) =
@@ -551,10 +526,11 @@ where
                     }
                 }
 
-                let (publish, inflight_state) = match build_outbound_publish(msg, session) {
-                    Ok(v) => v,
-                    Err(e) => return (ClientState::Connected(self), Err(e)),
-                };
+                let (publish, inflight_state) =
+                    match build_outbound_publish(token, message, session) {
+                        Ok(v) => v,
+                        Err(e) => return (ClientState::Connected(self), Err(e)),
+                    };
 
                 if let Err(e) = queues::enqueue_packet(scratchpad, &ControlPacket::Publish(publish))
                 {
@@ -567,31 +543,37 @@ where
 
                 (ClientState::Connected(self), Ok(()))
             }
-            UserWriteIn::AcknowledgeMessage(inbound_message_id) => respond_to_inbound_publish(
+            Command::Acknowledge(message_id) => respond_to_inbound_publish(
                 settings,
                 session,
                 scratchpad,
-                inbound_message_id.get(),
+                message_id.get(),
                 PubAckReasonCode::Success,
                 PubRecReasonCode::Success,
                 InboundInflightState::Qos2AwaitPubRel,
             ),
-            UserWriteIn::RejectMessage(inbound_message_id, reason) => {
-                let pubrec_reason_code = PubRecReasonCode::from(reason);
+            Command::Reject(message_id, reason) => {
+                let pubrec_reason_code = convert::reject_reason_to_pubrec(reason);
                 respond_to_inbound_publish(
                     settings,
                     session,
                     scratchpad,
-                    inbound_message_id.get(),
-                    PubAckReasonCode::from(reason),
+                    message_id.get(),
+                    convert::reject_reason_to_puback(reason),
                     pubrec_reason_code,
                     InboundInflightState::Qos2Rejected(pubrec_reason_code),
                 )
             }
-            UserWriteIn::Subscribe(options) => {
+            Command::Subscribe(options) => {
                 if let Err(e) = limits::validate_outbound_subscribe(scratchpad, &options) {
                     return (ClientState::Connected(self), Err(e));
                 }
+
+                let (subscription, extra_subscriptions, properties) =
+                    match convert::subscribe_options_to_wire(options) {
+                        Ok(v) => v,
+                        Err(e) => return (ClientState::Connected(self), Err(e)),
+                    };
 
                 let packet_id = match session_ops::next_packet_id_checked(session) {
                     Ok(id) => id,
@@ -603,14 +585,9 @@ where
                     &ControlPacket::Subscribe(
                         Subscribe::builder()
                             .packet_id(packet_id)
-                            .subscription(options.subscription)
-                            .extra_subscriptions(options.extra_subscriptions)
-                            .properties(
-                                SubscribeProperties::builder()
-                                    .maybe_subscription_identifier(options.subscription_identifier)
-                                    .user_properties(options.user_properties)
-                                    .build(),
-                            )
+                            .subscription(subscription)
+                            .extra_subscriptions(extra_subscriptions)
+                            .properties(properties)
                             .build(),
                     ),
                 ) {
@@ -621,7 +598,13 @@ where
                     Err(e) => (ClientState::Connected(self), Err(e)),
                 }
             }
-            UserWriteIn::Unsubscribe(options) => {
+            Command::Unsubscribe(options) => {
+                let (filter, extra_filters, properties) =
+                    match convert::unsubscribe_options_to_wire(options) {
+                        Ok(v) => v,
+                        Err(e) => return (ClientState::Connected(self), Err(e)),
+                    };
+
                 let packet_id = match session_ops::next_packet_id_checked(session) {
                     Ok(id) => id,
                     Err(e) => return (ClientState::Connected(self), Err(e)),
@@ -632,13 +615,9 @@ where
                     &ControlPacket::Unsubscribe(
                         Unsubscribe::builder()
                             .packet_id(packet_id)
-                            .properties(
-                                UnsubscribeProperties::builder()
-                                    .user_properties(options.user_properties)
-                                    .build(),
-                            )
-                            .filter(options.filter)
-                            .extra_filters(options.extra_filters)
+                            .properties(properties)
+                            .filter(filter)
+                            .extra_filters(extra_filters)
                             .build(),
                     ),
                 ) {
@@ -650,7 +629,11 @@ where
                 }
             }
             // A user-requested disconnect is the same teardown as `close`.
-            UserWriteIn::Disconnect => self.close(settings, session, scratchpad),
+            Command::Disconnect => self.close(settings, session, scratchpad),
+            _ => (
+                ClientState::Connected(self),
+                Err(Error::InvalidStateTransition),
+            ),
         }
     }
 
@@ -658,31 +641,31 @@ where
         self,
         settings: &ClientSettings,
         session: &mut ClientSession,
-        scratchpad: &mut ClientScratchpad<Time>,
-        evt: DriverEventIn,
+        scratchpad: &mut ClientScratchpad<T>,
+        evt: DriverEvent,
     ) -> (ClientState, Result<(), Error>) {
         match evt {
-            DriverEventIn::SocketConnected => (
+            DriverEvent::SocketConnected => (
                 ClientState::Connected(self),
                 Err(Error::InvalidStateTransition),
             ),
-            DriverEventIn::SocketClosed => {
+            DriverEvent::SocketClosed => {
                 queues::reset_connection_state(settings, session, scratchpad);
-                scratchpad
-                    .read_queue
-                    .push_back(UserWriteOut::Disconnected(None));
+                scratchpad.read_queue.push_back(Event::Disconnected(None));
                 (ClientState::Disconnected(Disconnected), Ok(()))
             }
-            DriverEventIn::SocketError => {
+            DriverEvent::SocketError => {
                 queues::reset_connection_state(settings, session, scratchpad);
-                scratchpad
-                    .action_queue
-                    .push_back(DriverEventOut::CloseSocket);
+                scratchpad.action_queue.push_back(DriverAction::CloseSocket);
                 (
                     ClientState::Disconnected(Disconnected),
                     Err(Error::ProtocolError),
                 )
             }
+            _ => (
+                ClientState::Connected(self),
+                Err(Error::InvalidStateTransition),
+            ),
         }
     }
 
@@ -690,8 +673,8 @@ where
         self,
         settings: &ClientSettings,
         session: &mut ClientSession,
-        scratchpad: &mut ClientScratchpad<Time>,
-        now: Time,
+        scratchpad: &mut ClientScratchpad<T>,
+        now: T,
     ) -> (ClientState, Result<(), Error>) {
         let Some(interval_secs) = scratchpad.keep_alive_interval_secs else {
             scratchpad.next_timeout = None;
@@ -708,7 +691,7 @@ where
                 settings,
                 session,
                 scratchpad,
-                sansio_mqtt_v5_types::DisconnectReasonCode::KeepAliveTimeout,
+                DisconnectReasonCode::KeepAliveTimeout,
             );
             return (
                 ClientState::Disconnected(Disconnected),
@@ -750,7 +733,7 @@ where
         self,
         settings: &ClientSettings,
         session: &mut ClientSession,
-        scratchpad: &mut ClientScratchpad<Time>,
+        scratchpad: &mut ClientScratchpad<T>,
     ) -> (ClientState, Result<(), Error>) {
         queues::graceful_disconnect(settings, session, scratchpad);
         (ClientState::Disconnected(Disconnected), Ok(()))

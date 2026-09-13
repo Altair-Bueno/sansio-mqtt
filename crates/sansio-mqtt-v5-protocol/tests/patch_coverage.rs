@@ -4,26 +4,27 @@
 //! protocol-error branches.
 
 use bytes::Bytes;
+use bytestring::ByteString;
 use core::num::NonZero;
 use core::time::Duration;
 use encode::Encodable;
 use sansio::Protocol;
+use sansio_mqtt_protocol::Command;
+use sansio_mqtt_protocol::ConnectOptions;
+use sansio_mqtt_protocol::DriverAction;
+use sansio_mqtt_protocol::DriverEvent;
+use sansio_mqtt_protocol::Error;
+use sansio_mqtt_protocol::Event;
+use sansio_mqtt_protocol::IncomingData;
+use sansio_mqtt_protocol::Message;
+use sansio_mqtt_protocol::MessageId;
+use sansio_mqtt_protocol::Qos as ProtoQos;
+use sansio_mqtt_protocol::RejectReason;
+use sansio_mqtt_protocol::SubscribeOptions;
+use sansio_mqtt_protocol::Subscription as ProtoSubscription;
+use sansio_mqtt_protocol::Will as ProtoWill;
 use sansio_mqtt_v5_protocol::Client;
-use sansio_mqtt_v5_protocol::ClientMessage;
-use sansio_mqtt_v5_protocol::ClientSession;
 use sansio_mqtt_v5_protocol::ClientSettings;
-use sansio_mqtt_v5_protocol::ConnectionOptions;
-use sansio_mqtt_v5_protocol::DriverEventIn;
-use sansio_mqtt_v5_protocol::DriverEventOut;
-use sansio_mqtt_v5_protocol::Error;
-use sansio_mqtt_v5_protocol::InboundMessageId;
-use sansio_mqtt_v5_protocol::IncomingData;
-use sansio_mqtt_v5_protocol::IncomingRejectReason;
-use sansio_mqtt_v5_protocol::OutboundInflightState;
-use sansio_mqtt_v5_protocol::SubscribeOptions;
-use sansio_mqtt_v5_protocol::UserWriteIn;
-use sansio_mqtt_v5_protocol::UserWriteOut;
-use sansio_mqtt_v5_protocol::Will;
 use sansio_mqtt_v5_types::ConnAck;
 use sansio_mqtt_v5_types::ConnAckKind;
 use sansio_mqtt_v5_types::ConnAckProperties;
@@ -36,9 +37,6 @@ use sansio_mqtt_v5_types::PubRel;
 use sansio_mqtt_v5_types::PubRelReasonCode;
 use sansio_mqtt_v5_types::Publish;
 use sansio_mqtt_v5_types::PublishKind;
-use sansio_mqtt_v5_types::Qos;
-use sansio_mqtt_v5_types::RetainHandling;
-use sansio_mqtt_v5_types::Subscription;
 use sansio_mqtt_v5_types::Topic;
 use sansio_mqtt_v5_types::Utf8String;
 
@@ -48,12 +46,19 @@ fn encode_packet(packet: &ControlPacket) -> Bytes {
     Bytes::from(out)
 }
 
-fn topic(name: &str) -> Topic {
+fn wire_topic(name: &str) -> Topic {
     Topic::try_from(Utf8String::try_from(name).expect("valid utf8")).expect("valid topic")
 }
 
 fn packet_id(value: u16) -> NonZero<u16> {
     NonZero::new(value).expect("non-zero packet id")
+}
+
+fn read(client: &mut Client<Duration>, packet: &ControlPacket) -> Result<(), Error> {
+    client.handle_read(IncomingData {
+        bytes: encode_packet(packet),
+        received_at: Duration::ZERO,
+    })
 }
 
 fn connack(properties: ConnAckProperties) -> ControlPacket {
@@ -76,35 +81,41 @@ fn inbound_publish(id: NonZero<u16>, qos: GuaranteedQoS) -> ControlPacket {
                 dup: false,
             })
             .payload(Payload::from(&b"x"[..]))
-            .topic(topic("cov/topic"))
+            .topic(wire_topic("cov/topic"))
             .build(),
     )
+}
+
+fn message(topic: &str, qos: ProtoQos, payload: &[u8]) -> Message {
+    Message::builder()
+        .topic(ByteString::from(topic))
+        .payload(Bytes::copy_from_slice(payload))
+        .qos(qos)
+        .build()
+}
+
+fn connect_options() -> ConnectOptions {
+    ConnectOptions::builder()
+        .client_id(ByteString::from_static("cov-client"))
+        .session_expiry(Duration::from_secs(30))
+        .build()
 }
 
 /// Drives a default client to Connected, using `properties` in the CONNACK.
 fn connected_client(properties: ConnAckProperties) -> Client<Duration> {
     let mut client = Client::<Duration>::default();
     assert_eq!(
-        client.handle_write(UserWriteIn::Connect(ConnectionOptions {
-            session_expiry_interval: Some(30),
-            ..ConnectionOptions::default()
-        })),
+        client.handle_write(Command::Connect(connect_options())),
         Ok(())
     );
     assert!(matches!(
         client.poll_event(),
-        Some(DriverEventOut::OpenSocket)
+        Some(DriverAction::OpenSocket)
     ));
-    assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
+    assert_eq!(client.handle_event(DriverEvent::SocketConnected), Ok(()));
     assert!(client.poll_write().is_some(), "CONNECT should be queued");
-    assert_eq!(
-        client.handle_read(IncomingData {
-            bytes: encode_packet(&connack(properties)),
-            received_at: Duration::ZERO,
-        }),
-        Ok(())
-    );
-    assert!(matches!(client.poll_read(), Some(UserWriteOut::Connected)));
+    assert_eq!(read(&mut client, &connack(properties)), Ok(()));
+    assert!(matches!(client.poll_read(), Some(Event::Connected)));
     client
 }
 
@@ -121,7 +132,6 @@ fn packet_split_across_two_reads_is_reassembled() {
         "needs a real split point"
     );
 
-    // First half: incomplete, nothing delivered, remainder retained.
     assert_eq!(
         client.handle_read(IncomingData {
             bytes: publish.slice(..split),
@@ -134,7 +144,6 @@ fn packet_split_across_two_reads_is_reassembled() {
         "a partial packet must not be delivered"
     );
 
-    // Second half completes it.
     assert_eq!(
         client.handle_read(IncomingData {
             bytes: publish.slice(split..),
@@ -144,7 +153,7 @@ fn packet_split_across_two_reads_is_reassembled() {
     );
     assert!(matches!(
         client.poll_read(),
-        Some(UserWriteOut::ReceivedMessageWithRequiredAcknowledgement(..))
+        Some(Event::MessageRequiresAcknowledgement(..))
     ));
 }
 
@@ -174,7 +183,7 @@ fn trailing_partial_packet_is_retained_across_reads() {
     for _ in 0..3 {
         assert!(matches!(
             client.poll_read(),
-            Some(UserWriteOut::ReceivedMessageWithRequiredAcknowledgement(..))
+            Some(Event::MessageRequiresAcknowledgement(..))
         ));
     }
     assert!(client.poll_read().is_none());
@@ -188,7 +197,7 @@ fn trailing_partial_packet_is_retained_across_reads() {
     );
     assert!(matches!(
         client.poll_read(),
-        Some(UserWriteOut::ReceivedMessageWithRequiredAcknowledgement(..))
+        Some(Event::MessageRequiresAcknowledgement(..))
     ));
 }
 
@@ -204,25 +213,25 @@ fn acknowledgement_exceeding_broker_maximum_packet_size_fails_the_connection() {
     );
 
     assert_eq!(
-        client.handle_read(IncomingData {
-            bytes: encode_packet(&inbound_publish(packet_id(1), GuaranteedQoS::AtLeastOnce)),
-            received_at: Duration::ZERO,
-        }),
+        read(
+            &mut client,
+            &inbound_publish(packet_id(1), GuaranteedQoS::AtLeastOnce),
+        ),
         Ok(())
     );
     let id = match client.poll_read() {
-        Some(UserWriteOut::ReceivedMessageWithRequiredAcknowledgement(id, _)) => id,
+        Some(Event::MessageRequiresAcknowledgement(id, _)) => id,
         other => panic!("expected an ack-required message, got {other:?}"),
     };
 
     assert_eq!(
-        client.handle_write(UserWriteIn::AcknowledgeMessage(id)),
+        client.handle_write(Command::Acknowledge(id)),
         Err(Error::ProtocolError),
         "an unsendable PUBACK leaves the QoS1 exchange unresolvable"
     );
     assert!(matches!(
         client.poll_event(),
-        Some(DriverEventOut::CloseSocket)
+        Some(DriverAction::CloseSocket)
     ));
 }
 
@@ -233,34 +242,28 @@ fn deciding_twice_on_a_message_is_an_invalid_state_transition() {
     let mut client = connected_client(ConnAckProperties::default());
 
     assert_eq!(
-        client.handle_read(IncomingData {
-            bytes: encode_packet(&inbound_publish(packet_id(1), GuaranteedQoS::ExactlyOnce)),
-            received_at: Duration::ZERO,
-        }),
+        read(
+            &mut client,
+            &inbound_publish(packet_id(1), GuaranteedQoS::ExactlyOnce),
+        ),
         Ok(())
     );
     let id = match client.poll_read() {
-        Some(UserWriteOut::ReceivedMessageWithRequiredAcknowledgement(id, _)) => id,
+        Some(Event::MessageRequiresAcknowledgement(id, _)) => id,
         other => panic!("expected an ack-required message, got {other:?}"),
     };
 
     // First decision moves the QoS2 exchange on to awaiting PUBREL.
-    assert_eq!(
-        client.handle_write(UserWriteIn::AcknowledgeMessage(id)),
-        Ok(())
-    );
+    assert_eq!(client.handle_write(Command::Acknowledge(id)), Ok(()));
     assert!(client.poll_write().is_some(), "PUBREC should be queued");
 
     assert_eq!(
-        client.handle_write(UserWriteIn::AcknowledgeMessage(id)),
+        client.handle_write(Command::Acknowledge(id)),
         Err(Error::InvalidStateTransition),
         "the peer did nothing wrong, so this is not a protocol error"
     );
     assert_eq!(
-        client.handle_write(UserWriteIn::RejectMessage(
-            id,
-            IncomingRejectReason::UnspecifiedError
-        )),
+        client.handle_write(Command::Reject(id, RejectReason::UnspecifiedError)),
         Err(Error::InvalidStateTransition)
     );
 
@@ -275,13 +278,7 @@ fn deciding_twice_on_a_message_is_an_invalid_state_transition() {
             .reason_code(PubRelReasonCode::Success)
             .build(),
     );
-    assert_eq!(
-        client.handle_read(IncomingData {
-            bytes: encode_packet(&pubrel),
-            received_at: Duration::ZERO,
-        }),
-        Ok(())
-    );
+    assert_eq!(read(&mut client, &pubrel), Ok(()));
     assert!(client.poll_write().is_some(), "PUBCOMP should be queued");
 }
 
@@ -291,9 +288,7 @@ fn deciding_on_an_undelivered_packet_id_is_an_invalid_state_transition() {
     let mut client = connected_client(ConnAckProperties::default());
 
     assert_eq!(
-        client.handle_write(UserWriteIn::AcknowledgeMessage(InboundMessageId::new(
-            packet_id(9)
-        ))),
+        client.handle_write(Command::Acknowledge(MessageId::new(packet_id(9)))),
         Err(Error::InvalidStateTransition)
     );
     assert!(
@@ -302,77 +297,24 @@ fn deciding_on_an_undelivered_packet_id_is_an_invalid_state_transition() {
     );
 }
 
-/// An inbound exchange restored from a persisted session can be acknowledged,
-/// which is only possible because the id is publicly constructible.
-#[test]
-fn restored_session_inbound_message_can_be_acknowledged() {
-    let mut session = ClientSession::default();
-    session.on_flight_received.insert(
-        packet_id(4),
-        sansio_mqtt_v5_protocol::InboundInflightState::Qos1AwaitAppDecision,
-    );
-
-    let mut client =
-        Client::<Duration>::with_settings_and_session(ClientSettings::default(), session);
-    assert_eq!(
-        client.handle_write(UserWriteIn::Connect(ConnectionOptions {
-            session_expiry_interval: Some(30),
-            ..ConnectionOptions::default()
-        })),
-        Ok(())
-    );
-    assert!(matches!(
-        client.poll_event(),
-        Some(DriverEventOut::OpenSocket)
-    ));
-    assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
-    assert!(client.poll_write().is_some(), "CONNECT should be queued");
-    assert_eq!(
-        client.handle_read(IncomingData {
-            bytes: encode_packet(&ControlPacket::ConnAck(
-                ConnAck::builder()
-                    .kind(ConnAckKind::ResumePreviousSession)
-                    .build(),
-            )),
-            received_at: Duration::ZERO,
-        }),
-        Ok(())
-    );
-    assert!(matches!(client.poll_read(), Some(UserWriteOut::Connected)));
-
-    // The application never saw this message in this process, but it can still
-    // settle the exchange and free the packet id.
-    assert_eq!(
-        client.handle_write(UserWriteIn::AcknowledgeMessage(InboundMessageId::new(
-            packet_id(4)
-        ))),
-        Ok(())
-    );
-    assert!(client.poll_write().is_some(), "PUBACK should be queued");
-    assert!(client.session().on_flight_received.is_empty());
-}
-
 /// Acknowledging a QoS2 message moves the exchange to awaiting PUBREL.
 #[test]
 fn acknowledging_a_qos2_message_moves_it_to_awaiting_pubrel() {
     let mut client = connected_client(ConnAckProperties::default());
 
     assert_eq!(
-        client.handle_read(IncomingData {
-            bytes: encode_packet(&inbound_publish(packet_id(1), GuaranteedQoS::ExactlyOnce)),
-            received_at: Duration::ZERO,
-        }),
+        read(
+            &mut client,
+            &inbound_publish(packet_id(1), GuaranteedQoS::ExactlyOnce),
+        ),
         Ok(())
     );
     let id = match client.poll_read() {
-        Some(UserWriteOut::ReceivedMessageWithRequiredAcknowledgement(id, _)) => id,
+        Some(Event::MessageRequiresAcknowledgement(id, _)) => id,
         other => panic!("expected an ack-required message, got {other:?}"),
     };
 
-    assert_eq!(
-        client.handle_write(UserWriteIn::AcknowledgeMessage(id)),
-        Ok(())
-    );
+    assert_eq!(client.handle_write(Command::Acknowledge(id)), Ok(()));
     assert!(client.poll_write().is_some(), "PUBREC should be queued");
 
     // The server may now complete the exchange.
@@ -382,13 +324,7 @@ fn acknowledging_a_qos2_message_moves_it_to_awaiting_pubrel() {
             .reason_code(PubRelReasonCode::Success)
             .build(),
     );
-    assert_eq!(
-        client.handle_read(IncomingData {
-            bytes: encode_packet(&pubrel),
-            received_at: Duration::ZERO,
-        }),
-        Ok(())
-    );
+    assert_eq!(read(&mut client, &pubrel), Ok(()));
     assert!(client.poll_write().is_some(), "PUBCOMP should be queued");
 }
 
@@ -399,19 +335,19 @@ fn qos1_publish_reusing_a_qos2_packet_id_is_a_protocol_error() {
     let mut client = connected_client(ConnAckProperties::default());
 
     assert_eq!(
-        client.handle_read(IncomingData {
-            bytes: encode_packet(&inbound_publish(packet_id(1), GuaranteedQoS::ExactlyOnce)),
-            received_at: Duration::ZERO,
-        }),
+        read(
+            &mut client,
+            &inbound_publish(packet_id(1), GuaranteedQoS::ExactlyOnce),
+        ),
         Ok(())
     );
     assert!(client.poll_read().is_some());
 
     assert_eq!(
-        client.handle_read(IncomingData {
-            bytes: encode_packet(&inbound_publish(packet_id(1), GuaranteedQoS::AtLeastOnce)),
-            received_at: Duration::ZERO,
-        }),
+        read(
+            &mut client,
+            &inbound_publish(packet_id(1), GuaranteedQoS::AtLeastOnce),
+        ),
         Err(Error::ProtocolError)
     );
 }
@@ -422,19 +358,19 @@ fn qos2_publish_reusing_a_qos1_packet_id_is_a_protocol_error() {
     let mut client = connected_client(ConnAckProperties::default());
 
     assert_eq!(
-        client.handle_read(IncomingData {
-            bytes: encode_packet(&inbound_publish(packet_id(1), GuaranteedQoS::AtLeastOnce)),
-            received_at: Duration::ZERO,
-        }),
+        read(
+            &mut client,
+            &inbound_publish(packet_id(1), GuaranteedQoS::AtLeastOnce),
+        ),
         Ok(())
     );
     assert!(client.poll_read().is_some());
 
     assert_eq!(
-        client.handle_read(IncomingData {
-            bytes: encode_packet(&inbound_publish(packet_id(1), GuaranteedQoS::ExactlyOnce)),
-            received_at: Duration::ZERO,
-        }),
+        read(
+            &mut client,
+            &inbound_publish(packet_id(1), GuaranteedQoS::ExactlyOnce),
+        ),
         Err(Error::ProtocolError)
     );
 }
@@ -446,10 +382,10 @@ fn pubrel_before_the_application_decides_is_a_protocol_error() {
     let mut client = connected_client(ConnAckProperties::default());
 
     assert_eq!(
-        client.handle_read(IncomingData {
-            bytes: encode_packet(&inbound_publish(packet_id(1), GuaranteedQoS::ExactlyOnce)),
-            received_at: Duration::ZERO,
-        }),
+        read(
+            &mut client,
+            &inbound_publish(packet_id(1), GuaranteedQoS::ExactlyOnce),
+        ),
         Ok(())
     );
     assert!(client.poll_read().is_some());
@@ -460,13 +396,7 @@ fn pubrel_before_the_application_decides_is_a_protocol_error() {
             .reason_code(PubRelReasonCode::Success)
             .build(),
     );
-    assert_eq!(
-        client.handle_read(IncomingData {
-            bytes: encode_packet(&pubrel),
-            received_at: Duration::ZERO,
-        }),
-        Err(Error::ProtocolError)
-    );
+    assert_eq!(read(&mut client, &pubrel), Err(Error::ProtocolError));
 }
 
 /// A packet the client must never receive from a server is a protocol error.
@@ -475,10 +405,7 @@ fn server_bound_packet_received_while_connected_is_a_protocol_error() {
     let mut client = connected_client(ConnAckProperties::default());
 
     assert_eq!(
-        client.handle_read(IncomingData {
-            bytes: encode_packet(&ControlPacket::PingReq(PingReq {})),
-            received_at: Duration::ZERO,
-        }),
+        read(&mut client, &ControlPacket::PingReq(PingReq {})),
         Err(Error::ProtocolError)
     );
 }
@@ -489,7 +416,7 @@ fn socket_connected_while_already_connected_is_an_invalid_state_transition() {
     let mut client = connected_client(ConnAckProperties::default());
 
     assert_eq!(
-        client.handle_event(DriverEventIn::SocketConnected),
+        client.handle_event(DriverEvent::SocketConnected),
         Err(Error::InvalidStateTransition)
     );
     assert!(
@@ -504,12 +431,12 @@ fn socket_error_while_connected_resets_and_closes() {
     let mut client = connected_client(ConnAckProperties::default());
 
     assert_eq!(
-        client.handle_event(DriverEventIn::SocketError),
+        client.handle_event(DriverEvent::SocketError),
         Err(Error::ProtocolError)
     );
     assert!(matches!(
         client.poll_event(),
-        Some(DriverEventOut::CloseSocket)
+        Some(DriverAction::CloseSocket)
     ));
 }
 
@@ -530,40 +457,34 @@ fn resumed_session_replays_qos2_publish_awaiting_pubrec() {
     let mut client = connected_client(ConnAckProperties::default());
 
     assert_eq!(
-        client.handle_write(UserWriteIn::PublishMessage(ClientMessage {
-            topic: topic("cov/qos2"),
-            qos: Qos::ExactlyOnce,
-            payload: Payload::from(&b"q2"[..]),
-            ..ClientMessage::default()
-        })),
-        Ok(())
-    );
-    assert!(client.poll_write().is_some(), "PUBLISH should be queued");
-    assert!(matches!(
-        client.session().on_flight_sent.get(&packet_id(1)),
-        Some(OutboundInflightState::Qos2AwaitPubRec { .. })
-    ));
-
-    assert_eq!(client.handle_event(DriverEventIn::SocketClosed), Ok(()));
-    assert!(matches!(
-        client.poll_read(),
-        Some(UserWriteOut::Disconnected(None))
-    ));
-
-    assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
-    assert!(client.poll_write().is_some(), "CONNECT should be queued");
-    assert_eq!(
-        client.handle_read(IncomingData {
-            bytes: encode_packet(&ControlPacket::ConnAck(
-                ConnAck::builder()
-                    .kind(ConnAckKind::ResumePreviousSession)
-                    .build(),
-            )),
-            received_at: Duration::ZERO,
+        client.handle_write(Command::Publish {
+            token: 1,
+            message: message("cov/qos2", ProtoQos::ExactlyOnce, b"q2"),
         }),
         Ok(())
     );
-    assert!(matches!(client.poll_read(), Some(UserWriteOut::Connected)));
+    assert!(client.poll_write().is_some(), "PUBLISH should be queued");
+
+    assert_eq!(client.handle_event(DriverEvent::SocketClosed), Ok(()));
+    assert!(matches!(
+        client.poll_read(),
+        Some(Event::Disconnected(None))
+    ));
+
+    assert_eq!(client.handle_event(DriverEvent::SocketConnected), Ok(()));
+    assert!(client.poll_write().is_some(), "CONNECT should be queued");
+    assert_eq!(
+        read(
+            &mut client,
+            &ControlPacket::ConnAck(
+                ConnAck::builder()
+                    .kind(ConnAckKind::ResumePreviousSession)
+                    .build(),
+            ),
+        ),
+        Ok(())
+    );
+    assert!(matches!(client.poll_read(), Some(Event::Connected)));
 
     let replayed = ControlPacket::Publish(
         Publish::builder()
@@ -573,26 +494,10 @@ fn resumed_session_replays_qos2_publish_awaiting_pubrec() {
                 dup: true,
             })
             .payload(Payload::from(&b"q2"[..]))
-            .topic(topic("cov/qos2"))
+            .topic(wire_topic("cov/qos2"))
             .build(),
     );
     assert_eq!(client.poll_write(), Some(encode_packet(&replayed)));
-}
-
-/// A Topic Alias is rejected when the server advertised no alias capacity.
-#[test]
-fn outbound_topic_alias_without_server_capacity_is_rejected() {
-    let mut client = connected_client(ConnAckProperties::default());
-
-    assert_eq!(
-        client.handle_write(UserWriteIn::PublishMessage(ClientMessage {
-            topic: topic("cov/alias"),
-            topic_alias: Some(packet_id(1)),
-            ..ClientMessage::default()
-        })),
-        Err(Error::ProtocolError),
-        "[MQTT-3.2.2-17] Topic Alias Maximum of 0 forbids aliases"
-    );
 }
 
 /// A redelivered QoS2 PUBLISH while awaiting PUBREL re-sends PUBREC rather than
@@ -602,31 +507,16 @@ fn redelivered_qos2_publish_awaiting_pubrel_resends_pubrec() {
     let mut client = connected_client(ConnAckProperties::default());
 
     let publish = inbound_publish(packet_id(1), GuaranteedQoS::ExactlyOnce);
-    assert_eq!(
-        client.handle_read(IncomingData {
-            bytes: encode_packet(&publish),
-            received_at: Duration::ZERO,
-        }),
-        Ok(())
-    );
+    assert_eq!(read(&mut client, &publish), Ok(()));
     let id = match client.poll_read() {
-        Some(UserWriteOut::ReceivedMessageWithRequiredAcknowledgement(id, _)) => id,
+        Some(Event::MessageRequiresAcknowledgement(id, _)) => id,
         other => panic!("expected an ack-required message, got {other:?}"),
     };
-    assert_eq!(
-        client.handle_write(UserWriteIn::AcknowledgeMessage(id)),
-        Ok(())
-    );
+    assert_eq!(client.handle_write(Command::Acknowledge(id)), Ok(()));
     let first_pubrec = client.poll_write().expect("PUBREC should be queued");
 
     // [MQTT-4.3.3-2] The server may redeliver until it sees PUBREC.
-    assert_eq!(
-        client.handle_read(IncomingData {
-            bytes: encode_packet(&publish),
-            received_at: Duration::ZERO,
-        }),
-        Ok(())
-    );
+    assert_eq!(read(&mut client, &publish), Ok(()));
     assert_eq!(
         client.poll_write(),
         Some(first_pubrec),
@@ -643,17 +533,13 @@ fn redelivered_qos2_publish_awaiting_pubrel_resends_pubrec() {
 fn shared_subscription_without_no_local_is_accepted() {
     let mut client = connected_client(ConnAckProperties::default());
 
+    let sub = ProtoSubscription::builder()
+        .filter(ByteString::from_static("$share/group/cov"))
+        .build();
     assert_eq!(
-        client.handle_write(UserWriteIn::Subscribe(SubscribeOptions {
-            subscription: Subscription::builder()
-                .topic_filter(Utf8String::try_from("$share/group/cov").expect("valid utf8"))
-                .qos(Qos::AtMostOnce)
-                .retain_handling(RetainHandling::SendRetained)
-                .build(),
-            extra_subscriptions: Vec::new(),
-            subscription_identifier: None,
-            user_properties: Vec::new(),
-        })),
+        client.handle_write(Command::Subscribe(
+            SubscribeOptions::builder().subscriptions(vec![sub]).build(),
+        )),
         Ok(())
     );
     assert!(client.poll_write().is_some(), "SUBSCRIBE should be queued");
@@ -664,18 +550,14 @@ fn shared_subscription_without_no_local_is_accepted() {
 fn shared_subscription_with_no_local_is_rejected() {
     let mut client = connected_client(ConnAckProperties::default());
 
+    let mut sub = ProtoSubscription::builder()
+        .filter(ByteString::from_static("$share/group/cov"))
+        .build();
+    sub.no_local = true;
     assert_eq!(
-        client.handle_write(UserWriteIn::Subscribe(SubscribeOptions {
-            subscription: Subscription::builder()
-                .topic_filter(Utf8String::try_from("$share/group/cov").expect("valid utf8"))
-                .qos(Qos::AtMostOnce)
-                .no_local(true)
-                .retain_handling(RetainHandling::SendRetained)
-                .build(),
-            extra_subscriptions: Vec::new(),
-            subscription_identifier: None,
-            user_properties: Vec::new(),
-        })),
+        client.handle_write(Command::Subscribe(
+            SubscribeOptions::builder().subscriptions(vec![sub]).build(),
+        )),
         Err(Error::ProtocolError)
     );
 }
@@ -684,26 +566,26 @@ fn shared_subscription_with_no_local_is_rejected() {
 /// construction and leaves the client in Connecting, able to retry.
 #[test]
 fn unencodable_will_fails_connect_and_allows_a_retry() {
-    let mut client = Client::<Duration>::with_settings(ClientSettings::default());
+    let mut client = Client::<Duration>::new(ClientSettings::default());
 
-    assert_eq!(
-        client.handle_write(UserWriteIn::Connect(ConnectionOptions {
-            will: Some(Will {
-                topic: topic("cov/will"),
-                message_expiry_interval: Some(Duration::from_secs(u64::from(u32::MAX) + 1)),
-                ..Will::default()
-            }),
-            ..ConnectionOptions::default()
-        })),
-        Ok(())
-    );
+    let will = ProtoWill::builder()
+        .topic(ByteString::from_static("cov/will"))
+        .payload(Bytes::new())
+        .message_expiry(Duration::from_secs(u64::from(u32::MAX) + 1))
+        .build();
+    let options = ConnectOptions::builder()
+        .client_id(ByteString::from_static("cov-client"))
+        .will(will)
+        .build();
+
+    assert_eq!(client.handle_write(Command::Connect(options)), Ok(()));
     assert!(matches!(
         client.poll_event(),
-        Some(DriverEventOut::OpenSocket)
+        Some(DriverAction::OpenSocket)
     ));
 
     assert_eq!(
-        client.handle_event(DriverEventIn::SocketConnected),
+        client.handle_event(DriverEvent::SocketConnected),
         Err(Error::ProtocolError),
         "a Will that cannot be encoded must fail the CONNECT"
     );
@@ -712,7 +594,7 @@ fn unencodable_will_fails_connect_and_allows_a_retry() {
     // Still Connecting with connect_sent = false, so a retry re-attempts
     // CONNECT.
     assert_eq!(
-        client.handle_event(DriverEventIn::SocketConnected),
+        client.handle_event(DriverEvent::SocketConnected),
         Err(Error::ProtocolError)
     );
 }

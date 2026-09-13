@@ -10,24 +10,24 @@ pub(crate) use start::Start;
 use sansio_mqtt_v5_types::ControlPacket;
 use sansio_mqtt_v5_types::DisconnectReasonCode;
 
+use crate::client::ClientSettings;
 use crate::queues;
 use crate::scratchpad::ClientScratchpad;
 use crate::session::ClientSession;
-use crate::types::ClientSettings;
-use crate::types::DriverEventIn;
-use crate::types::Error;
-use crate::types::ProtocolTime;
-use crate::types::UserWriteIn;
+use sansio_mqtt_protocol::Command;
+use sansio_mqtt_protocol::DriverEvent;
+use sansio_mqtt_protocol::Error;
+use sansio_mqtt_protocol::Time;
 
 /// Tears the connection down with a protocol-error DISCONNECT and moves to
 /// [`ClientState::Disconnected`].
 ///
 /// [MQTT-4.13.1-1] A Protocol Error requires the client to send DISCONNECT with
 /// the corresponding Reason Code and close the Network Connection.
-pub(crate) fn fail_with_protocol_error<Time>(
+pub(crate) fn fail_with_protocol_error<T>(
     settings: &ClientSettings,
     session: &mut ClientSession,
-    scratchpad: &mut ClientScratchpad<Time>,
+    scratchpad: &mut ClientScratchpad<T>,
 ) -> (ClientState, Result<(), Error>) {
     queues::disconnect_and_reset(
         settings,
@@ -56,45 +56,45 @@ pub(crate) enum ClientState {
     Connected(Connected),
 }
 
-pub(crate) trait StateHandler<Time>: Sized {
+pub(crate) trait StateHandler<T>: Sized {
     fn handle_control_packet(
         self,
         settings: &ClientSettings,
         session: &mut ClientSession,
-        scratchpad: &mut ClientScratchpad<Time>,
+        scratchpad: &mut ClientScratchpad<T>,
         packet: ControlPacket,
-        received_at: Time,
+        received_at: T,
     ) -> (ClientState, Result<(), Error>);
 
     fn handle_write(
         self,
         settings: &ClientSettings,
         session: &mut ClientSession,
-        scratchpad: &mut ClientScratchpad<Time>,
-        msg: UserWriteIn,
+        scratchpad: &mut ClientScratchpad<T>,
+        msg: Command,
     ) -> (ClientState, Result<(), Error>);
 
     fn handle_event(
         self,
         settings: &ClientSettings,
         session: &mut ClientSession,
-        scratchpad: &mut ClientScratchpad<Time>,
-        evt: DriverEventIn,
+        scratchpad: &mut ClientScratchpad<T>,
+        evt: DriverEvent,
     ) -> (ClientState, Result<(), Error>);
 
     fn handle_timeout(
         self,
         settings: &ClientSettings,
         session: &mut ClientSession,
-        scratchpad: &mut ClientScratchpad<Time>,
-        now: Time,
+        scratchpad: &mut ClientScratchpad<T>,
+        now: T,
     ) -> (ClientState, Result<(), Error>);
 
     fn close(
         self,
         settings: &ClientSettings,
         session: &mut ClientSession,
-        scratchpad: &mut ClientScratchpad<Time>,
+        scratchpad: &mut ClientScratchpad<T>,
     ) -> (ClientState, Result<(), Error>);
 }
 
@@ -114,17 +114,17 @@ macro_rules! forward_to_state {
     };
 }
 
-impl<Time> StateHandler<Time> for ClientState
+impl<T> StateHandler<T> for ClientState
 where
-    Time: ProtocolTime,
+    T: Time,
 {
     fn handle_control_packet(
         self,
         settings: &ClientSettings,
         session: &mut ClientSession,
-        scratchpad: &mut ClientScratchpad<Time>,
+        scratchpad: &mut ClientScratchpad<T>,
         packet: ControlPacket,
-        received_at: Time,
+        received_at: T,
     ) -> (ClientState, Result<(), Error>) {
         forward_to_state!(
             self,
@@ -136,8 +136,8 @@ where
         self,
         settings: &ClientSettings,
         session: &mut ClientSession,
-        scratchpad: &mut ClientScratchpad<Time>,
-        msg: UserWriteIn,
+        scratchpad: &mut ClientScratchpad<T>,
+        msg: Command,
     ) -> (ClientState, Result<(), Error>) {
         forward_to_state!(self, handle_write(settings, session, scratchpad, msg))
     }
@@ -146,8 +146,8 @@ where
         self,
         settings: &ClientSettings,
         session: &mut ClientSession,
-        scratchpad: &mut ClientScratchpad<Time>,
-        evt: DriverEventIn,
+        scratchpad: &mut ClientScratchpad<T>,
+        evt: DriverEvent,
     ) -> (ClientState, Result<(), Error>) {
         forward_to_state!(self, handle_event(settings, session, scratchpad, evt))
     }
@@ -156,8 +156,8 @@ where
         self,
         settings: &ClientSettings,
         session: &mut ClientSession,
-        scratchpad: &mut ClientScratchpad<Time>,
-        now: Time,
+        scratchpad: &mut ClientScratchpad<T>,
+        now: T,
     ) -> (ClientState, Result<(), Error>) {
         forward_to_state!(self, handle_timeout(settings, session, scratchpad, now))
     }
@@ -166,7 +166,7 @@ where
         self,
         settings: &ClientSettings,
         session: &mut ClientSession,
-        scratchpad: &mut ClientScratchpad<Time>,
+        scratchpad: &mut ClientScratchpad<T>,
     ) -> (ClientState, Result<(), Error>) {
         forward_to_state!(self, close(settings, session, scratchpad))
     }

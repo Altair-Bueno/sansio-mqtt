@@ -1,5 +1,5 @@
 [package]
-name = "sansio-mqtt-v5-protocol"
+name = "sansio-mqtt-protocol"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -8,11 +8,6 @@ rust-version.workspace = true
 bon = { workspace = true }
 bytes = { workspace = true }
 bytestring = { workspace = true }
-encode = { workspace = true }
 sansio = { workspace = true }
 semver = { workspace = true }
-sansio-mqtt-protocol = { workspace = true }
-sansio-mqtt-v5-types = { workspace = true }
 thiserror = { workspace = true }
-tracing = { workspace = true, features = ["attributes"] }
-winnow = { workspace = true }

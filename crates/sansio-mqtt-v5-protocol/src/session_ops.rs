@@ -1,9 +1,10 @@
 use crate::scratchpad::ClientScratchpad;
 use crate::session::ClientSession;
 use crate::session::OutboundInflightState;
-use crate::types::Error;
-use crate::types::UserWriteOut;
 use core::num::NonZero;
+use sansio_mqtt_protocol::DropReason;
+use sansio_mqtt_protocol::Error;
+use sansio_mqtt_protocol::Event;
 use sansio_mqtt_v5_types::ControlPacket;
 use sansio_mqtt_v5_types::PubRel;
 use sansio_mqtt_v5_types::PubRelReasonCode;
@@ -13,7 +14,7 @@ use sansio_mqtt_v5_types::PublishKind;
 ///
 /// [MQTT-3.1.2-22] [MQTT-3.1.2-23] Keep Alive tracking resets on connection
 /// lifecycle boundaries.
-pub(crate) fn reset_keepalive<Time>(scratchpad: &mut ClientScratchpad<Time>) {
+pub(crate) fn reset_keepalive<T>(scratchpad: &mut ClientScratchpad<T>) {
     scratchpad.keep_alive_interval_secs = None;
     scratchpad.keep_alive_saw_network_activity = false;
     scratchpad.keep_alive_ping_outstanding = false;
@@ -24,9 +25,9 @@ pub(crate) fn reset_keepalive<Time>(scratchpad: &mut ClientScratchpad<Time>) {
 ///
 /// [MQTT-3.1.2-4] Clean Start controls whether prior session state is
 /// discarded.
-pub(crate) fn maybe_reset_session_state<Time>(
+pub(crate) fn maybe_reset_session_state<T>(
     session: &mut ClientSession,
-    scratchpad: &ClientScratchpad<Time>,
+    scratchpad: &ClientScratchpad<T>,
 ) {
     if !scratchpad.session_should_persist {
         reset_session_state(session);
@@ -72,18 +73,17 @@ pub(crate) fn next_packet_id_checked(session: &mut ClientSession) -> Result<NonZ
     Err(Error::ReceiveMaximumExceeded)
 }
 
-/// Pushes `UserWriteOut::PublishDroppedDueToSessionNotResumed` for every
-/// in-flight packet.
-pub(crate) fn emit_publish_dropped_for_all_inflight<Time>(
+/// Pushes `Event::PublishDropped { reason: DropReason::SessionNotResumed, .. }`
+/// for every in-flight packet.
+pub(crate) fn emit_publish_dropped_for_all_inflight<T>(
     session: &ClientSession,
-    scratchpad: &mut ClientScratchpad<Time>,
+    scratchpad: &mut ClientScratchpad<T>,
 ) {
-    for packet_id in session.on_flight_sent.keys().copied() {
-        scratchpad
-            .read_queue
-            .push_back(UserWriteOut::PublishDroppedDueToSessionNotResumed(
-                packet_id,
-            ));
+    for state in session.on_flight_sent.values() {
+        scratchpad.read_queue.push_back(Event::PublishDropped {
+            token: state.token(),
+            reason: DropReason::SessionNotResumed,
+        });
     }
 }
 
@@ -91,16 +91,16 @@ pub(crate) fn emit_publish_dropped_for_all_inflight<Time>(
 ///
 /// [MQTT-4.4.0-1] [MQTT-4.4.0-2] On session resume, retransmit unacknowledged
 /// QoS1/QoS2 PUBLISH with DUP=1.
-pub(crate) fn replay_outbound_inflight_with_dup<Time>(
+pub(crate) fn replay_outbound_inflight_with_dup<T>(
     session: &mut ClientSession,
-    scratchpad: &mut ClientScratchpad<Time>,
+    scratchpad: &mut ClientScratchpad<T>,
 ) -> Result<(), Error> {
     // `session` and `scratchpad` are distinct borrows, so the retained packets
     // can be marked and re-enqueued in place — no copy of the in-flight map.
     for (packet_id, state) in session.on_flight_sent.iter_mut() {
         match state {
-            OutboundInflightState::Qos1AwaitPubAck { publish }
-            | OutboundInflightState::Qos2AwaitPubRec { publish } => {
+            OutboundInflightState::Qos1AwaitPubAck { publish, .. }
+            | OutboundInflightState::Qos2AwaitPubRec { publish, .. } => {
                 if let PublishKind::Repetible { dup, .. } = &mut publish.kind {
                     *dup = true;
                 }
@@ -109,7 +109,7 @@ pub(crate) fn replay_outbound_inflight_with_dup<Time>(
                     &ControlPacket::Publish(publish.clone()),
                 )?;
             }
-            OutboundInflightState::Qos2AwaitPubComp => {
+            OutboundInflightState::Qos2AwaitPubComp { .. } => {
                 crate::queues::enqueue_packet(
                     scratchpad,
                     &ControlPacket::PubRel(

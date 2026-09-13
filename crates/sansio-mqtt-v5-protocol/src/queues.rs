@@ -1,13 +1,13 @@
+use crate::client::ClientSettings;
 use crate::scratchpad::ClientScratchpad;
 use crate::session::ClientSession;
-use crate::types::ClientSettings;
-use crate::types::DriverEventOut;
-use crate::types::Error;
-use crate::types::UserWriteOut;
 use alloc::vec::Vec;
 use bytes::Bytes;
 use core::num::NonZero;
 use encode::Encodable;
+use sansio_mqtt_protocol::DriverAction;
+use sansio_mqtt_protocol::Error;
+use sansio_mqtt_protocol::Event;
 use sansio_mqtt_v5_types::ControlPacket;
 use sansio_mqtt_v5_types::Disconnect;
 use sansio_mqtt_v5_types::DisconnectReasonCode;
@@ -30,8 +30,8 @@ pub(crate) fn encode_control_packet(packet: &ControlPacket) -> Result<Bytes, Err
     Ok(Bytes::from(encoded))
 }
 
-pub(crate) fn enqueue_packet<Time>(
-    scratchpad: &mut ClientScratchpad<Time>,
+pub(crate) fn enqueue_packet<T>(
+    scratchpad: &mut ClientScratchpad<T>,
     packet: &ControlPacket,
 ) -> Result<(), Error> {
     let encoded = encode_control_packet(packet)?;
@@ -52,10 +52,10 @@ pub(crate) fn enqueue_packet<Time>(
 /// Every connection teardown path funnels through here so the reset ordering
 /// stays identical; `reset_negotiated_limits` also clears inbound topic aliases
 /// per [MQTT-3.8.2-1].
-pub(crate) fn reset_connection_state<Time>(
+pub(crate) fn reset_connection_state<T>(
     settings: &ClientSettings,
     session: &mut ClientSession,
-    scratchpad: &mut ClientScratchpad<Time>,
+    scratchpad: &mut ClientScratchpad<T>,
 ) {
     scratchpad.read_buffer.clear();
     crate::session_ops::reset_keepalive(scratchpad);
@@ -69,19 +69,17 @@ pub(crate) fn reset_connection_state<Time>(
 /// Reason-code agnostic: used both for protocol failures and for a normal
 /// client-initiated disconnect. It reports nothing to the application, so
 /// callers tearing down on the user's behalf use [`graceful_disconnect`].
-pub(crate) fn disconnect_and_reset<Time>(
+pub(crate) fn disconnect_and_reset<T>(
     settings: &ClientSettings,
     session: &mut ClientSession,
-    scratchpad: &mut ClientScratchpad<Time>,
+    scratchpad: &mut ClientScratchpad<T>,
     reason: DisconnectReasonCode,
 ) {
     let _ = enqueue_packet(
         scratchpad,
         &ControlPacket::Disconnect(Disconnect::builder().reason_code(reason).build()),
     );
-    scratchpad
-        .action_queue
-        .push_back(DriverEventOut::CloseSocket);
+    scratchpad.action_queue.push_back(DriverAction::CloseSocket);
     reset_connection_state(settings, session, scratchpad);
 }
 
@@ -90,10 +88,10 @@ pub(crate) fn disconnect_and_reset<Time>(
 ///
 /// [MQTT-3.14.4-1] After sending DISCONNECT the client MUST close the Network
 /// Connection and MUST NOT send any more packets on it.
-pub(crate) fn graceful_disconnect<Time>(
+pub(crate) fn graceful_disconnect<T>(
     settings: &ClientSettings,
     session: &mut ClientSession,
-    scratchpad: &mut ClientScratchpad<Time>,
+    scratchpad: &mut ClientScratchpad<T>,
 ) {
     disconnect_and_reset(
         settings,
@@ -101,9 +99,7 @@ pub(crate) fn graceful_disconnect<Time>(
         scratchpad,
         DisconnectReasonCode::NormalDisconnection,
     );
-    scratchpad
-        .read_queue
-        .push_back(UserWriteOut::Disconnected(None));
+    scratchpad.read_queue.push_back(Event::Disconnected(None));
 }
 
 /// Enqueues an acknowledgement packet, tearing the connection down if it cannot
@@ -112,10 +108,10 @@ pub(crate) fn graceful_disconnect<Time>(
 /// An acknowledgement that cannot be encoded or exceeds the broker's maximum
 /// packet size leaves the QoS exchange unresolvable, so the only correct
 /// response is to fail the connection.
-pub(crate) fn enqueue_ack_or_fail_protocol<Time>(
+pub(crate) fn enqueue_ack_or_fail_protocol<T>(
     settings: &ClientSettings,
     session: &mut ClientSession,
-    scratchpad: &mut ClientScratchpad<Time>,
+    scratchpad: &mut ClientScratchpad<T>,
     packet: &ControlPacket,
 ) -> Result<(), Error> {
     if enqueue_packet(scratchpad, packet).is_err() {

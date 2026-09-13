@@ -4,16 +4,18 @@ use crate::scratchpad::ClientScratchpad;
 use crate::session::ClientSession;
 use crate::state::ClientState;
 use crate::state::StateHandler;
-use crate::types::ClientSettings;
-use crate::types::DriverEventIn;
-use crate::types::DriverEventOut;
-use crate::types::Error;
-use crate::types::IncomingData;
-use crate::types::ProtocolTime;
-use crate::types::UserWriteIn;
-use crate::types::UserWriteOut;
 use bytes::Buf;
+use core::num::NonZero;
 use sansio::Protocol;
+use sansio_mqtt_protocol::Command;
+use sansio_mqtt_protocol::DriverAction;
+use sansio_mqtt_protocol::DriverEvent;
+use sansio_mqtt_protocol::Error;
+use sansio_mqtt_protocol::Event;
+use sansio_mqtt_protocol::IncomingData;
+use sansio_mqtt_protocol::MqttProtocol;
+use sansio_mqtt_protocol::Qos;
+use sansio_mqtt_protocol::Time;
 use sansio_mqtt_v5_types::ControlPacket;
 use sansio_mqtt_v5_types::DisconnectReasonCode;
 use sansio_mqtt_v5_types::ParserSettings;
@@ -21,25 +23,107 @@ use winnow::Parser;
 use winnow::error::ErrMode;
 use winnow::stream::Partial;
 
-#[derive(Debug)]
-pub struct Client<Time> {
-    settings: ClientSettings,
-    session: ClientSession,
-    scratchpad: ClientScratchpad<Time>,
-    state: ClientState,
+/// Configuration for a [`Client`].
+///
+/// Every limit here is the single source of truth: the values that end up in
+/// the CONNECT packet, the caps enforced on outbound traffic, and the caps fed
+/// to the inbound parser are all derived from this struct alone (there is no
+/// longer a separate per-connect override).
+#[derive(Debug, Clone, PartialEq, Eq, bon::Builder)]
+#[non_exhaustive]
+pub struct ClientSettings {
+    /// Receive Maximum advertised in CONNECT
+    /// ([MQTT-3.1.2-23]).
+    pub receive_maximum: Option<NonZero<u16>>,
+    /// Maximum Packet Size advertised in CONNECT
+    /// ([MQTT-3.1.2-25]); also bounds the inbound parser's Remaining Length.
+    pub maximum_packet_size: Option<NonZero<u32>>,
+    /// Topic Alias Maximum advertised in CONNECT, bounding the Topic Aliases
+    /// the client will accept from the server.
+    pub topic_alias_maximum: Option<u16>,
+    /// Request Response Information flag sent in CONNECT.
+    pub request_response_information: Option<bool>,
+    /// Request Problem Information flag sent in CONNECT.
+    pub request_problem_information: Option<bool>,
+    /// Keep Alive sent in CONNECT when
+    /// [`sansio_mqtt_protocol::ConnectOptions::keep_alive`] is `None`.
+    pub keep_alive: Option<NonZero<u16>>,
+    /// Local cap on the QoS of outbound PUBLISH packets.
+    ///
+    /// `Some(Qos::ExactlyOnce)` and `None` both mean "no local cap"; the
+    /// server-advertised Maximum QoS is still enforced regardless.
+    pub max_outgoing_qos: Option<Qos>,
+    /// Whether outbound PUBLISH may set the RETAIN flag.
+    #[builder(default)]
+    pub allow_retain: bool,
+    /// Whether outbound SUBSCRIBE may use wildcard Topic Filters.
+    #[builder(default)]
+    pub allow_wildcard_subscriptions: bool,
+    /// Whether outbound SUBSCRIBE may use `$share/` Topic Filters.
+    #[builder(default)]
+    pub allow_shared_subscriptions: bool,
+    /// Whether outbound SUBSCRIBE may carry a Subscription Identifier.
+    #[builder(default)]
+    pub allow_subscription_identifiers: bool,
+    /// Maximum number of User Property entries accepted in any inbound
+    /// property section.
+    pub max_user_properties: usize,
+    /// Maximum number of Subscription Identifiers accepted in a single
+    /// inbound PUBLISH.
+    pub max_subscription_identifiers: usize,
+    /// Maximum number of Topic Filters accepted in a single inbound
+    /// SUBSCRIBE.
+    pub max_subscriptions: u32,
 }
 
-impl<Time> Default for Client<Time> {
+impl Default for ClientSettings {
     fn default() -> Self {
-        Self::with_settings(Default::default())
+        Self {
+            receive_maximum: None,
+            maximum_packet_size: None,
+            topic_alias_maximum: None,
+            request_response_information: None,
+            request_problem_information: None,
+            keep_alive: None,
+            max_outgoing_qos: None,
+            allow_retain: true,
+            allow_wildcard_subscriptions: true,
+            allow_shared_subscriptions: true,
+            allow_subscription_identifiers: true,
+            max_user_properties: 32,
+            max_subscription_identifiers: 32,
+            max_subscriptions: 32,
+        }
     }
 }
 
-impl<Time> Client<Time> {
-    pub fn with_settings_and_session(settings: ClientSettings, session: ClientSession) -> Self {
+/// MQTT v5.0 client state machine.
+///
+/// Implements [`sansio_mqtt_protocol::MqttProtocol`] (checked at compile time
+/// by a private assertion below): feed it [`IncomingData`] read
+/// from the network, [`Command`]s from the application, and [`DriverEvent`]s
+/// from the driver, then drain [`Event`]s, encoded bytes, and
+/// [`DriverAction`]s.
+#[derive(Debug)]
+pub struct Client<T> {
+    settings: ClientSettings,
+    session: ClientSession,
+    scratchpad: ClientScratchpad<T>,
+    state: ClientState,
+}
+
+impl<T> Default for Client<T> {
+    fn default() -> Self {
+        Self::new(ClientSettings::default())
+    }
+}
+
+impl<T> Client<T> {
+    /// Creates a new client in the initial (disconnected) state.
+    pub fn new(settings: ClientSettings) -> Self {
         let mut client = Self {
             settings,
-            session,
+            session: ClientSession::default(),
             scratchpad: ClientScratchpad::default(),
             state: ClientState::Start(crate::state::Start),
         };
@@ -47,43 +131,20 @@ impl<Time> Client<Time> {
         client
     }
 
-    pub fn with_settings(settings: ClientSettings) -> Self {
-        Self::with_settings_and_session(settings, Default::default())
-    }
-
-    /// Borrows the session state, for snapshotting a live connection.
-    ///
-    /// [`ClientSession`] is `Clone`, so an application that must survive a hard
-    /// reboot can persist a clone of this periodically and restore it through
-    /// [`Client::with_settings_and_session`].
-    pub fn session(&self) -> &ClientSession {
-        &self.session
-    }
-
-    /// Takes the session state out of the client, consuming it.
-    ///
-    /// [MQTT-4.1.0-1] Session State outlives the Network Connection when
-    /// Session Expiry Interval is greater than zero; persisting the
-    /// returned value and handing it to
-    /// [`Client::with_settings_and_session`] resumes the session, replaying
-    /// any unacknowledged QoS1/QoS2 PUBLISH with DUP=1.
-    pub fn into_session(self) -> ClientSession {
-        self.session
-    }
-
     /// The limits the inbound parser is held to.
     ///
-    /// Only `max_remaining_bytes` is negotiated (it is additionally clamped by
-    /// the Maximum Packet Size the client advertised); the rest are local
-    /// policy and are read straight from [`ClientSettings`].
+    /// String and binary-data wire maxima are the MQTT wire format's own
+    /// ceiling (`u16::MAX`); only the Remaining Length cap is derived from
+    /// [`ClientSettings::maximum_packet_size`], and the counters come
+    /// straight from [`ClientSettings`].
     fn parser_settings(&self) -> ParserSettings {
         ParserSettings {
-            max_bytes_string: self.settings.max_bytes_string,
-            max_bytes_binary_data: self.settings.max_bytes_binary_data,
+            max_bytes_string: u16::MAX,
+            max_bytes_binary_data: u16::MAX,
             max_remaining_bytes: self.scratchpad.effective_client_max_remaining_bytes,
-            max_subscriptions_len: self.settings.max_subscriptions_len,
-            max_user_properties_len: self.settings.max_user_properties_len,
-            max_subscription_identifiers_len: self.settings.max_subscription_identifiers_len,
+            max_subscriptions_len: self.settings.max_subscriptions,
+            max_user_properties_len: self.settings.max_user_properties,
+            max_subscription_identifiers_len: self.settings.max_subscription_identifiers,
         }
     }
 
@@ -94,7 +155,7 @@ impl<Time> Client<Time> {
             ClientState,
             &ClientSettings,
             &mut ClientSession,
-            &mut ClientScratchpad<Time>,
+            &mut ClientScratchpad<T>,
         ) -> (ClientState, Result<(), Error>),
     {
         let state = core::mem::take(&mut self.state);
@@ -109,15 +170,15 @@ impl<Time> Client<Time> {
     }
 }
 
-impl<Time> Client<Time>
+impl<T> Client<T>
 where
-    Time: ProtocolTime,
+    T: Time,
 {
     /// Parses and dispatches every whole control packet in `bytes`, returning
     /// how many bytes were consumed.
     ///
     /// A trailing partial packet is left unconsumed for the caller to retain.
-    fn consume_packets(&mut self, bytes: &[u8], received_at: Time) -> Result<usize, Error> {
+    fn consume_packets(&mut self, bytes: &[u8], received_at: T) -> Result<usize, Error> {
         let parser_settings = self.parser_settings();
         let mut slice: &[u8] = bytes;
 
@@ -158,18 +219,18 @@ where
     }
 }
 
-impl<Time> Protocol<IncomingData<Time>, UserWriteIn, DriverEventIn> for Client<Time>
+impl<T> Protocol<IncomingData<T>, Command, DriverEvent> for Client<T>
 where
-    Time: ProtocolTime,
+    T: Time,
 {
-    type Rout = UserWriteOut;
+    type Rout = Event;
     type Wout = bytes::Bytes;
-    type Eout = DriverEventOut;
+    type Eout = DriverAction;
     type Error = Error;
-    type Time = Time;
+    type Time = T;
 
     #[tracing::instrument(skip_all)]
-    fn handle_read(&mut self, msg: IncomingData<Time>) -> Result<(), Self::Error> {
+    fn handle_read(&mut self, msg: IncomingData<T>) -> Result<(), Self::Error> {
         let received_at = msg.received_at;
 
         if self.scratchpad.read_buffer.is_empty() {
@@ -193,14 +254,14 @@ where
     }
 
     #[tracing::instrument(skip_all)]
-    fn handle_write(&mut self, msg: UserWriteIn) -> Result<(), Self::Error> {
+    fn handle_write(&mut self, msg: Command) -> Result<(), Self::Error> {
         // Keep-alive activity is tracked in `queues::enqueue_packet`, at the
         // one point where a packet actually reaches the write queue.
         self.dispatch(|s, set, ses, sp| s.handle_write(set, ses, sp, msg))
     }
 
     #[tracing::instrument(skip_all)]
-    fn handle_event(&mut self, evt: DriverEventIn) -> Result<(), Self::Error> {
+    fn handle_event(&mut self, evt: DriverEvent) -> Result<(), Self::Error> {
         self.dispatch(|s, set, ses, sp| s.handle_event(set, ses, sp, evt))
     }
 
@@ -228,5 +289,22 @@ where
 
     fn poll_timeout(&mut self) -> Option<Self::Time> {
         self.scratchpad.next_timeout
+    }
+}
+
+impl<T> MqttProtocol<T> for Client<T>
+where
+    T: Time,
+{
+    fn version(&self) -> semver::Version {
+        use semver::*;
+
+        Version {
+            major: 5,
+            minor: 0,
+            patch: 0,
+            pre: Prerelease::EMPTY,
+            build: BuildMetadata::EMPTY,
+        }
     }
 }

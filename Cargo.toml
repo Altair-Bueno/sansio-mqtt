@@ -10,6 +10,7 @@ members = ["crates/*", "fuzz"]
 default-members = [
   "crates/sansio-mqtt-v5-types",
   "crates/sansio-mqtt-v5-protocol",
+  "crates/sansio-mqtt-protocol",
 ]
 resolver = "2"
 
@@ -19,16 +20,19 @@ edition = "2024"
 rust-version = "1.97.0"
 
 [workspace.dependencies]
+sansio-mqtt-protocol = { path = "crates/sansio-mqtt-protocol", default-features = false }
 sansio-mqtt-v5-protocol = { path = "crates/sansio-mqtt-v5-protocol", default-features = false }
 sansio-mqtt-v5-tokio = { path = "crates/sansio-mqtt-v5-tokio", default-features = false }
 sansio-mqtt-v5-types = { path = "crates/sansio-mqtt-v5-types", default-features = false }
 
 bon = { version = "3.9.3", default-features = false }
 bytes = { version = "1", default-features = false }
+bytestring = { version = "1", default-features = false }
 encode = { version = "1.0.0", default-features = false }
 libfuzzer-sys = { version = "0.4", default-features = false }
 rstest = { version = "0.26.0", default-features = false }
 sansio = { version = "1.0.1", default-features = false }
+semver = { version = "1.0.28", default-features = false }
 strum = { version = "0.28.0", default-features = false }
 tempfile = { version = "3", default-features = false }
 testcontainers = { version = "0.27", default-features = false }

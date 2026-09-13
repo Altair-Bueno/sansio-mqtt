@@ -1,17 +1,24 @@
-use crate::types::ConnectionOptions;
-use crate::types::DriverEventOut;
-use crate::types::ProtocolTime;
-use crate::types::UserWriteOut;
 use alloc::collections::vec_deque::VecDeque;
 use bytes::Bytes;
 use bytes::BytesMut;
 use core::num::NonZero;
 use core::time::Duration;
+use sansio_mqtt_protocol::ConnectOptions;
+use sansio_mqtt_protocol::DriverAction;
+use sansio_mqtt_protocol::Event;
+use sansio_mqtt_protocol::Time;
 use sansio_mqtt_v5_types::MaximumQoS;
+use sansio_mqtt_v5_types::ParserSettings;
 
 #[derive(Debug)]
-pub struct ClientScratchpad<Time> {
-    pub(crate) pending_connect_options: ConnectionOptions,
+pub(crate) struct ClientScratchpad<T> {
+    /// The options from the most recent `Command::Connect`, retained for the
+    /// whole client lifetime so a reconnect can resend CONNECT unchanged.
+    ///
+    /// `None` until the application issues its first `Command::Connect`
+    /// (`sansio_mqtt_protocol::ConnectOptions` has no meaningful default to
+    /// synthesize instead).
+    pub(crate) pending_connect_options: Option<ConnectOptions>,
     pub(crate) session_should_persist: bool,
     pub(crate) effective_client_max_remaining_bytes: u64,
     pub(crate) effective_client_maximum_packet_size: Option<NonZero<u32>>,
@@ -34,31 +41,31 @@ pub struct ClientScratchpad<Time> {
     pub(crate) keep_alive_saw_network_activity: bool,
     pub(crate) keep_alive_ping_outstanding: bool,
     pub(crate) read_buffer: BytesMut,
-    pub(crate) read_queue: VecDeque<UserWriteOut>,
+    pub(crate) read_queue: VecDeque<Event>,
     pub(crate) write_queue: VecDeque<Bytes>,
-    pub(crate) action_queue: VecDeque<DriverEventOut>,
-    pub(crate) next_timeout: Option<Time>,
+    pub(crate) action_queue: VecDeque<DriverAction>,
+    pub(crate) next_timeout: Option<T>,
 }
 
-impl<Time> ClientScratchpad<Time>
+impl<T> ClientScratchpad<T>
 where
-    Time: ProtocolTime,
+    T: Time,
 {
     /// Schedules the next keep-alive deadline `secs` seconds after `from`.
     ///
     /// The only place in the crate where an instant is advanced; everything
-    /// else stores and compares `Time` values supplied by the driver.
-    pub(crate) fn arm_keep_alive_deadline(&mut self, from: Time, secs: u64) {
+    /// else stores and compares `T` values supplied by the driver.
+    pub(crate) fn arm_keep_alive_deadline(&mut self, from: T, secs: u64) {
         self.next_timeout = Some(from + Duration::from_secs(secs));
     }
 }
 
-impl<Time> Default for ClientScratchpad<Time> {
+impl<T> Default for ClientScratchpad<T> {
     fn default() -> Self {
         Self {
-            pending_connect_options: ConnectionOptions::default(),
+            pending_connect_options: None,
             session_should_persist: false,
-            effective_client_max_remaining_bytes: u64::MAX,
+            effective_client_max_remaining_bytes: ParserSettings::default().max_remaining_bytes,
             effective_client_maximum_packet_size: None,
             effective_client_topic_alias_maximum: u16::MAX,
             effective_broker_maximum_qos: None,

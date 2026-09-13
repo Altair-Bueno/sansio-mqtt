@@ -1,18 +1,15 @@
 #![no_std]
-#![forbid(unsafe_code)]
+#![deny(unsafe_code)]
 extern crate alloc;
 
 mod client;
+mod convert;
 mod limits;
 mod queues;
 mod scratchpad;
 mod session;
 mod session_ops;
 mod state;
-mod types;
 
 pub use client::Client;
-pub use session::ClientSession;
-pub use session::InboundInflightState;
-pub use session::OutboundInflightState;
-pub use types::*;
+pub use client::ClientSettings;
