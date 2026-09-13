@@ -175,8 +175,8 @@ async fn will_message_delivered() {
         "expected will sender Connected"
     );
 
-    // Dropping the event loop without sending DISCONNECT triggers the broker's will
-    // publication.
+    // Dropping the event loop without sending DISCONNECT triggers the broker's
+    // will publication.
     drop(el_will);
 
     let event = tokio::time::timeout(Duration::from_secs(3), sub_task)

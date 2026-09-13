@@ -29,7 +29,8 @@ async fn connect_and_disconnect() {
 async fn publish_qos0() {
     let (_container, port) = anonymous_broker().await;
 
-    // Subscriber: connect, subscribe at QoS 0, wait in background for the message.
+    // Subscriber: connect, subscribe at QoS 0, wait in background for the
+    // message.
     let (client_sub, mut el_sub) = connect(connect_options(port, "qos0-sub"))
         .await
         .expect("connect subscriber");
@@ -46,7 +47,8 @@ async fn publish_qos0() {
     // Allow time for SUBSCRIBE/SUBACK round-trip before publishing.
     tokio::time::sleep(Duration::from_millis(150)).await;
 
-    // Publisher: connect, publish QoS 0, give event loop time to flush the packet.
+    // Publisher: connect, publish QoS 0, give event loop time to flush the
+    // packet.
     let (client_pub, mut el_pub) = connect(connect_options(port, "qos0-pub"))
         .await
         .expect("connect publisher");
@@ -58,8 +60,8 @@ async fn publish_qos0() {
         .publish(msg("test/qos0", b"hello-qos0", Qos::AtMostOnce))
         .await
         .expect("publish");
-    // Poll briefly so the PUBLISH is flushed; timeout is expected because QoS 0 has
-    // no response.
+    // Poll briefly so the PUBLISH is flushed; timeout is expected because QoS 0
+    // has no response.
     let _ = tokio::time::timeout(Duration::from_millis(200), el_pub.poll()).await;
 
     let event = tokio::time::timeout(Duration::from_secs(3), sub_task)
@@ -77,7 +79,8 @@ async fn publish_qos0() {
 async fn publish_qos1() {
     let (_container, port) = anonymous_broker().await;
 
-    // Subscriber at QoS 0 — broker delivers at most-once regardless of publish QoS.
+    // Subscriber at QoS 0 — broker delivers at most-once regardless of publish
+    // QoS.
     let (client_sub, mut el_sub) = connect(connect_options(port, "qos1-sub"))
         .await
         .expect("connect subscriber");
@@ -191,8 +194,8 @@ async fn keep_alive_maintains_connection() {
     ));
 
     // Poll for 7 seconds. PINGREQ/PINGRESP are transparent — no Event emitted.
-    // A timeout means the connection stayed alive. An Ok result means an unexpected
-    // event arrived. An Err result means the connection dropped.
+    // A timeout means the connection stayed alive. An Ok result means an
+    // unexpected event arrived. An Err result means the connection dropped.
     let result = tokio::time::timeout(Duration::from_secs(7), event_loop.poll()).await;
     match result {
         Err(_elapsed) => { /* success: connection alive after 7s idle */ }
