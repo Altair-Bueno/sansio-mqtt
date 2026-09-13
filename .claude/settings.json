@@ -5,7 +5,7 @@
   },
   "permissions": {
     "allow": [
-      "Bash",
+      "Bash(cargo *)",
       "Read($CARGO_HOME/)",
       "Read(~/$HOME/.cargo/)",
       "Write",
@@ -13,12 +13,27 @@
       "WebSearch"
     ]
   },
+  "extraKnownMarketplaces": {
+    "ast-grep-marketplace": {
+      "source": {
+        "source": "github",
+        "repo": "ast-grep/agent-skill"
+      }
+    },
+    "karpathy-skills": {
+      "source": {
+        "source": "github",
+        "repo": "forrestchang/andrej-karpathy-skills"
+      }
+    }
+  },
   "enabledPlugins": {
     "superpowers@claude-plugins-official": true,
     "rust-analyzer-lsp@claude-plugins-official": true,
     "claude-md-management@claude-plugins-official": true,
     "context7@claude-plugins-official": true,
-    "andrej-karpathy-skills@karpathy-skills": true
+    "andrej-karpathy-skills@karpathy-skills": true,
+    "ast-grep@ast-grep-marketplace": true
   },
   "defaultMode": "acceptEdits"
 }
