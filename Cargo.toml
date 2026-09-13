@@ -4,7 +4,13 @@ members = ["crates/*", "fuzz"]
 # out of the default set: it pulls in `libfuzzer-sys`, whose C++ build would
 # otherwise be required by every plain `cargo build` / `cargo clippy` at the
 # repository root.
-default-members = ["crates/*"]
+# `sansio-mqtt-v5-tokio` and its Mosquitto test crate are parked while the
+# async driver design is reconsidered. They stay in `members` so they keep
+# resolving, but are excluded from the default build, lint and test set.
+default-members = [
+  "crates/sansio-mqtt-v5-types",
+  "crates/sansio-mqtt-v5-protocol",
+]
 resolver = "2"
 
 [workspace.package]

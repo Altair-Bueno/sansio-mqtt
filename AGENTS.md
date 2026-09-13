@@ -56,11 +56,11 @@
   locally.
 - Tests: for behavior changes follow the TDD checklist item; for non-behavior
   changes they are optional.
-- **Docker**: `crates/test-sansio-mqtt-v5-tokio-mosquitto/` contains
-  testcontainers-based integration tests that spin up a Mosquitto broker. They
-  require Docker to be running. If Docker is unavailable locally, skip that
-  crate (`--exclude test-sansio-mqtt-v5-tokio-mosquitto`) and let CI run the
-  full suite.
+- **Parked crates**: `sansio-mqtt-v5-tokio` and
+  `test-sansio-mqtt-v5-tokio-mosquitto` are out of `default-members` and are not
+  built, linted or tested by default (nor in CI). Do not modify them unless
+  asked. The Mosquitto crate needs Docker; run it with
+  `cargo test -p test-sansio-mqtt-v5-tokio-mosquitto` when you need it.
 - **rust-analyzer is REQUIRED**: at session start, verify rust-analyzer is
   available by running `rust-analyzer --version`. If the command fails, STOP all
   work and ask the user whether you should install it by running
