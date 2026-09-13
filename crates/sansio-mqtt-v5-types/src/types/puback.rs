@@ -10,7 +10,8 @@ use super::*;
 ///
 /// Sent in response to a QoS 1 `PUBLISH`. Conformance:
 /// `[MQTT-3.4.0-1]`, `[MQTT-3.4.2-1]`.
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone, bon::Builder)]
+#[non_exhaustive]
 pub struct PubAck {
     /// Packet Identifier of the acknowledged `PUBLISH`
     /// ([§3.4.2](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901123),
@@ -21,6 +22,7 @@ pub struct PubAck {
     pub reason_code: PubAckReasonCode,
     /// `PUBACK` Properties
     /// ([§3.4.2.2](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901125)).
+    #[builder(default)]
     pub properties: PubAckProperties,
 }
 
@@ -39,7 +41,8 @@ impl From<PubAckHeaderFlags> for u8 {
 
 /// `PUBACK` Properties
 /// ([§3.4.2.2](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901125)).
-#[derive(Debug, PartialEq, Eq, Clone, Default)]
+#[derive(Debug, PartialEq, Eq, Clone, Default, bon::Builder)]
+#[non_exhaustive]
 pub struct PubAckProperties {
     /// Reason String — optional human-readable diagnostic
     /// ([§3.4.2.2.2](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901127),
@@ -47,6 +50,7 @@ pub struct PubAckProperties {
     pub reason_string: Option<Utf8String>,
     /// User Properties
     /// ([§3.4.2.2.3](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901128)).
+    #[builder(default)]
     pub user_properties: Vec<(Utf8String, Utf8String)>,
 }
 

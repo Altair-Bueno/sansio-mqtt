@@ -17,11 +17,13 @@ use super::*;
 #[derive(Debug, PartialEq, Clone, EnumDiscriminants)]
 #[strum_discriminants(derive(Hash, EnumIter, Display))]
 #[strum_discriminants(name(ControlPacketType))]
+#[strum_discriminants(non_exhaustive)]
 #[strum_discriminants(
     doc = "Control Packet Type discriminant of [`ControlPacket`] ([§2.1.2](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901022)). Identifies a packet type without the payload."
 )]
 #[allow(clippy::large_enum_variant)]
 #[repr(u8)]
+#[non_exhaustive]
 pub enum ControlPacket {
     /// [`Connect`] (`1`, [§3.1](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901033)).
     Connect(Connect) = 1,
@@ -64,6 +66,7 @@ pub enum ControlPacket {
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Error)]
 #[error("Invalid control packet type: {value}")]
 #[repr(transparent)]
+#[non_exhaustive]
 pub struct InvalidControlPacketTypeError {
     /// Offending byte value.
     pub value: u8,

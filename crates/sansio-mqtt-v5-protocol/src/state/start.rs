@@ -102,19 +102,22 @@ where
     ) -> (ClientState, Result<(), Error>) {
         match evt {
             DriverEventIn::SocketConnected => {
-                // In Start state the user may not have called Connect first; the
-                // stored pending_connect_options default when never set.
+                // In Start state the user may not have called Connect first;
+                // the stored pending_connect_options default
+                // when never set.
                 crate::state::connecting::on_socket_connected(settings, session, scratchpad)
             }
             DriverEventIn::SocketClosed => {
-                // Socket closed unexpectedly in Start state; emit Disconnected and transition.
+                // Socket closed unexpectedly in Start state; emit Disconnected
+                // and transition.
                 scratchpad
                     .read_queue
                     .push_back(UserWriteOut::Disconnected(None));
                 (ClientState::Disconnected(Disconnected), Ok(()))
             }
             DriverEventIn::SocketError => {
-                // Socket error in Start state; enqueue CloseSocket and return error.
+                // Socket error in Start state; enqueue CloseSocket and return
+                // error.
                 scratchpad
                     .action_queue
                     .push_back(DriverEventOut::CloseSocket);

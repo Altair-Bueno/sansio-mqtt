@@ -23,14 +23,12 @@ use sansio_mqtt_v5_protocol::UserWriteIn;
 use sansio_mqtt_v5_protocol::UserWriteOut;
 use sansio_mqtt_v5_types::ConnAck;
 use sansio_mqtt_v5_types::ConnAckKind;
-use sansio_mqtt_v5_types::ConnAckProperties;
 use sansio_mqtt_v5_types::ConnackReasonCode;
 use sansio_mqtt_v5_types::ControlPacket;
 use sansio_mqtt_v5_types::GuaranteedQoS;
 use sansio_mqtt_v5_types::Payload;
 use sansio_mqtt_v5_types::Publish;
 use sansio_mqtt_v5_types::PublishKind;
-use sansio_mqtt_v5_types::PublishProperties;
 use sansio_mqtt_v5_types::Qos;
 use sansio_mqtt_v5_types::Topic;
 use sansio_mqtt_v5_types::Utf8String;
@@ -66,10 +64,7 @@ fn drive_to_connected(client: &mut Client<Duration>, connack_kind: ConnAckKind) 
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     assert!(client.poll_write().is_some(), "CONNECT should be queued");
 
-    let connack = ControlPacket::ConnAck(ConnAck {
-        kind: connack_kind,
-        properties: ConnAckProperties::default(),
-    });
+    let connack = ControlPacket::ConnAck(ConnAck::builder().kind(connack_kind).build());
     assert_eq!(
         client.handle_read(IncomingData {
             bytes: encode_packet(&connack),
@@ -120,17 +115,17 @@ fn session_taken_from_one_client_resumes_inflight_publish_in_another() {
         Client::<Duration>::with_settings_and_session(ClientSettings::default(), session);
     drive_to_connected(&mut restarted, ConnAckKind::ResumePreviousSession);
 
-    let replayed = ControlPacket::Publish(Publish {
-        kind: PublishKind::Repetible {
-            packet_id,
-            qos: GuaranteedQoS::AtLeastOnce,
-            dup: true,
-        },
-        retain: false,
-        payload: Payload::from(&b"survive"[..]),
-        topic: topic("restart/topic"),
-        properties: PublishProperties::default(),
-    });
+    let replayed = ControlPacket::Publish(
+        Publish::builder()
+            .kind(PublishKind::Repetible {
+                packet_id,
+                qos: GuaranteedQoS::AtLeastOnce,
+                dup: true,
+            })
+            .payload(Payload::from(&b"survive"[..]))
+            .topic(topic("restart/topic"))
+            .build(),
+    );
     assert_eq!(
         restarted.poll_write(),
         Some(encode_packet(&replayed)),

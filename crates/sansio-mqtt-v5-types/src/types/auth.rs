@@ -12,13 +12,15 @@ use super::*;
 /// Drives the enhanced authentication exchange introduced in v5.0.
 /// Conformance: `[MQTT-3.15.0-1]`, `[MQTT-3.15.1-1]`,
 /// `[MQTT-3.15.2-1]`.
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone, bon::Builder)]
+#[non_exhaustive]
 pub struct Auth {
     /// Authenticate Reason Code
     /// ([§3.15.2.1](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901220)).
     pub reason_code: AuthReasonCode,
     /// `AUTH` Properties
     /// ([§3.15.2.2](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901221)).
+    #[builder(default)]
     pub properties: AuthProperties,
 }
 
@@ -38,7 +40,8 @@ impl From<AuthHeaderFlags> for u8 {
 
 /// `AUTH` Properties
 /// ([§3.15.2.2](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901221)).
-#[derive(Debug, PartialEq, Eq, Clone, Default)]
+#[derive(Debug, PartialEq, Eq, Clone, Default, bon::Builder)]
+#[non_exhaustive]
 pub struct AuthProperties {
     /// Reason String — optional human-readable diagnostic
     /// ([§3.15.2.2.3](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901224)).
@@ -49,6 +52,7 @@ pub struct AuthProperties {
     pub authentication: Option<AuthenticationKind>,
     /// User Properties
     /// ([§3.15.2.2.4](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901225)).
+    #[builder(default)]
     pub user_properties: Vec<(Utf8String, Utf8String)>,
 }
 

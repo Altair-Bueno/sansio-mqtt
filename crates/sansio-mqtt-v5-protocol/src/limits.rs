@@ -62,9 +62,10 @@ pub(crate) fn recompute_effective_limits<Time>(
 ) {
     scratchpad.effective_client_maximum_packet_size =
         client_maximum_packet_size(settings, &scratchpad.pending_connect_options);
-    // [MQTT-3.1.2-24] Bound the parser by the advertised Maximum Packet Size, so
-    // the client refuses what it told the server it would not process. Derived
-    // after the field above, not before it, so one call fully settles the pair.
+    // [MQTT-3.1.2-24] Bound the parser by the advertised Maximum Packet Size,
+    // so the client refuses what it told the server it would not process.
+    // Derived after the field above, not before it, so one call fully
+    // settles the pair.
     scratchpad.effective_client_max_remaining_bytes = settings.max_remaining_bytes.min(
         scratchpad
             .effective_client_maximum_packet_size
@@ -103,9 +104,9 @@ pub(crate) fn reset_negotiated_limits<Time>(
     scratchpad.negotiated_wildcard_subscription_available = true;
     scratchpad.negotiated_shared_subscription_available = true;
     scratchpad.negotiated_subscription_identifiers_available = true;
-    // [MQTT-3.8.2-1] Topic Aliases are scoped to a single Network Connection and
-    // MUST NOT be carried over to a new connection. Clear them here so every
-    // reconnection starts with a fresh, empty alias mapping.
+    // [MQTT-3.8.2-1] Topic Aliases are scoped to a single Network Connection
+    // and MUST NOT be carried over to a new connection. Clear them here so
+    // every reconnection starts with a fresh, empty alias mapping.
     session.inbound_topic_aliases.clear();
     recompute_effective_limits(settings, scratchpad);
 }
@@ -178,13 +179,15 @@ fn validate_outbound_subscription<Time>(
     let is_shared = topic_filter.starts_with("$share/");
     let has_wildcard = topic_filter.contains('+') || topic_filter.contains('#');
 
-    // [MQTT-3.2.2-12] Wildcard Subscription Available=0 forbids wildcard filters.
+    // [MQTT-3.2.2-12] Wildcard Subscription Available=0 forbids wildcard
+    // filters.
     if has_wildcard && !scratchpad.effective_wildcard_subscription_available {
         return Err(Error::ProtocolError);
     }
 
     if is_shared {
-        // [MQTT-3.2.2-13] Shared Subscription Available=0 forbids `$share/` filters.
+        // [MQTT-3.2.2-13] Shared Subscription Available=0 forbids `$share/`
+        // filters.
         if !scratchpad.effective_shared_subscription_available {
             return Err(Error::ProtocolError);
         }
@@ -203,7 +206,8 @@ pub(crate) fn validate_outbound_subscribe<Time>(
     scratchpad: &ClientScratchpad<Time>,
     options: &SubscribeOptions,
 ) -> Result<(), Error> {
-    // [MQTT-3.2.2-14] Subscription Identifiers Available=0 forbids the property.
+    // [MQTT-3.2.2-14] Subscription Identifiers Available=0 forbids the
+    // property.
     if options.subscription_identifier.is_some()
         && !scratchpad.effective_subscription_identifiers_available
     {

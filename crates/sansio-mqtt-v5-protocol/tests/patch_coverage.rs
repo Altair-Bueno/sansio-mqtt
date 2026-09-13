@@ -33,11 +33,9 @@ use sansio_mqtt_v5_types::GuaranteedQoS;
 use sansio_mqtt_v5_types::Payload;
 use sansio_mqtt_v5_types::PingReq;
 use sansio_mqtt_v5_types::PubRel;
-use sansio_mqtt_v5_types::PubRelProperties;
 use sansio_mqtt_v5_types::PubRelReasonCode;
 use sansio_mqtt_v5_types::Publish;
 use sansio_mqtt_v5_types::PublishKind;
-use sansio_mqtt_v5_types::PublishProperties;
 use sansio_mqtt_v5_types::Qos;
 use sansio_mqtt_v5_types::RetainHandling;
 use sansio_mqtt_v5_types::Subscription;
@@ -59,26 +57,28 @@ fn packet_id(value: u16) -> NonZero<u16> {
 }
 
 fn connack(properties: ConnAckProperties) -> ControlPacket {
-    ControlPacket::ConnAck(ConnAck {
-        kind: ConnAckKind::Other {
-            reason_code: ConnackReasonCode::Success,
-        },
-        properties,
-    })
+    ControlPacket::ConnAck(
+        ConnAck::builder()
+            .kind(ConnAckKind::Other {
+                reason_code: ConnackReasonCode::Success,
+            })
+            .properties(properties)
+            .build(),
+    )
 }
 
 fn inbound_publish(id: NonZero<u16>, qos: GuaranteedQoS) -> ControlPacket {
-    ControlPacket::Publish(Publish {
-        kind: PublishKind::Repetible {
-            packet_id: id,
-            qos,
-            dup: false,
-        },
-        retain: false,
-        payload: Payload::from(&b"x"[..]),
-        topic: topic("cov/topic"),
-        properties: PublishProperties::default(),
-    })
+    ControlPacket::Publish(
+        Publish::builder()
+            .kind(PublishKind::Repetible {
+                packet_id: id,
+                qos,
+                dup: false,
+            })
+            .payload(Payload::from(&b"x"[..]))
+            .topic(topic("cov/topic"))
+            .build(),
+    )
 }
 
 /// Drives a default client to Connected, using `properties` in the CONNACK.
@@ -196,11 +196,12 @@ fn trailing_partial_packet_is_retained_across_reads() {
 /// Size fails the connection, via the shared ack-failure teardown.
 #[test]
 fn acknowledgement_exceeding_broker_maximum_packet_size_fails_the_connection() {
-    let mut client = connected_client(ConnAckProperties {
-        // Smaller than any PUBACK, so the acknowledgement cannot be sent.
-        maximum_packet_size: Some(NonZero::new(2).expect("non-zero")),
-        ..ConnAckProperties::default()
-    });
+    let mut client = connected_client(
+        ConnAckProperties::builder()
+            // Smaller than any PUBACK, so the acknowledgement cannot be sent.
+            .maximum_packet_size(NonZero::new(2).expect("non-zero"))
+            .build(),
+    );
 
     assert_eq!(
         client.handle_read(IncomingData {
@@ -268,11 +269,12 @@ fn deciding_twice_on_a_message_is_an_invalid_state_transition() {
     assert!(client.poll_event().is_none());
     assert!(client.poll_read().is_none());
 
-    let pubrel = ControlPacket::PubRel(PubRel {
-        packet_id: packet_id(1),
-        reason_code: PubRelReasonCode::Success,
-        properties: PubRelProperties::default(),
-    });
+    let pubrel = ControlPacket::PubRel(
+        PubRel::builder()
+            .packet_id(packet_id(1))
+            .reason_code(PubRelReasonCode::Success)
+            .build(),
+    );
     assert_eq!(
         client.handle_read(IncomingData {
             bytes: encode_packet(&pubrel),
@@ -327,10 +329,11 @@ fn restored_session_inbound_message_can_be_acknowledged() {
     assert!(client.poll_write().is_some(), "CONNECT should be queued");
     assert_eq!(
         client.handle_read(IncomingData {
-            bytes: encode_packet(&ControlPacket::ConnAck(ConnAck {
-                kind: ConnAckKind::ResumePreviousSession,
-                properties: ConnAckProperties::default(),
-            })),
+            bytes: encode_packet(&ControlPacket::ConnAck(
+                ConnAck::builder()
+                    .kind(ConnAckKind::ResumePreviousSession)
+                    .build(),
+            )),
             received_at: Duration::ZERO,
         }),
         Ok(())
@@ -373,11 +376,12 @@ fn acknowledging_a_qos2_message_moves_it_to_awaiting_pubrel() {
     assert!(client.poll_write().is_some(), "PUBREC should be queued");
 
     // The server may now complete the exchange.
-    let pubrel = ControlPacket::PubRel(PubRel {
-        packet_id: packet_id(1),
-        reason_code: PubRelReasonCode::Success,
-        properties: PubRelProperties::default(),
-    });
+    let pubrel = ControlPacket::PubRel(
+        PubRel::builder()
+            .packet_id(packet_id(1))
+            .reason_code(PubRelReasonCode::Success)
+            .build(),
+    );
     assert_eq!(
         client.handle_read(IncomingData {
             bytes: encode_packet(&pubrel),
@@ -450,11 +454,12 @@ fn pubrel_before_the_application_decides_is_a_protocol_error() {
     );
     assert!(client.poll_read().is_some());
 
-    let pubrel = ControlPacket::PubRel(PubRel {
-        packet_id: packet_id(1),
-        reason_code: PubRelReasonCode::Success,
-        properties: PubRelProperties::default(),
-    });
+    let pubrel = ControlPacket::PubRel(
+        PubRel::builder()
+            .packet_id(packet_id(1))
+            .reason_code(PubRelReasonCode::Success)
+            .build(),
+    );
     assert_eq!(
         client.handle_read(IncomingData {
             bytes: encode_packet(&pubrel),
@@ -549,27 +554,28 @@ fn resumed_session_replays_qos2_publish_awaiting_pubrec() {
     assert!(client.poll_write().is_some(), "CONNECT should be queued");
     assert_eq!(
         client.handle_read(IncomingData {
-            bytes: encode_packet(&ControlPacket::ConnAck(ConnAck {
-                kind: ConnAckKind::ResumePreviousSession,
-                properties: ConnAckProperties::default(),
-            })),
+            bytes: encode_packet(&ControlPacket::ConnAck(
+                ConnAck::builder()
+                    .kind(ConnAckKind::ResumePreviousSession)
+                    .build(),
+            )),
             received_at: Duration::ZERO,
         }),
         Ok(())
     );
     assert!(matches!(client.poll_read(), Some(UserWriteOut::Connected)));
 
-    let replayed = ControlPacket::Publish(Publish {
-        kind: PublishKind::Repetible {
-            packet_id: packet_id(1),
-            qos: GuaranteedQoS::ExactlyOnce,
-            dup: true,
-        },
-        retain: false,
-        payload: Payload::from(&b"q2"[..]),
-        topic: topic("cov/qos2"),
-        properties: PublishProperties::default(),
-    });
+    let replayed = ControlPacket::Publish(
+        Publish::builder()
+            .kind(PublishKind::Repetible {
+                packet_id: packet_id(1),
+                qos: GuaranteedQoS::ExactlyOnce,
+                dup: true,
+            })
+            .payload(Payload::from(&b"q2"[..]))
+            .topic(topic("cov/qos2"))
+            .build(),
+    );
     assert_eq!(client.poll_write(), Some(encode_packet(&replayed)));
 }
 
@@ -639,13 +645,11 @@ fn shared_subscription_without_no_local_is_accepted() {
 
     assert_eq!(
         client.handle_write(UserWriteIn::Subscribe(SubscribeOptions {
-            subscription: Subscription {
-                topic_filter: Utf8String::try_from("$share/group/cov").expect("valid utf8"),
-                qos: Qos::AtMostOnce,
-                no_local: false,
-                retain_as_published: false,
-                retain_handling: RetainHandling::SendRetained,
-            },
+            subscription: Subscription::builder()
+                .topic_filter(Utf8String::try_from("$share/group/cov").expect("valid utf8"))
+                .qos(Qos::AtMostOnce)
+                .retain_handling(RetainHandling::SendRetained)
+                .build(),
             extra_subscriptions: Vec::new(),
             subscription_identifier: None,
             user_properties: Vec::new(),
@@ -662,13 +666,12 @@ fn shared_subscription_with_no_local_is_rejected() {
 
     assert_eq!(
         client.handle_write(UserWriteIn::Subscribe(SubscribeOptions {
-            subscription: Subscription {
-                topic_filter: Utf8String::try_from("$share/group/cov").expect("valid utf8"),
-                qos: Qos::AtMostOnce,
-                no_local: true,
-                retain_as_published: false,
-                retain_handling: RetainHandling::SendRetained,
-            },
+            subscription: Subscription::builder()
+                .topic_filter(Utf8String::try_from("$share/group/cov").expect("valid utf8"))
+                .qos(Qos::AtMostOnce)
+                .no_local(true)
+                .retain_handling(RetainHandling::SendRetained)
+                .build(),
             extra_subscriptions: Vec::new(),
             subscription_identifier: None,
             user_properties: Vec::new(),
@@ -706,7 +709,8 @@ fn unencodable_will_fails_connect_and_allows_a_retry() {
     );
     assert!(client.poll_write().is_none(), "no CONNECT should be queued");
 
-    // Still Connecting with connect_sent = false, so a retry re-attempts CONNECT.
+    // Still Connecting with connect_sent = false, so a retry re-attempts
+    // CONNECT.
     assert_eq!(
         client.handle_event(DriverEventIn::SocketConnected),
         Err(Error::ProtocolError)

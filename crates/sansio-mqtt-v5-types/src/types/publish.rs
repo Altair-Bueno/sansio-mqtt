@@ -12,7 +12,8 @@ use super::*;
 /// Client to Server or Server to Client. Conformance:
 /// `[MQTT-3.3.1-1]`, `[MQTT-3.3.1-2]`, `[MQTT-3.3.1-3]`,
 /// `[MQTT-3.3.1-4]`, `[MQTT-3.3.1-5]`, `[MQTT-3.3.2-1]`.
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone, bon::Builder)]
+#[non_exhaustive]
 pub struct Publish {
     /// QoS-dependent delivery metadata (packet identifier, QoS,
     /// duplicate flag).
@@ -23,6 +24,7 @@ pub struct Publish {
     /// [MQTT-3.3.1-5], [MQTT-3.3.1-6], [MQTT-3.3.1-7],
     /// [MQTT-3.3.1-8], [MQTT-3.3.1-9], [MQTT-3.3.1-10],
     /// [MQTT-3.3.1-11], [MQTT-3.3.1-12], [MQTT-3.3.1-13]).
+    #[builder(default)]
     pub retain: bool,
     /// Application Message payload
     /// ([§3.3.3](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901119)).
@@ -33,6 +35,7 @@ pub struct Publish {
     pub topic: Topic,
     /// `PUBLISH` Properties
     /// ([§3.3.2.3](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901109)).
+    #[builder(default)]
     pub properties: PublishProperties,
 }
 
@@ -73,11 +76,13 @@ pub enum PublishKind {
 /// Unlike other packets, `PUBLISH` header flags are not fixed: they
 /// carry DUP, QoS and RETAIN. Conformance: `[MQTT-3.3.1-1]`,
 /// `[MQTT-3.3.1-2]`, `[MQTT-3.3.1-3]`, `[MQTT-3.3.1-4]`.
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy, bon::Builder)]
+#[non_exhaustive]
 pub struct PublishHeaderFlags {
     /// Split-out DUP and QoS fields.
     pub kind: PublishHeaderFlagsKind,
     /// RETAIN flag; see [`Publish::retain`].
+    #[builder(default)]
     pub retain: bool,
 }
 
@@ -122,7 +127,8 @@ pub enum PublishHeaderFlagsKind {
 /// All fields are optional. Subscription Identifiers are forwarded
 /// by a Server to matching subscribers
 /// ([§3.3.2.3.8](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901117)).
-#[derive(Debug, PartialEq, Eq, Clone, Default)]
+#[derive(Debug, PartialEq, Eq, Clone, Default, bon::Builder)]
+#[non_exhaustive]
 pub struct PublishProperties {
     /// Payload Format Indicator
     /// ([§3.3.2.3.2](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901111),
@@ -146,6 +152,7 @@ pub struct PublishProperties {
     /// User Properties
     /// ([§3.3.2.3.7](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901116)).
     /// Order is preserved on the wire.
+    #[builder(default)]
     pub user_properties: Vec<(Utf8String, Utf8String)>,
     /// Subscription Identifiers forwarded by a Server to matching
     /// subscribers
@@ -153,6 +160,7 @@ pub struct PublishProperties {
     /// [MQTT-3.3.4-1], [MQTT-3.8.2-2]).
     ///
     /// An empty `Vec` means the property was absent on the wire.
+    #[builder(default)]
     pub subscription_identifiers: Vec<NonZero<u64>>,
     /// Content Type describing the payload
     /// ([§3.3.2.3.9](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901118)).

@@ -21,9 +21,11 @@ use super::*;
 #[derive(Debug, PartialEq, Eq, Clone, EnumDiscriminants)]
 #[strum_discriminants(derive(Hash, EnumIter, Display))]
 #[strum_discriminants(name(PropertyType))]
+#[strum_discriminants(non_exhaustive)]
 #[strum_discriminants(
     doc = "Identifier-only discriminant for [`Property`] ([§2.2.2.2](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901029))."
 )]
+#[non_exhaustive]
 pub enum Property {
     /// `0x01` Payload Format Indicator
     /// ([§3.3.2.3.2](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901111)).
@@ -131,6 +133,7 @@ pub enum Property {
 /// Authentication Data is only sent when an Authentication Method is
 /// present ([MQTT-3.1.2-21]).
 #[derive(Debug, PartialEq, Eq, Clone)]
+#[non_exhaustive]
 pub enum AuthenticationKind {
     /// Only an Authentication Method is set; no Authentication Data.
     WithoutData {
@@ -173,6 +176,7 @@ impl AuthenticationKind {
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Error)]
 #[error("Invalid property type: {value}")]
 #[repr(transparent)]
+#[non_exhaustive]
 pub struct InvalidPropertyTypeError {
     /// Offending Variable Byte Integer property identifier.
     pub value: u64,
@@ -186,6 +190,7 @@ pub struct InvalidPropertyTypeError {
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Error)]
 #[error("Property {property_type} is required to appear at most once, but is duplicated")]
 #[repr(transparent)]
+#[non_exhaustive]
 pub struct DuplicatedPropertyError {
     /// The property type that was duplicated.
     pub property_type: PropertyType,
@@ -200,6 +205,7 @@ pub struct DuplicatedPropertyError {
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Error)]
 #[error("The packet cannot contain a property of type {property_type}")]
 #[repr(transparent)]
+#[non_exhaustive]
 pub struct UnsupportedPropertyError {
     /// The property type that is not allowed by the containing packet.
     pub property_type: PropertyType,
@@ -236,6 +242,7 @@ pub struct MissingAuthenticationMethodError;
 /// into a packet-specific `*Properties` struct
 /// ([§2.2.2](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901027)).
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Error)]
+#[non_exhaustive]
 pub enum PropertiesError {
     /// A property that MUST appear at most once was repeated.
     #[error(transparent)]

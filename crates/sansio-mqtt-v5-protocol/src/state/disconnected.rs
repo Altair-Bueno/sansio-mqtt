@@ -63,11 +63,13 @@ where
                 crate::state::connecting::on_socket_connected(settings, session, scratchpad)
             }
             DriverEventIn::SocketClosed => {
-                // Socket closed while already disconnected; no duplicate Disconnected event.
+                // Socket closed while already disconnected; no duplicate
+                // Disconnected event.
                 (ClientState::Disconnected(self), Ok(()))
             }
             DriverEventIn::SocketError => {
-                // Socket error while already disconnected; enqueue CloseSocket only.
+                // Socket error while already disconnected; enqueue CloseSocket
+                // only.
                 scratchpad
                     .action_queue
                     .push_back(DriverEventOut::CloseSocket);

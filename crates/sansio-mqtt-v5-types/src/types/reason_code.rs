@@ -14,6 +14,7 @@ use super::*;
 /// distinct type so clients can match on the precise packet they
 /// originate from. Conformance: `[MQTT-3.2.2-7]`, `[MQTT-3.2.2-8]`.
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy, Default, EnumIter, Display)]
+#[non_exhaustive]
 pub enum ConnectReasonCode {
     /// `0x00` — The Connection is accepted.
     #[default]
@@ -82,6 +83,7 @@ pub enum ConnectReasonCode {
 /// server's `CONNACK` response rather than the client's `CONNECT`.
 /// Conformance: `[MQTT-3.2.2-7]`, `[MQTT-3.2.2-8]`.
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy, Default, EnumIter, Display)]
+#[non_exhaustive]
 pub enum ConnackReasonCode {
     /// `0x00` — The Connection is accepted.
     #[default]
@@ -152,6 +154,7 @@ pub enum ConnackReasonCode {
 /// callers will interact with [`PubAckReasonCode`] or
 /// [`PubRecReasonCode`] instead.
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy, Default, EnumIter, Display)]
+#[non_exhaustive]
 pub enum PublishReasonCode {
     /// `0x00` — The message is accepted. Publication of the QoS 1
     /// message proceeds.
@@ -187,6 +190,7 @@ pub enum PublishReasonCode {
 /// (`Success`) or reject it with one of the error codes. Conformance:
 /// `[MQTT-3.4.2-1]`.
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy, Default, EnumIter, Display)]
+#[non_exhaustive]
 pub enum PubAckReasonCode {
     /// `0x00` — The message is accepted. Publication of the QoS 1
     /// message proceeds.
@@ -222,6 +226,7 @@ pub enum PubAckReasonCode {
 /// acknowledgement of the four-packet flow. Conformance:
 /// `[MQTT-3.5.2-1]`.
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy, Default, EnumIter, Display)]
+#[non_exhaustive]
 pub enum PubRecReasonCode {
     /// `0x00` — The message is accepted. Publication of the QoS 2
     /// message proceeds.
@@ -257,6 +262,7 @@ pub enum PubRecReasonCode {
 /// `Success` or that the acknowledged Packet Identifier was not
 /// recognised. Conformance: `[MQTT-3.6.2-1]`.
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy, Default, EnumIter, Display)]
+#[non_exhaustive]
 pub enum PubRelReasonCode {
     /// `0x00` — The message is released.
     #[default]
@@ -273,6 +279,7 @@ pub enum PubRelReasonCode {
 /// Fourth and final packet of the QoS 2 flow. Conformance:
 /// `[MQTT-3.7.2-1]`.
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy, Default, EnumIter, Display)]
+#[non_exhaustive]
 pub enum PubCompReasonCode {
     /// `0x00` — The packet identifier is released; the flow is
     /// complete.
@@ -290,6 +297,7 @@ pub enum PubCompReasonCode {
 /// or a failure reason. Conformance: `[MQTT-3.9.3-1]`,
 /// `[MQTT-3.9.3-2]`.
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy, EnumIter, Display)]
+#[non_exhaustive]
 pub enum SubAckReasonCode {
     /// `0x00` — Subscription accepted; maximum granted QoS is 0.
     SuccessQoS0 = 0x00,
@@ -341,6 +349,7 @@ pub enum SubAckReasonCode {
 ///
 /// Conformance: `[MQTT-3.11.3-1]`, `[MQTT-3.11.3-2]`.
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy, Default, EnumIter, Display)]
+#[non_exhaustive]
 pub enum UnsubAckReasonCode {
     /// `0x00` — The subscription is deleted.
     #[default]
@@ -375,6 +384,7 @@ pub enum UnsubAckReasonCode {
 /// Sent by either Client or Server to indicate the reason for closing
 /// the Network Connection. Conformance: `[MQTT-3.14.2-1]`.
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy, Default, EnumIter, Display)]
+#[non_exhaustive]
 pub enum DisconnectReasonCode {
     /// `0x00` — Close the connection normally. Do not send the Will
     /// Message.
@@ -474,6 +484,7 @@ pub enum DisconnectReasonCode {
 /// Used to drive the enhanced authentication exchange introduced in
 /// MQTT v5.0. Conformance: `[MQTT-3.15.2-1]`.
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy, Default, EnumIter, Display)]
+#[non_exhaustive]
 pub enum AuthReasonCode {
     /// `0x00` — Authentication is successful.
     #[default]
@@ -489,6 +500,7 @@ pub enum AuthReasonCode {
 /// ([§2.4](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901031)).
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, thiserror::Error)]
 #[error("Invalid reason code {value}")]
+#[non_exhaustive]
 pub struct InvalidReasonCode {
     /// Offending Reason Code byte.
     pub value: u8,

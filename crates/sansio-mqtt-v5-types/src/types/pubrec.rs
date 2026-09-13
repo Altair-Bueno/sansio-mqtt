@@ -11,7 +11,8 @@ use super::*;
 /// Sent by the receiver of a QoS 2 `PUBLISH` as the first step of the
 /// four-packet QoS 2 flow. Conformance: `[MQTT-3.5.0-1]`,
 /// `[MQTT-3.5.2-1]`.
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone, bon::Builder)]
+#[non_exhaustive]
 pub struct PubRec {
     /// Packet Identifier copied from the acknowledged `PUBLISH`
     /// ([§3.5.2](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901133)).
@@ -21,6 +22,7 @@ pub struct PubRec {
     pub reason_code: PubRecReasonCode,
     /// `PUBREC` Properties
     /// ([§3.5.2.2](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901135)).
+    #[builder(default)]
     pub properties: PubRecProperties,
 }
 
@@ -39,7 +41,8 @@ impl From<PubRecHeaderFlags> for u8 {
 
 /// `PUBREC` Properties
 /// ([§3.5.2.2](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901135)).
-#[derive(Debug, PartialEq, Eq, Clone, Default)]
+#[derive(Debug, PartialEq, Eq, Clone, Default, bon::Builder)]
+#[non_exhaustive]
 pub struct PubRecProperties {
     /// Reason String — optional human-readable diagnostic
     /// ([§3.5.2.2.2](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901137),
@@ -47,6 +50,7 @@ pub struct PubRecProperties {
     pub reason_string: Option<Utf8String>,
     /// User Properties
     /// ([§3.5.2.2.3](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901138)).
+    #[builder(default)]
     pub user_properties: Vec<(Utf8String, Utf8String)>,
 }
 

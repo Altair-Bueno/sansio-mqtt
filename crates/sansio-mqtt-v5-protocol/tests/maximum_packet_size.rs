@@ -35,24 +35,28 @@ fn encode_packet(packet: &ControlPacket) -> Bytes {
 /// A CONNACK padded with user properties so it comfortably exceeds 32 bytes.
 fn oversized_connack() -> ControlPacket {
     let pad = Utf8String::try_from("padding-value-0123456789").expect("valid utf8");
-    ControlPacket::ConnAck(ConnAck {
-        kind: ConnAckKind::Other {
-            reason_code: ConnackReasonCode::Success,
-        },
-        properties: ConnAckProperties {
-            user_properties: (0..4).map(|_| (pad.clone(), pad.clone())).collect(),
-            ..ConnAckProperties::default()
-        },
-    })
+    ControlPacket::ConnAck(
+        ConnAck::builder()
+            .kind(ConnAckKind::Other {
+                reason_code: ConnackReasonCode::Success,
+            })
+            .properties(
+                ConnAckProperties::builder()
+                    .user_properties((0..4).map(|_| (pad.clone(), pad.clone())).collect())
+                    .build(),
+            )
+            .build(),
+    )
 }
 
 fn small_connack() -> ControlPacket {
-    ControlPacket::ConnAck(ConnAck {
-        kind: ConnAckKind::Other {
-            reason_code: ConnackReasonCode::Success,
-        },
-        properties: ConnAckProperties::default(),
-    })
+    ControlPacket::ConnAck(
+        ConnAck::builder()
+            .kind(ConnAckKind::Other {
+                reason_code: ConnackReasonCode::Success,
+            })
+            .build(),
+    )
 }
 
 /// Drives a client up to the point where it is awaiting CONNACK.

@@ -11,13 +11,15 @@ use super::*;
 /// Conformance: `[MQTT-3.14.0-1]`, `[MQTT-3.14.1-1]`,
 /// `[MQTT-3.14.2-1]`, `[MQTT-3.14.4-1]`, `[MQTT-3.14.4-2]`,
 /// `[MQTT-3.14.4-3]`.
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone, bon::Builder)]
+#[non_exhaustive]
 pub struct Disconnect {
     /// Disconnect Reason Code
     /// ([§3.14.2.1](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901208)).
     pub reason_code: DisconnectReasonCode,
     /// `DISCONNECT` Properties
     /// ([§3.14.2.2](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901209)).
+    #[builder(default)]
     pub properties: DisconnectProperties,
 }
 
@@ -37,7 +39,8 @@ impl From<DisconnectHeaderFlags> for u8 {
 
 /// `DISCONNECT` Properties
 /// ([§3.14.2.2](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901209)).
-#[derive(Debug, PartialEq, Eq, Clone, Default)]
+#[derive(Debug, PartialEq, Eq, Clone, Default, bon::Builder)]
+#[non_exhaustive]
 pub struct DisconnectProperties {
     /// Session Expiry Interval override
     /// ([§3.14.2.2.2](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901211),
@@ -49,6 +52,7 @@ pub struct DisconnectProperties {
     pub reason_string: Option<Utf8String>,
     /// User Properties
     /// ([§3.14.2.2.4](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901213)).
+    #[builder(default)]
     pub user_properties: Vec<(Utf8String, Utf8String)>,
     /// Server Reference used with UseAnotherServer / ServerMoved
     /// Reason Codes

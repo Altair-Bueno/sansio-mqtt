@@ -25,23 +25,18 @@ use sansio_mqtt_v5_types::ConnAckProperties;
 use sansio_mqtt_v5_types::ConnackReasonCode;
 use sansio_mqtt_v5_types::ControlPacket;
 use sansio_mqtt_v5_types::Disconnect;
-use sansio_mqtt_v5_types::DisconnectProperties;
 use sansio_mqtt_v5_types::DisconnectReasonCode;
 use sansio_mqtt_v5_types::GuaranteedQoS;
 use sansio_mqtt_v5_types::MaximumQoS;
 use sansio_mqtt_v5_types::ParserSettings;
 use sansio_mqtt_v5_types::Payload;
 use sansio_mqtt_v5_types::PubAck;
-use sansio_mqtt_v5_types::PubAckProperties;
 use sansio_mqtt_v5_types::PubAckReasonCode;
 use sansio_mqtt_v5_types::PubComp;
-use sansio_mqtt_v5_types::PubCompProperties;
 use sansio_mqtt_v5_types::PubCompReasonCode;
 use sansio_mqtt_v5_types::PubRec;
-use sansio_mqtt_v5_types::PubRecProperties;
 use sansio_mqtt_v5_types::PubRecReasonCode;
 use sansio_mqtt_v5_types::PubRel;
-use sansio_mqtt_v5_types::PubRelProperties;
 use sansio_mqtt_v5_types::PubRelReasonCode;
 use sansio_mqtt_v5_types::Publish;
 use sansio_mqtt_v5_types::PublishKind;
@@ -61,13 +56,11 @@ fn encode_packet(packet: &ControlPacket) -> Bytes {
 }
 
 fn make_subscription(topic_filter: &str) -> Subscription {
-    Subscription {
-        topic_filter: Utf8String::try_from(topic_filter).expect("valid utf8"),
-        qos: Qos::AtMostOnce,
-        no_local: false,
-        retain_as_published: false,
-        retain_handling: RetainHandling::SendRetained,
-    }
+    Subscription::builder()
+        .topic_filter(Utf8String::try_from(topic_filter).expect("valid utf8"))
+        .qos(Qos::AtMostOnce)
+        .retain_handling(RetainHandling::SendRetained)
+        .build()
 }
 
 #[test]
@@ -332,7 +325,8 @@ fn connect_encodes_maximum_packet_size_when_configured() {
 
 #[test]
 fn parser_uses_effective_client_limits_after_connect_policy_applied() {
-    // Small remaining-length cap intentionally below minimum CONNACK frame size.
+    // Small remaining-length cap intentionally below minimum CONNACK frame
+    // size.
     let settings = ClientSettings {
         max_remaining_bytes: 2,
         ..ClientSettings::default()
@@ -351,12 +345,13 @@ fn parser_uses_effective_client_limits_after_connect_policy_applied() {
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     assert!(client.poll_write().is_some());
 
-    let connack = ControlPacket::ConnAck(ConnAck {
-        kind: ConnAckKind::Other {
-            reason_code: ConnackReasonCode::Success,
-        },
-        properties: ConnAckProperties::default(),
-    });
+    let connack = ControlPacket::ConnAck(
+        ConnAck::builder()
+            .kind(ConnAckKind::Other {
+                reason_code: ConnackReasonCode::Success,
+            })
+            .build(),
+    );
 
     assert_eq!(
         client.handle_read(IncomingData {
@@ -556,12 +551,13 @@ fn connack_transitions_to_connected_and_emits_connected() {
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     let _ = client.poll_write().expect("connect frame expected");
 
-    let connack = ControlPacket::ConnAck(ConnAck {
-        kind: ConnAckKind::Other {
-            reason_code: ConnackReasonCode::Success,
-        },
-        properties: ConnAckProperties::default(),
-    });
+    let connack = ControlPacket::ConnAck(
+        ConnAck::builder()
+            .kind(ConnAckKind::Other {
+                reason_code: ConnackReasonCode::Success,
+            })
+            .build(),
+    );
 
     assert_eq!(
         client.handle_read(IncomingData {
@@ -580,12 +576,13 @@ fn connack_rejected_reason_closes_without_connected_event() {
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     let _ = client.poll_write().expect("connect frame expected");
 
-    let connack = ControlPacket::ConnAck(ConnAck {
-        kind: ConnAckKind::Other {
-            reason_code: ConnackReasonCode::NotAuthorized,
-        },
-        properties: ConnAckProperties::default(),
-    });
+    let connack = ControlPacket::ConnAck(
+        ConnAck::builder()
+            .kind(ConnAckKind::Other {
+                reason_code: ConnackReasonCode::NotAuthorized,
+            })
+            .build(),
+    );
 
     assert_eq!(
         client.handle_read(IncomingData {
@@ -608,12 +605,13 @@ fn inbound_publish_qos0_is_forwarded_to_user_queue() {
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     assert!(client.poll_write().is_some());
 
-    let connack = ControlPacket::ConnAck(ConnAck {
-        kind: ConnAckKind::Other {
-            reason_code: ConnackReasonCode::Success,
-        },
-        properties: ConnAckProperties::default(),
-    });
+    let connack = ControlPacket::ConnAck(
+        ConnAck::builder()
+            .kind(ConnAckKind::Other {
+                reason_code: ConnackReasonCode::Success,
+            })
+            .build(),
+    );
     assert_eq!(
         client.handle_read(IncomingData {
             bytes: encode_packet(&connack),
@@ -626,13 +624,13 @@ fn inbound_publish_qos0_is_forwarded_to_user_queue() {
     let publish_topic = Topic::try_new("sensors/temp").expect("valid topic");
     let publish_payload = Payload::new(b"27.5".as_slice());
 
-    let publish = ControlPacket::Publish(Publish {
-        kind: PublishKind::FireAndForget,
-        retain: false,
-        payload: publish_payload.clone(),
-        topic: publish_topic.clone(),
-        properties: PublishProperties::default(),
-    });
+    let publish = ControlPacket::Publish(
+        Publish::builder()
+            .kind(PublishKind::FireAndForget)
+            .payload(publish_payload.clone())
+            .topic(publish_topic.clone())
+            .build(),
+    );
 
     assert_eq!(
         client.handle_read(IncomingData {
@@ -665,12 +663,13 @@ fn inbound_publish_multiple_subscription_identifiers_surface_to_user() {
 
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     assert!(client.poll_write().is_some());
-    let connack = ControlPacket::ConnAck(ConnAck {
-        kind: ConnAckKind::Other {
-            reason_code: ConnackReasonCode::Success,
-        },
-        properties: ConnAckProperties::default(),
-    });
+    let connack = ControlPacket::ConnAck(
+        ConnAck::builder()
+            .kind(ConnAckKind::Other {
+                reason_code: ConnackReasonCode::Success,
+            })
+            .build(),
+    );
     assert_eq!(
         client.handle_read(IncomingData {
             bytes: encode_packet(&connack),
@@ -682,16 +681,21 @@ fn inbound_publish_multiple_subscription_identifiers_surface_to_user() {
 
     let publish_topic = Topic::try_new("t/multi").expect("valid topic");
     let publish_payload = Payload::new(b"hello".as_slice());
-    let publish = ControlPacket::Publish(Publish {
-        kind: PublishKind::FireAndForget,
-        retain: false,
-        payload: publish_payload.clone(),
-        topic: publish_topic.clone(),
-        properties: PublishProperties {
-            subscription_identifiers: vec![NonZero::new(7).unwrap(), NonZero::new(42).unwrap()],
-            ..PublishProperties::default()
-        },
-    });
+    let publish = ControlPacket::Publish(
+        Publish::builder()
+            .kind(PublishKind::FireAndForget)
+            .payload(publish_payload.clone())
+            .topic(publish_topic.clone())
+            .properties(
+                PublishProperties::builder()
+                    .subscription_identifiers(vec![
+                        NonZero::new(7).unwrap(),
+                        NonZero::new(42).unwrap(),
+                    ])
+                    .build(),
+            )
+            .build(),
+    );
 
     assert_eq!(
         client.handle_read(IncomingData {
@@ -732,12 +736,13 @@ fn inbound_publish_registers_topic_alias_then_resolves_alias_only_publish() {
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     assert!(client.poll_write().is_some());
 
-    let connack = ControlPacket::ConnAck(ConnAck {
-        kind: ConnAckKind::Other {
-            reason_code: ConnackReasonCode::Success,
-        },
-        properties: ConnAckProperties::default(),
-    });
+    let connack = ControlPacket::ConnAck(
+        ConnAck::builder()
+            .kind(ConnAckKind::Other {
+                reason_code: ConnackReasonCode::Success,
+            })
+            .build(),
+    );
     assert_eq!(
         client.handle_read(IncomingData {
             bytes: encode_packet(&connack),
@@ -750,16 +755,14 @@ fn inbound_publish_registers_topic_alias_then_resolves_alias_only_publish() {
     let alias = NonZero::new(1).expect("non-zero alias");
     let topic = Topic::try_new("alias/topic").expect("valid topic");
 
-    let register_publish = ControlPacket::Publish(Publish {
-        kind: PublishKind::FireAndForget,
-        retain: false,
-        payload: Payload::new(b"first".as_slice()),
-        topic: topic.clone(),
-        properties: PublishProperties {
-            topic_alias: Some(alias),
-            ..PublishProperties::default()
-        },
-    });
+    let register_publish = ControlPacket::Publish(
+        Publish::builder()
+            .kind(PublishKind::FireAndForget)
+            .payload(Payload::new(b"first".as_slice()))
+            .topic(topic.clone())
+            .properties(PublishProperties::builder().topic_alias(alias).build())
+            .build(),
+    );
     assert_eq!(
         client.handle_read(IncomingData {
             bytes: encode_packet(&register_publish),
@@ -777,16 +780,14 @@ fn inbound_publish_registers_topic_alias_then_resolves_alias_only_publish() {
         other => panic!("expected received message, got {other:?}"),
     }
 
-    let alias_only_publish = ControlPacket::Publish(Publish {
-        kind: PublishKind::FireAndForget,
-        retain: false,
-        payload: Payload::new(b"second".as_slice()),
-        topic: Topic::try_new("").expect("valid topic"),
-        properties: PublishProperties {
-            topic_alias: Some(alias),
-            ..PublishProperties::default()
-        },
-    });
+    let alias_only_publish = ControlPacket::Publish(
+        Publish::builder()
+            .kind(PublishKind::FireAndForget)
+            .payload(Payload::new(b"second".as_slice()))
+            .topic(Topic::try_new("").expect("valid topic"))
+            .properties(PublishProperties::builder().topic_alias(alias).build())
+            .build(),
+    );
     assert_eq!(
         client.handle_read(IncomingData {
             bytes: encode_packet(&alias_only_publish),
@@ -826,12 +827,13 @@ fn inbound_publish_alias_only_unknown_alias_is_protocol_error() {
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     assert!(client.poll_write().is_some());
 
-    let connack = ControlPacket::ConnAck(ConnAck {
-        kind: ConnAckKind::Other {
-            reason_code: ConnackReasonCode::Success,
-        },
-        properties: ConnAckProperties::default(),
-    });
+    let connack = ControlPacket::ConnAck(
+        ConnAck::builder()
+            .kind(ConnAckKind::Other {
+                reason_code: ConnackReasonCode::Success,
+            })
+            .build(),
+    );
     assert_eq!(
         client.handle_read(IncomingData {
             bytes: encode_packet(&connack),
@@ -841,16 +843,18 @@ fn inbound_publish_alias_only_unknown_alias_is_protocol_error() {
     );
     assert!(matches!(client.poll_read(), Some(UserWriteOut::Connected)));
 
-    let unknown_alias_publish = ControlPacket::Publish(Publish {
-        kind: PublishKind::FireAndForget,
-        retain: false,
-        payload: Payload::new(b"unknown".as_slice()),
-        topic: Topic::try_new("").expect("valid topic"),
-        properties: PublishProperties {
-            topic_alias: Some(NonZero::new(1).expect("non-zero alias")),
-            ..PublishProperties::default()
-        },
-    });
+    let unknown_alias_publish = ControlPacket::Publish(
+        Publish::builder()
+            .kind(PublishKind::FireAndForget)
+            .payload(Payload::new(b"unknown".as_slice()))
+            .topic(Topic::try_new("").expect("valid topic"))
+            .properties(
+                PublishProperties::builder()
+                    .topic_alias(NonZero::new(1).expect("non-zero alias"))
+                    .build(),
+            )
+            .build(),
+    );
 
     assert_eq!(
         client.handle_read(IncomingData {
@@ -877,12 +881,13 @@ fn inbound_publish_empty_topic_without_alias_is_protocol_error() {
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     assert!(client.poll_write().is_some());
 
-    let connack = ControlPacket::ConnAck(ConnAck {
-        kind: ConnAckKind::Other {
-            reason_code: ConnackReasonCode::Success,
-        },
-        properties: ConnAckProperties::default(),
-    });
+    let connack = ControlPacket::ConnAck(
+        ConnAck::builder()
+            .kind(ConnAckKind::Other {
+                reason_code: ConnackReasonCode::Success,
+            })
+            .build(),
+    );
     assert_eq!(
         client.handle_read(IncomingData {
             bytes: encode_packet(&connack),
@@ -892,13 +897,13 @@ fn inbound_publish_empty_topic_without_alias_is_protocol_error() {
     );
     assert!(matches!(client.poll_read(), Some(UserWriteOut::Connected)));
 
-    let invalid_publish = ControlPacket::Publish(Publish {
-        kind: PublishKind::FireAndForget,
-        retain: false,
-        payload: Payload::new(b"invalid".as_slice()),
-        topic: Topic::try_new("").expect("valid topic"),
-        properties: PublishProperties::default(),
-    });
+    let invalid_publish = ControlPacket::Publish(
+        Publish::builder()
+            .kind(PublishKind::FireAndForget)
+            .payload(Payload::new(b"invalid".as_slice()))
+            .topic(Topic::try_new("").expect("valid topic"))
+            .build(),
+    );
 
     assert_eq!(
         client.handle_read(IncomingData {
@@ -932,12 +937,13 @@ fn inbound_publish_alias_exceeds_client_alias_max_is_protocol_error() {
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     assert!(client.poll_write().is_some());
 
-    let connack = ControlPacket::ConnAck(ConnAck {
-        kind: ConnAckKind::Other {
-            reason_code: ConnackReasonCode::Success,
-        },
-        properties: ConnAckProperties::default(),
-    });
+    let connack = ControlPacket::ConnAck(
+        ConnAck::builder()
+            .kind(ConnAckKind::Other {
+                reason_code: ConnackReasonCode::Success,
+            })
+            .build(),
+    );
     assert_eq!(
         client.handle_read(IncomingData {
             bytes: encode_packet(&connack),
@@ -947,16 +953,18 @@ fn inbound_publish_alias_exceeds_client_alias_max_is_protocol_error() {
     );
     assert!(matches!(client.poll_read(), Some(UserWriteOut::Connected)));
 
-    let alias_too_large_publish = ControlPacket::Publish(Publish {
-        kind: PublishKind::FireAndForget,
-        retain: false,
-        payload: Payload::new(b"value".as_slice()),
-        topic: Topic::try_new("alias/topic").expect("valid topic"),
-        properties: PublishProperties {
-            topic_alias: Some(NonZero::new(2).expect("non-zero alias")),
-            ..PublishProperties::default()
-        },
-    });
+    let alias_too_large_publish = ControlPacket::Publish(
+        Publish::builder()
+            .kind(PublishKind::FireAndForget)
+            .payload(Payload::new(b"value".as_slice()))
+            .topic(Topic::try_new("alias/topic").expect("valid topic"))
+            .properties(
+                PublishProperties::builder()
+                    .topic_alias(NonZero::new(2).expect("non-zero alias"))
+                    .build(),
+            )
+            .build(),
+    );
 
     assert_eq!(
         client.handle_read(IncomingData {
@@ -983,12 +991,13 @@ fn inbound_qos1_publish_waits_for_app_ack_then_sends_puback() {
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     assert!(client.poll_write().is_some());
 
-    let connack = ControlPacket::ConnAck(ConnAck {
-        kind: ConnAckKind::Other {
-            reason_code: ConnackReasonCode::Success,
-        },
-        properties: ConnAckProperties::default(),
-    });
+    let connack = ControlPacket::ConnAck(
+        ConnAck::builder()
+            .kind(ConnAckKind::Other {
+                reason_code: ConnackReasonCode::Success,
+            })
+            .build(),
+    );
     assert_eq!(
         client.handle_read(IncomingData {
             bytes: encode_packet(&connack),
@@ -1001,17 +1010,17 @@ fn inbound_qos1_publish_waits_for_app_ack_then_sends_puback() {
     let packet_id = NonZero::new(7).expect("non-zero packet id");
     let publish_topic = Topic::try_new("sensors/temp").expect("valid topic");
     let publish_payload = Payload::new(b"27.5".as_slice());
-    let publish = ControlPacket::Publish(Publish {
-        kind: PublishKind::Repetible {
-            packet_id,
-            qos: GuaranteedQoS::AtLeastOnce,
-            dup: false,
-        },
-        retain: false,
-        payload: publish_payload.clone(),
-        topic: publish_topic.clone(),
-        properties: PublishProperties::default(),
-    });
+    let publish = ControlPacket::Publish(
+        Publish::builder()
+            .kind(PublishKind::Repetible {
+                packet_id,
+                qos: GuaranteedQoS::AtLeastOnce,
+                dup: false,
+            })
+            .payload(publish_payload.clone())
+            .topic(publish_topic.clone())
+            .build(),
+    );
 
     assert_eq!(
         client.handle_read(IncomingData {
@@ -1037,11 +1046,12 @@ fn inbound_qos1_publish_waits_for_app_ack_then_sends_puback() {
         Ok(())
     );
 
-    let expected_puback = ControlPacket::PubAck(PubAck {
-        packet_id,
-        reason_code: PubAckReasonCode::Success,
-        properties: PubAckProperties::default(),
-    });
+    let expected_puback = ControlPacket::PubAck(
+        PubAck::builder()
+            .packet_id(packet_id)
+            .reason_code(PubAckReasonCode::Success)
+            .build(),
+    );
     assert_eq!(client.poll_write(), Some(encode_packet(&expected_puback)));
     assert!(client.poll_read().is_none());
 }
@@ -1053,12 +1063,13 @@ fn inbound_qos1_publish_reject_sends_puback_failure_reason() {
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     assert!(client.poll_write().is_some());
 
-    let connack = ControlPacket::ConnAck(ConnAck {
-        kind: ConnAckKind::Other {
-            reason_code: ConnackReasonCode::Success,
-        },
-        properties: ConnAckProperties::default(),
-    });
+    let connack = ControlPacket::ConnAck(
+        ConnAck::builder()
+            .kind(ConnAckKind::Other {
+                reason_code: ConnackReasonCode::Success,
+            })
+            .build(),
+    );
     assert_eq!(
         client.handle_read(IncomingData {
             bytes: encode_packet(&connack),
@@ -1071,17 +1082,17 @@ fn inbound_qos1_publish_reject_sends_puback_failure_reason() {
     let packet_id = NonZero::new(11).expect("non-zero packet id");
     let publish_topic = Topic::try_new("sensors/humidity").expect("valid topic");
     let publish_payload = Payload::new(b"42".as_slice());
-    let publish = ControlPacket::Publish(Publish {
-        kind: PublishKind::Repetible {
-            packet_id,
-            qos: GuaranteedQoS::AtLeastOnce,
-            dup: false,
-        },
-        retain: false,
-        payload: publish_payload.clone(),
-        topic: publish_topic.clone(),
-        properties: PublishProperties::default(),
-    });
+    let publish = ControlPacket::Publish(
+        Publish::builder()
+            .kind(PublishKind::Repetible {
+                packet_id,
+                qos: GuaranteedQoS::AtLeastOnce,
+                dup: false,
+            })
+            .payload(publish_payload.clone())
+            .topic(publish_topic.clone())
+            .build(),
+    );
 
     assert_eq!(
         client.handle_read(IncomingData {
@@ -1110,11 +1121,12 @@ fn inbound_qos1_publish_reject_sends_puback_failure_reason() {
         Ok(())
     );
 
-    let expected_puback = ControlPacket::PubAck(PubAck {
-        packet_id,
-        reason_code: PubAckReasonCode::NotAuthorized,
-        properties: PubAckProperties::default(),
-    });
+    let expected_puback = ControlPacket::PubAck(
+        PubAck::builder()
+            .packet_id(packet_id)
+            .reason_code(PubAckReasonCode::NotAuthorized)
+            .build(),
+    );
     assert_eq!(client.poll_write(), Some(encode_packet(&expected_puback)));
     assert!(client.poll_read().is_none());
 }
@@ -1126,12 +1138,13 @@ fn inbound_qos2_publish_waits_for_app_ack_then_sends_pubrec_and_completes_on_pub
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     assert!(client.poll_write().is_some());
 
-    let connack = ControlPacket::ConnAck(ConnAck {
-        kind: ConnAckKind::Other {
-            reason_code: ConnackReasonCode::Success,
-        },
-        properties: ConnAckProperties::default(),
-    });
+    let connack = ControlPacket::ConnAck(
+        ConnAck::builder()
+            .kind(ConnAckKind::Other {
+                reason_code: ConnackReasonCode::Success,
+            })
+            .build(),
+    );
     assert_eq!(
         client.handle_read(IncomingData {
             bytes: encode_packet(&connack),
@@ -1142,17 +1155,17 @@ fn inbound_qos2_publish_waits_for_app_ack_then_sends_pubrec_and_completes_on_pub
     assert!(matches!(client.poll_read(), Some(UserWriteOut::Connected)));
 
     let packet_id = NonZero::new(13).expect("non-zero packet id");
-    let publish = ControlPacket::Publish(Publish {
-        kind: PublishKind::Repetible {
-            packet_id,
-            qos: GuaranteedQoS::ExactlyOnce,
-            dup: false,
-        },
-        retain: false,
-        payload: Payload::new(b"qos2".as_slice()),
-        topic: Topic::try_new("sensors/pressure").expect("valid topic"),
-        properties: PublishProperties::default(),
-    });
+    let publish = ControlPacket::Publish(
+        Publish::builder()
+            .kind(PublishKind::Repetible {
+                packet_id,
+                qos: GuaranteedQoS::ExactlyOnce,
+                dup: false,
+            })
+            .payload(Payload::new(b"qos2".as_slice()))
+            .topic(Topic::try_new("sensors/pressure").expect("valid topic"))
+            .build(),
+    );
 
     assert_eq!(
         client.handle_read(IncomingData {
@@ -1172,18 +1185,20 @@ fn inbound_qos2_publish_waits_for_app_ack_then_sends_pubrec_and_completes_on_pub
         Ok(())
     );
 
-    let expected_pubrec = ControlPacket::PubRec(PubRec {
-        packet_id,
-        reason_code: PubRecReasonCode::Success,
-        properties: PubRecProperties::default(),
-    });
+    let expected_pubrec = ControlPacket::PubRec(
+        PubRec::builder()
+            .packet_id(packet_id)
+            .reason_code(PubRecReasonCode::Success)
+            .build(),
+    );
     assert_eq!(client.poll_write(), Some(encode_packet(&expected_pubrec)));
 
-    let pubrel = ControlPacket::PubRel(PubRel {
-        packet_id,
-        reason_code: PubRelReasonCode::Success,
-        properties: PubRelProperties::default(),
-    });
+    let pubrel = ControlPacket::PubRel(
+        PubRel::builder()
+            .packet_id(packet_id)
+            .reason_code(PubRelReasonCode::Success)
+            .build(),
+    );
     assert_eq!(
         client.handle_read(IncomingData {
             bytes: encode_packet(&pubrel),
@@ -1192,11 +1207,12 @@ fn inbound_qos2_publish_waits_for_app_ack_then_sends_pubrec_and_completes_on_pub
         Ok(())
     );
 
-    let expected_pubcomp = ControlPacket::PubComp(PubComp {
-        packet_id,
-        reason_code: PubCompReasonCode::Success,
-        properties: PubCompProperties::default(),
-    });
+    let expected_pubcomp = ControlPacket::PubComp(
+        PubComp::builder()
+            .packet_id(packet_id)
+            .reason_code(PubCompReasonCode::Success)
+            .build(),
+    );
     assert_eq!(client.poll_write(), Some(encode_packet(&expected_pubcomp)));
     assert!(client.poll_event().is_none());
 }
@@ -1208,12 +1224,13 @@ fn inbound_qos2_publish_reject_sends_pubrec_failure_and_clears_state() {
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     assert!(client.poll_write().is_some());
 
-    let connack = ControlPacket::ConnAck(ConnAck {
-        kind: ConnAckKind::Other {
-            reason_code: ConnackReasonCode::Success,
-        },
-        properties: ConnAckProperties::default(),
-    });
+    let connack = ControlPacket::ConnAck(
+        ConnAck::builder()
+            .kind(ConnAckKind::Other {
+                reason_code: ConnackReasonCode::Success,
+            })
+            .build(),
+    );
     assert_eq!(
         client.handle_read(IncomingData {
             bytes: encode_packet(&connack),
@@ -1224,17 +1241,17 @@ fn inbound_qos2_publish_reject_sends_pubrec_failure_and_clears_state() {
     assert!(matches!(client.poll_read(), Some(UserWriteOut::Connected)));
 
     let packet_id = NonZero::new(13).expect("non-zero packet id");
-    let publish = ControlPacket::Publish(Publish {
-        kind: PublishKind::Repetible {
-            packet_id,
-            qos: GuaranteedQoS::ExactlyOnce,
-            dup: false,
-        },
-        retain: false,
-        payload: Payload::new(b"qos2".as_slice()),
-        topic: Topic::try_new("sensors/pressure").expect("valid topic"),
-        properties: PublishProperties::default(),
-    });
+    let publish = ControlPacket::Publish(
+        Publish::builder()
+            .kind(PublishKind::Repetible {
+                packet_id,
+                qos: GuaranteedQoS::ExactlyOnce,
+                dup: false,
+            })
+            .payload(Payload::new(b"qos2".as_slice()))
+            .topic(Topic::try_new("sensors/pressure").expect("valid topic"))
+            .build(),
+    );
 
     assert_eq!(
         client.handle_read(IncomingData {
@@ -1257,18 +1274,20 @@ fn inbound_qos2_publish_reject_sends_pubrec_failure_and_clears_state() {
         Ok(())
     );
 
-    let expected_pubrec = ControlPacket::PubRec(PubRec {
-        packet_id,
-        reason_code: PubRecReasonCode::QuotaExceeded,
-        properties: PubRecProperties::default(),
-    });
+    let expected_pubrec = ControlPacket::PubRec(
+        PubRec::builder()
+            .packet_id(packet_id)
+            .reason_code(PubRecReasonCode::QuotaExceeded)
+            .build(),
+    );
     assert_eq!(client.poll_write(), Some(encode_packet(&expected_pubrec)));
 
-    let pubrel = ControlPacket::PubRel(PubRel {
-        packet_id,
-        reason_code: PubRelReasonCode::Success,
-        properties: PubRelProperties::default(),
-    });
+    let pubrel = ControlPacket::PubRel(
+        PubRel::builder()
+            .packet_id(packet_id)
+            .reason_code(PubRelReasonCode::Success)
+            .build(),
+    );
     assert_eq!(
         client.handle_read(IncomingData {
             bytes: encode_packet(&pubrel),
@@ -1277,11 +1296,12 @@ fn inbound_qos2_publish_reject_sends_pubrec_failure_and_clears_state() {
         Ok(())
     );
 
-    let expected_pubcomp = ControlPacket::PubComp(PubComp {
-        packet_id,
-        reason_code: PubCompReasonCode::PacketIdentifierNotFound,
-        properties: PubCompProperties::default(),
-    });
+    let expected_pubcomp = ControlPacket::PubComp(
+        PubComp::builder()
+            .packet_id(packet_id)
+            .reason_code(PubCompReasonCode::PacketIdentifierNotFound)
+            .build(),
+    );
     assert_eq!(client.poll_write(), Some(encode_packet(&expected_pubcomp)));
     assert!(client.poll_event().is_none());
 }
@@ -1293,12 +1313,13 @@ fn inbound_packet_id_reuse_conflict_causes_protocol_error() {
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     assert!(client.poll_write().is_some());
 
-    let connack = ControlPacket::ConnAck(ConnAck {
-        kind: ConnAckKind::Other {
-            reason_code: ConnackReasonCode::Success,
-        },
-        properties: ConnAckProperties::default(),
-    });
+    let connack = ControlPacket::ConnAck(
+        ConnAck::builder()
+            .kind(ConnAckKind::Other {
+                reason_code: ConnackReasonCode::Success,
+            })
+            .build(),
+    );
     assert_eq!(
         client.handle_read(IncomingData {
             bytes: encode_packet(&connack),
@@ -1309,17 +1330,17 @@ fn inbound_packet_id_reuse_conflict_causes_protocol_error() {
     assert!(matches!(client.poll_read(), Some(UserWriteOut::Connected)));
 
     let packet_id = NonZero::new(19).expect("non-zero packet id");
-    let qos1_publish = ControlPacket::Publish(Publish {
-        kind: PublishKind::Repetible {
-            packet_id,
-            qos: GuaranteedQoS::AtLeastOnce,
-            dup: false,
-        },
-        retain: false,
-        payload: Payload::new(b"qos1".as_slice()),
-        topic: Topic::try_new("state/conflict").expect("valid topic"),
-        properties: PublishProperties::default(),
-    });
+    let qos1_publish = ControlPacket::Publish(
+        Publish::builder()
+            .kind(PublishKind::Repetible {
+                packet_id,
+                qos: GuaranteedQoS::AtLeastOnce,
+                dup: false,
+            })
+            .payload(Payload::new(b"qos1".as_slice()))
+            .topic(Topic::try_new("state/conflict").expect("valid topic"))
+            .build(),
+    );
 
     assert_eq!(
         client.handle_read(IncomingData {
@@ -1336,17 +1357,17 @@ fn inbound_packet_id_reuse_conflict_causes_protocol_error() {
         ))
     ));
 
-    let qos2_same_packet_id = ControlPacket::Publish(Publish {
-        kind: PublishKind::Repetible {
-            packet_id,
-            qos: GuaranteedQoS::ExactlyOnce,
-            dup: false,
-        },
-        retain: false,
-        payload: Payload::new(b"qos2".as_slice()),
-        topic: Topic::try_new("state/conflict").expect("valid topic"),
-        properties: PublishProperties::default(),
-    });
+    let qos2_same_packet_id = ControlPacket::Publish(
+        Publish::builder()
+            .kind(PublishKind::Repetible {
+                packet_id,
+                qos: GuaranteedQoS::ExactlyOnce,
+                dup: false,
+            })
+            .payload(Payload::new(b"qos2".as_slice()))
+            .topic(Topic::try_new("state/conflict").expect("valid topic"))
+            .build(),
+    );
 
     assert_eq!(
         client.handle_read(IncomingData {
@@ -1372,12 +1393,13 @@ fn duplicate_qos2_publish_after_reject_resends_same_failure_pubrec_without_redel
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     assert!(client.poll_write().is_some());
 
-    let connack = ControlPacket::ConnAck(ConnAck {
-        kind: ConnAckKind::Other {
-            reason_code: ConnackReasonCode::Success,
-        },
-        properties: ConnAckProperties::default(),
-    });
+    let connack = ControlPacket::ConnAck(
+        ConnAck::builder()
+            .kind(ConnAckKind::Other {
+                reason_code: ConnackReasonCode::Success,
+            })
+            .build(),
+    );
     assert_eq!(
         client.handle_read(IncomingData {
             bytes: encode_packet(&connack),
@@ -1388,17 +1410,17 @@ fn duplicate_qos2_publish_after_reject_resends_same_failure_pubrec_without_redel
     assert!(matches!(client.poll_read(), Some(UserWriteOut::Connected)));
 
     let packet_id = NonZero::new(23).expect("non-zero packet id");
-    let first_publish = ControlPacket::Publish(Publish {
-        kind: PublishKind::Repetible {
-            packet_id,
-            qos: GuaranteedQoS::ExactlyOnce,
-            dup: false,
-        },
-        retain: false,
-        payload: Payload::new(b"first".as_slice()),
-        topic: Topic::try_new("state/reject").expect("valid topic"),
-        properties: PublishProperties::default(),
-    });
+    let first_publish = ControlPacket::Publish(
+        Publish::builder()
+            .kind(PublishKind::Repetible {
+                packet_id,
+                qos: GuaranteedQoS::ExactlyOnce,
+                dup: false,
+            })
+            .payload(Payload::new(b"first".as_slice()))
+            .topic(Topic::try_new("state/reject").expect("valid topic"))
+            .build(),
+    );
 
     assert_eq!(
         client.handle_read(IncomingData {
@@ -1419,24 +1441,25 @@ fn duplicate_qos2_publish_after_reject_resends_same_failure_pubrec_without_redel
         Ok(())
     );
 
-    let expected_pubrec = ControlPacket::PubRec(PubRec {
-        packet_id,
-        reason_code: PubRecReasonCode::NotAuthorized,
-        properties: PubRecProperties::default(),
-    });
+    let expected_pubrec = ControlPacket::PubRec(
+        PubRec::builder()
+            .packet_id(packet_id)
+            .reason_code(PubRecReasonCode::NotAuthorized)
+            .build(),
+    );
     assert_eq!(client.poll_write(), Some(encode_packet(&expected_pubrec)));
 
-    let duplicate_publish = ControlPacket::Publish(Publish {
-        kind: PublishKind::Repetible {
-            packet_id,
-            qos: GuaranteedQoS::ExactlyOnce,
-            dup: true,
-        },
-        retain: false,
-        payload: Payload::new(b"duplicate".as_slice()),
-        topic: Topic::try_new("state/reject").expect("valid topic"),
-        properties: PublishProperties::default(),
-    });
+    let duplicate_publish = ControlPacket::Publish(
+        Publish::builder()
+            .kind(PublishKind::Repetible {
+                packet_id,
+                qos: GuaranteedQoS::ExactlyOnce,
+                dup: true,
+            })
+            .payload(Payload::new(b"duplicate".as_slice()))
+            .topic(Topic::try_new("state/reject").expect("valid topic"))
+            .build(),
+    );
 
     assert_eq!(
         client.handle_read(IncomingData {
@@ -1456,12 +1479,13 @@ fn manual_ack_sends_puback_success_for_pending_message_id() {
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     assert!(client.poll_write().is_some());
 
-    let connack = ControlPacket::ConnAck(ConnAck {
-        kind: ConnAckKind::Other {
-            reason_code: ConnackReasonCode::Success,
-        },
-        properties: ConnAckProperties::default(),
-    });
+    let connack = ControlPacket::ConnAck(
+        ConnAck::builder()
+            .kind(ConnAckKind::Other {
+                reason_code: ConnackReasonCode::Success,
+            })
+            .build(),
+    );
     assert_eq!(
         client.handle_read(IncomingData {
             bytes: encode_packet(&connack),
@@ -1472,17 +1496,17 @@ fn manual_ack_sends_puback_success_for_pending_message_id() {
     assert!(matches!(client.poll_read(), Some(UserWriteOut::Connected)));
 
     let packet_id = NonZero::new(77).expect("non-zero packet id");
-    let publish = ControlPacket::Publish(Publish {
-        kind: PublishKind::Repetible {
-            packet_id,
-            qos: GuaranteedQoS::AtLeastOnce,
-            dup: false,
-        },
-        retain: false,
-        payload: Payload::new(b"unknown".as_slice()),
-        topic: Topic::try_new("unknown/id").expect("valid topic"),
-        properties: PublishProperties::default(),
-    });
+    let publish = ControlPacket::Publish(
+        Publish::builder()
+            .kind(PublishKind::Repetible {
+                packet_id,
+                qos: GuaranteedQoS::AtLeastOnce,
+                dup: false,
+            })
+            .payload(Payload::new(b"unknown".as_slice()))
+            .topic(Topic::try_new("unknown/id").expect("valid topic"))
+            .build(),
+    );
     assert_eq!(
         client.handle_read(IncomingData {
             bytes: encode_packet(&publish),
@@ -1501,11 +1525,12 @@ fn manual_ack_sends_puback_success_for_pending_message_id() {
         Ok(())
     );
 
-    let expected_puback = ControlPacket::PubAck(PubAck {
-        packet_id,
-        reason_code: PubAckReasonCode::Success,
-        properties: PubAckProperties::default(),
-    });
+    let expected_puback = ControlPacket::PubAck(
+        PubAck::builder()
+            .packet_id(packet_id)
+            .reason_code(PubAckReasonCode::Success)
+            .build(),
+    );
     assert_eq!(client.poll_write(), Some(encode_packet(&expected_puback)));
 
     assert!(client.poll_write().is_none());
@@ -1546,12 +1571,13 @@ fn reject_reason_maps_to_puback_failure_codes_for_qos1() {
         assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
         assert!(client.poll_write().is_some());
 
-        let connack = ControlPacket::ConnAck(ConnAck {
-            kind: ConnAckKind::Other {
-                reason_code: ConnackReasonCode::Success,
-            },
-            properties: ConnAckProperties::default(),
-        });
+        let connack = ControlPacket::ConnAck(
+            ConnAck::builder()
+                .kind(ConnAckKind::Other {
+                    reason_code: ConnackReasonCode::Success,
+                })
+                .build(),
+        );
         assert_eq!(
             client.handle_read(IncomingData {
                 bytes: encode_packet(&connack),
@@ -1562,17 +1588,17 @@ fn reject_reason_maps_to_puback_failure_codes_for_qos1() {
         assert!(matches!(client.poll_read(), Some(UserWriteOut::Connected)));
 
         let packet_id = NonZero::new((offset + 1) as u16).expect("non-zero packet id");
-        let publish = ControlPacket::Publish(Publish {
-            kind: PublishKind::Repetible {
-                packet_id,
-                qos: GuaranteedQoS::AtLeastOnce,
-                dup: false,
-            },
-            retain: false,
-            payload: Payload::new(b"mapping".as_slice()),
-            topic: Topic::try_new("reject/reason/qos1").expect("valid topic"),
-            properties: PublishProperties::default(),
-        });
+        let publish = ControlPacket::Publish(
+            Publish::builder()
+                .kind(PublishKind::Repetible {
+                    packet_id,
+                    qos: GuaranteedQoS::AtLeastOnce,
+                    dup: false,
+                })
+                .payload(Payload::new(b"mapping".as_slice()))
+                .topic(Topic::try_new("reject/reason/qos1").expect("valid topic"))
+                .build(),
+        );
 
         assert_eq!(
             client.handle_read(IncomingData {
@@ -1594,11 +1620,12 @@ fn reject_reason_maps_to_puback_failure_codes_for_qos1() {
             Ok(())
         );
 
-        let expected_puback = ControlPacket::PubAck(PubAck {
-            packet_id,
-            reason_code: *expected_reason_code,
-            properties: PubAckProperties::default(),
-        });
+        let expected_puback = ControlPacket::PubAck(
+            PubAck::builder()
+                .packet_id(packet_id)
+                .reason_code(*expected_reason_code)
+                .build(),
+        );
         assert_eq!(client.poll_write(), Some(encode_packet(&expected_puback)));
     }
 }
@@ -1638,12 +1665,13 @@ fn reject_reason_maps_to_pubrec_failure_codes_for_qos2() {
         assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
         assert!(client.poll_write().is_some());
 
-        let connack = ControlPacket::ConnAck(ConnAck {
-            kind: ConnAckKind::Other {
-                reason_code: ConnackReasonCode::Success,
-            },
-            properties: ConnAckProperties::default(),
-        });
+        let connack = ControlPacket::ConnAck(
+            ConnAck::builder()
+                .kind(ConnAckKind::Other {
+                    reason_code: ConnackReasonCode::Success,
+                })
+                .build(),
+        );
         assert_eq!(
             client.handle_read(IncomingData {
                 bytes: encode_packet(&connack),
@@ -1654,17 +1682,17 @@ fn reject_reason_maps_to_pubrec_failure_codes_for_qos2() {
         assert!(matches!(client.poll_read(), Some(UserWriteOut::Connected)));
 
         let packet_id = NonZero::new((offset + 1) as u16).expect("non-zero packet id");
-        let publish = ControlPacket::Publish(Publish {
-            kind: PublishKind::Repetible {
-                packet_id,
-                qos: GuaranteedQoS::ExactlyOnce,
-                dup: false,
-            },
-            retain: false,
-            payload: Payload::new(b"mapping".as_slice()),
-            topic: Topic::try_new("reject/reason/qos2").expect("valid topic"),
-            properties: PublishProperties::default(),
-        });
+        let publish = ControlPacket::Publish(
+            Publish::builder()
+                .kind(PublishKind::Repetible {
+                    packet_id,
+                    qos: GuaranteedQoS::ExactlyOnce,
+                    dup: false,
+                })
+                .payload(Payload::new(b"mapping".as_slice()))
+                .topic(Topic::try_new("reject/reason/qos2").expect("valid topic"))
+                .build(),
+        );
 
         assert_eq!(
             client.handle_read(IncomingData {
@@ -1686,11 +1714,12 @@ fn reject_reason_maps_to_pubrec_failure_codes_for_qos2() {
             Ok(())
         );
 
-        let expected_pubrec = ControlPacket::PubRec(PubRec {
-            packet_id,
-            reason_code: *expected_reason_code,
-            properties: PubRecProperties::default(),
-        });
+        let expected_pubrec = ControlPacket::PubRec(
+            PubRec::builder()
+                .packet_id(packet_id)
+                .reason_code(*expected_reason_code)
+                .build(),
+        );
         assert_eq!(client.poll_write(), Some(encode_packet(&expected_pubrec)));
     }
 }
@@ -1702,12 +1731,13 @@ fn inbound_qos2_unknown_pubrel_sends_pubcomp_packet_identifier_not_found() {
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     assert!(client.poll_write().is_some());
 
-    let connack = ControlPacket::ConnAck(ConnAck {
-        kind: ConnAckKind::Other {
-            reason_code: ConnackReasonCode::Success,
-        },
-        properties: ConnAckProperties::default(),
-    });
+    let connack = ControlPacket::ConnAck(
+        ConnAck::builder()
+            .kind(ConnAckKind::Other {
+                reason_code: ConnackReasonCode::Success,
+            })
+            .build(),
+    );
     assert_eq!(
         client.handle_read(IncomingData {
             bytes: encode_packet(&connack),
@@ -1718,11 +1748,12 @@ fn inbound_qos2_unknown_pubrel_sends_pubcomp_packet_identifier_not_found() {
     assert!(matches!(client.poll_read(), Some(UserWriteOut::Connected)));
 
     let unknown_packet_id = NonZero::new(21).expect("non-zero packet id");
-    let pubrel = ControlPacket::PubRel(PubRel {
-        packet_id: unknown_packet_id,
-        reason_code: PubRelReasonCode::Success,
-        properties: PubRelProperties::default(),
-    });
+    let pubrel = ControlPacket::PubRel(
+        PubRel::builder()
+            .packet_id(unknown_packet_id)
+            .reason_code(PubRelReasonCode::Success)
+            .build(),
+    );
 
     assert_eq!(
         client.handle_read(IncomingData {
@@ -1732,11 +1763,12 @@ fn inbound_qos2_unknown_pubrel_sends_pubcomp_packet_identifier_not_found() {
         Ok(())
     );
 
-    let expected_pubcomp = ControlPacket::PubComp(PubComp {
-        packet_id: unknown_packet_id,
-        reason_code: PubCompReasonCode::PacketIdentifierNotFound,
-        properties: PubCompProperties::default(),
-    });
+    let expected_pubcomp = ControlPacket::PubComp(
+        PubComp::builder()
+            .packet_id(unknown_packet_id)
+            .reason_code(PubCompReasonCode::PacketIdentifierNotFound)
+            .build(),
+    );
     assert_eq!(client.poll_write(), Some(encode_packet(&expected_pubcomp)));
     assert!(client.poll_event().is_none());
 }
@@ -1748,12 +1780,13 @@ fn socket_closed_after_disconnect_does_not_duplicate_disconnected_event() {
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     assert!(client.poll_write().is_some());
 
-    let connack = ControlPacket::ConnAck(ConnAck {
-        kind: ConnAckKind::Other {
-            reason_code: ConnackReasonCode::Success,
-        },
-        properties: ConnAckProperties::default(),
-    });
+    let connack = ControlPacket::ConnAck(
+        ConnAck::builder()
+            .kind(ConnAckKind::Other {
+                reason_code: ConnackReasonCode::Success,
+            })
+            .build(),
+    );
     assert_eq!(
         client.handle_read(IncomingData {
             bytes: encode_packet(&connack),
@@ -1763,10 +1796,11 @@ fn socket_closed_after_disconnect_does_not_duplicate_disconnected_event() {
     );
     assert!(matches!(client.poll_read(), Some(UserWriteOut::Connected)));
 
-    let disconnect = ControlPacket::Disconnect(Disconnect {
-        reason_code: DisconnectReasonCode::NormalDisconnection,
-        properties: DisconnectProperties::default(),
-    });
+    let disconnect = ControlPacket::Disconnect(
+        Disconnect::builder()
+            .reason_code(DisconnectReasonCode::NormalDisconnection)
+            .build(),
+    );
     assert_eq!(
         client.handle_read(IncomingData {
             bytes: encode_packet(&disconnect),
@@ -1794,12 +1828,13 @@ fn outbound_qos1_publish_emits_acknowledged_event_on_puback() {
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     assert!(client.poll_write().is_some());
 
-    let connack = ControlPacket::ConnAck(ConnAck {
-        kind: ConnAckKind::Other {
-            reason_code: ConnackReasonCode::Success,
-        },
-        properties: ConnAckProperties::default(),
-    });
+    let connack = ControlPacket::ConnAck(
+        ConnAck::builder()
+            .kind(ConnAckKind::Other {
+                reason_code: ConnackReasonCode::Success,
+            })
+            .build(),
+    );
     assert_eq!(
         client.handle_read(IncomingData {
             bytes: encode_packet(&connack),
@@ -1825,24 +1860,25 @@ fn outbound_qos1_publish_emits_acknowledged_event_on_puback() {
     );
 
     let packet_id = NonZero::new(1).expect("non-zero packet id");
-    let expected_publish = ControlPacket::Publish(Publish {
-        kind: PublishKind::Repetible {
-            packet_id,
-            qos: GuaranteedQoS::AtLeastOnce,
-            dup: false,
-        },
-        retain: false,
-        payload: qos1_message.payload,
-        topic,
-        properties: PublishProperties::default(),
-    });
+    let expected_publish = ControlPacket::Publish(
+        Publish::builder()
+            .kind(PublishKind::Repetible {
+                packet_id,
+                qos: GuaranteedQoS::AtLeastOnce,
+                dup: false,
+            })
+            .payload(qos1_message.payload)
+            .topic(topic)
+            .build(),
+    );
     assert_eq!(client.poll_write(), Some(encode_packet(&expected_publish)));
 
-    let puback = ControlPacket::PubAck(PubAck {
-        packet_id,
-        reason_code: PubAckReasonCode::Success,
-        properties: PubAckProperties::default(),
-    });
+    let puback = ControlPacket::PubAck(
+        PubAck::builder()
+            .packet_id(packet_id)
+            .reason_code(PubAckReasonCode::Success)
+            .build(),
+    );
     assert_eq!(
         client.handle_read(IncomingData {
             bytes: encode_packet(&puback),
@@ -1864,12 +1900,13 @@ fn unexpected_puback_without_matching_qos1_transaction_triggers_protocol_error_c
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     assert!(client.poll_write().is_some());
 
-    let connack = ControlPacket::ConnAck(ConnAck {
-        kind: ConnAckKind::Other {
-            reason_code: ConnackReasonCode::Success,
-        },
-        properties: ConnAckProperties::default(),
-    });
+    let connack = ControlPacket::ConnAck(
+        ConnAck::builder()
+            .kind(ConnAckKind::Other {
+                reason_code: ConnackReasonCode::Success,
+            })
+            .build(),
+    );
     assert_eq!(
         client.handle_read(IncomingData {
             bytes: encode_packet(&connack),
@@ -1880,11 +1917,12 @@ fn unexpected_puback_without_matching_qos1_transaction_triggers_protocol_error_c
     assert!(matches!(client.poll_read(), Some(UserWriteOut::Connected)));
 
     let packet_id = NonZero::new(42).expect("non-zero packet id");
-    let puback = ControlPacket::PubAck(PubAck {
-        packet_id,
-        reason_code: PubAckReasonCode::Success,
-        properties: PubAckProperties::default(),
-    });
+    let puback = ControlPacket::PubAck(
+        PubAck::builder()
+            .packet_id(packet_id)
+            .reason_code(PubAckReasonCode::Success)
+            .build(),
+    );
 
     assert_eq!(
         client.handle_read(IncomingData {
@@ -1910,12 +1948,13 @@ fn qos2_inflight_receiving_puback_triggers_protocol_error_close() {
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     assert!(client.poll_write().is_some());
 
-    let connack = ControlPacket::ConnAck(ConnAck {
-        kind: ConnAckKind::Other {
-            reason_code: ConnackReasonCode::Success,
-        },
-        properties: ConnAckProperties::default(),
-    });
+    let connack = ControlPacket::ConnAck(
+        ConnAck::builder()
+            .kind(ConnAckKind::Other {
+                reason_code: ConnackReasonCode::Success,
+            })
+            .build(),
+    );
     assert_eq!(
         client.handle_read(IncomingData {
             bytes: encode_packet(&connack),
@@ -1941,11 +1980,12 @@ fn qos2_inflight_receiving_puback_triggers_protocol_error_close() {
     assert!(client.poll_write().is_some());
 
     let packet_id = NonZero::new(1).expect("non-zero packet id");
-    let puback = ControlPacket::PubAck(PubAck {
-        packet_id,
-        reason_code: PubAckReasonCode::Success,
-        properties: PubAckProperties::default(),
-    });
+    let puback = ControlPacket::PubAck(
+        PubAck::builder()
+            .packet_id(packet_id)
+            .reason_code(PubAckReasonCode::Success)
+            .build(),
+    );
 
     assert_eq!(
         client.handle_read(IncomingData {
@@ -1972,12 +2012,13 @@ fn qos1_inflight_receiving_pubrec_triggers_protocol_error_close() {
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     assert!(client.poll_write().is_some());
 
-    let connack = ControlPacket::ConnAck(ConnAck {
-        kind: ConnAckKind::Other {
-            reason_code: ConnackReasonCode::Success,
-        },
-        properties: ConnAckProperties::default(),
-    });
+    let connack = ControlPacket::ConnAck(
+        ConnAck::builder()
+            .kind(ConnAckKind::Other {
+                reason_code: ConnackReasonCode::Success,
+            })
+            .build(),
+    );
     assert_eq!(
         client.handle_read(IncomingData {
             bytes: encode_packet(&connack),
@@ -2003,11 +2044,12 @@ fn qos1_inflight_receiving_pubrec_triggers_protocol_error_close() {
     assert!(client.poll_write().is_some());
 
     let packet_id = NonZero::new(1).expect("non-zero packet id");
-    let pubrec = ControlPacket::PubRec(PubRec {
-        packet_id,
-        reason_code: PubRecReasonCode::Success,
-        properties: PubRecProperties::default(),
-    });
+    let pubrec = ControlPacket::PubRec(
+        PubRec::builder()
+            .packet_id(packet_id)
+            .reason_code(PubRecReasonCode::Success)
+            .build(),
+    );
 
     assert_eq!(
         client.handle_read(IncomingData {
@@ -2034,15 +2076,18 @@ fn connack_receive_maximum_only_limits_broker_facing_publish_flow() {
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     assert!(client.poll_write().is_some());
 
-    let connack = ControlPacket::ConnAck(ConnAck {
-        kind: ConnAckKind::Other {
-            reason_code: ConnackReasonCode::Success,
-        },
-        properties: ConnAckProperties {
-            receive_maximum: NonZero::new(1),
-            ..ConnAckProperties::default()
-        },
-    });
+    let connack = ControlPacket::ConnAck(
+        ConnAck::builder()
+            .kind(ConnAckKind::Other {
+                reason_code: ConnackReasonCode::Success,
+            })
+            .properties(
+                ConnAckProperties::builder()
+                    .maybe_receive_maximum(NonZero::new(1))
+                    .build(),
+            )
+            .build(),
+    );
     assert_eq!(
         client.handle_read(IncomingData {
             bytes: encode_packet(&connack),
@@ -2067,29 +2112,29 @@ fn connack_receive_maximum_only_limits_broker_facing_publish_flow() {
     );
 
     let first_packet_id = NonZero::new(1).expect("non-zero packet id");
-    let expected_first_publish = ControlPacket::Publish(Publish {
-        kind: PublishKind::Repetible {
-            packet_id: first_packet_id,
-            qos: GuaranteedQoS::AtLeastOnce,
-            dup: false,
-        },
-        retain: false,
-        payload: first_message.payload,
-        topic,
-        properties: PublishProperties::default(),
-    });
+    let expected_first_publish = ControlPacket::Publish(
+        Publish::builder()
+            .kind(PublishKind::Repetible {
+                packet_id: first_packet_id,
+                qos: GuaranteedQoS::AtLeastOnce,
+                dup: false,
+            })
+            .payload(first_message.payload)
+            .topic(topic)
+            .build(),
+    );
     assert_eq!(
         client.poll_write(),
         Some(encode_packet(&expected_first_publish))
     );
 
-    let inbound_publish = ControlPacket::Publish(Publish {
-        kind: PublishKind::FireAndForget,
-        retain: false,
-        payload: Payload::new(b"inbound-ok".as_slice()),
-        topic: Topic::try_new("inbound/unchanged").expect("valid topic"),
-        properties: PublishProperties::default(),
-    });
+    let inbound_publish = ControlPacket::Publish(
+        Publish::builder()
+            .kind(PublishKind::FireAndForget)
+            .payload(Payload::new(b"inbound-ok".as_slice()))
+            .topic(Topic::try_new("inbound/unchanged").expect("valid topic"))
+            .build(),
+    );
     assert_eq!(
         client.handle_read(IncomingData {
             bytes: encode_packet(&inbound_publish),
@@ -2103,17 +2148,17 @@ fn connack_receive_maximum_only_limits_broker_facing_publish_flow() {
     ));
 
     let inbound_qos1_packet_id = NonZero::new(41).expect("non-zero packet id");
-    let inbound_qos1_publish = ControlPacket::Publish(Publish {
-        kind: PublishKind::Repetible {
-            packet_id: inbound_qos1_packet_id,
-            qos: GuaranteedQoS::AtLeastOnce,
-            dup: false,
-        },
-        retain: false,
-        payload: Payload::new(b"inbound-qos1-ok".as_slice()),
-        topic: Topic::try_new("inbound/qos1").expect("valid topic"),
-        properties: PublishProperties::default(),
-    });
+    let inbound_qos1_publish = ControlPacket::Publish(
+        Publish::builder()
+            .kind(PublishKind::Repetible {
+                packet_id: inbound_qos1_packet_id,
+                qos: GuaranteedQoS::AtLeastOnce,
+                dup: false,
+            })
+            .payload(Payload::new(b"inbound-qos1-ok".as_slice()))
+            .topic(Topic::try_new("inbound/qos1").expect("valid topic"))
+            .build(),
+    );
     assert_eq!(
         client.handle_read(IncomingData {
             bytes: encode_packet(&inbound_qos1_publish),
@@ -2132,11 +2177,12 @@ fn connack_receive_maximum_only_limits_broker_facing_publish_flow() {
         client.handle_write(UserWriteIn::AcknowledgeMessage(inbound_message_id)),
         Ok(())
     );
-    let expected_puback = ControlPacket::PubAck(PubAck {
-        packet_id: inbound_qos1_packet_id,
-        reason_code: PubAckReasonCode::Success,
-        properties: PubAckProperties::default(),
-    });
+    let expected_puback = ControlPacket::PubAck(
+        PubAck::builder()
+            .packet_id(inbound_qos1_packet_id)
+            .reason_code(PubAckReasonCode::Success)
+            .build(),
+    );
     assert_eq!(client.poll_write(), Some(encode_packet(&expected_puback)));
 
     let second_message = ClientMessage {
@@ -2180,15 +2226,18 @@ fn effective_limits_recompute_on_connect_socketconnected_connack_and_socketclose
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     assert!(client.poll_write().is_some());
 
-    let connack = ControlPacket::ConnAck(ConnAck {
-        kind: ConnAckKind::Other {
-            reason_code: ConnackReasonCode::Success,
-        },
-        properties: ConnAckProperties {
-            maximum_qos: Some(MaximumQoS::AtLeastOnce),
-            ..ConnAckProperties::default()
-        },
-    });
+    let connack = ControlPacket::ConnAck(
+        ConnAck::builder()
+            .kind(ConnAckKind::Other {
+                reason_code: ConnackReasonCode::Success,
+            })
+            .properties(
+                ConnAckProperties::builder()
+                    .maximum_qos(MaximumQoS::AtLeastOnce)
+                    .build(),
+            )
+            .build(),
+    );
     assert_eq!(
         client.handle_read(IncomingData {
             bytes: encode_packet(&connack),
@@ -2221,15 +2270,18 @@ fn effective_limits_recompute_on_connect_socketconnected_connack_and_socketclose
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     assert!(client.poll_write().is_some());
 
-    let second_connack = ControlPacket::ConnAck(ConnAck {
-        kind: ConnAckKind::Other {
-            reason_code: ConnackReasonCode::Success,
-        },
-        properties: ConnAckProperties {
-            maximum_qos: Some(MaximumQoS::AtLeastOnce),
-            ..ConnAckProperties::default()
-        },
-    });
+    let second_connack = ControlPacket::ConnAck(
+        ConnAck::builder()
+            .kind(ConnAckKind::Other {
+                reason_code: ConnackReasonCode::Success,
+            })
+            .properties(
+                ConnAckProperties::builder()
+                    .maximum_qos(MaximumQoS::AtLeastOnce)
+                    .build(),
+            )
+            .build(),
+    );
     assert_eq!(
         client.handle_read(IncomingData {
             bytes: encode_packet(&second_connack),
@@ -2264,15 +2316,18 @@ fn effective_limits_recompute_on_connect_applies_pending_connect_options() {
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     assert!(client.poll_write().is_some());
 
-    let connack = ControlPacket::ConnAck(ConnAck {
-        kind: ConnAckKind::Other {
-            reason_code: ConnackReasonCode::Success,
-        },
-        properties: ConnAckProperties {
-            maximum_qos: Some(MaximumQoS::AtLeastOnce),
-            ..ConnAckProperties::default()
-        },
-    });
+    let connack = ControlPacket::ConnAck(
+        ConnAck::builder()
+            .kind(ConnAckKind::Other {
+                reason_code: ConnackReasonCode::Success,
+            })
+            .properties(
+                ConnAckProperties::builder()
+                    .maximum_qos(MaximumQoS::AtLeastOnce)
+                    .build(),
+            )
+            .build(),
+    );
     assert_eq!(
         client.handle_read(IncomingData {
             bytes: encode_packet(&connack),
@@ -2309,15 +2364,18 @@ fn effective_limits_recompute_on_connack_applies_broker_receive_maximum() {
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     assert!(client.poll_write().is_some());
 
-    let connack = ControlPacket::ConnAck(ConnAck {
-        kind: ConnAckKind::Other {
-            reason_code: ConnackReasonCode::Success,
-        },
-        properties: ConnAckProperties {
-            receive_maximum: NonZero::new(1),
-            ..ConnAckProperties::default()
-        },
-    });
+    let connack = ControlPacket::ConnAck(
+        ConnAck::builder()
+            .kind(ConnAckKind::Other {
+                reason_code: ConnackReasonCode::Success,
+            })
+            .properties(
+                ConnAckProperties::builder()
+                    .maybe_receive_maximum(NonZero::new(1))
+                    .build(),
+            )
+            .build(),
+    );
     assert_eq!(
         client.handle_read(IncomingData {
             bytes: encode_packet(&connack),
@@ -2373,12 +2431,13 @@ fn app_topic_alias_zero_disables_inbound_alias_even_if_connect_requests_more() {
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     assert!(client.poll_write().is_some());
 
-    let connack = ControlPacket::ConnAck(ConnAck {
-        kind: ConnAckKind::Other {
-            reason_code: ConnackReasonCode::Success,
-        },
-        properties: ConnAckProperties::default(),
-    });
+    let connack = ControlPacket::ConnAck(
+        ConnAck::builder()
+            .kind(ConnAckKind::Other {
+                reason_code: ConnackReasonCode::Success,
+            })
+            .build(),
+    );
     assert_eq!(
         client.handle_read(IncomingData {
             bytes: encode_packet(&connack),
@@ -2388,16 +2447,18 @@ fn app_topic_alias_zero_disables_inbound_alias_even_if_connect_requests_more() {
     );
     assert!(matches!(client.poll_read(), Some(UserWriteOut::Connected)));
 
-    let inbound_publish_with_alias = ControlPacket::Publish(Publish {
-        kind: PublishKind::FireAndForget,
-        retain: false,
-        payload: Payload::new(b"with-alias".as_slice()),
-        topic: Topic::try_new("alias/topic").expect("valid topic"),
-        properties: PublishProperties {
-            topic_alias: Some(NonZero::new(1).expect("non-zero alias")),
-            ..PublishProperties::default()
-        },
-    });
+    let inbound_publish_with_alias = ControlPacket::Publish(
+        Publish::builder()
+            .kind(PublishKind::FireAndForget)
+            .payload(Payload::new(b"with-alias".as_slice()))
+            .topic(Topic::try_new("alias/topic").expect("valid topic"))
+            .properties(
+                PublishProperties::builder()
+                    .topic_alias(NonZero::new(1).expect("non-zero alias"))
+                    .build(),
+            )
+            .build(),
+    );
 
     assert_eq!(
         client.handle_read(IncomingData {
@@ -2436,12 +2497,13 @@ fn app_topic_alias_setting_is_applied_when_connect_option_omits_alias_limit() {
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     assert!(client.poll_write().is_some());
 
-    let connack = ControlPacket::ConnAck(ConnAck {
-        kind: ConnAckKind::Other {
-            reason_code: ConnackReasonCode::Success,
-        },
-        properties: ConnAckProperties::default(),
-    });
+    let connack = ControlPacket::ConnAck(
+        ConnAck::builder()
+            .kind(ConnAckKind::Other {
+                reason_code: ConnackReasonCode::Success,
+            })
+            .build(),
+    );
     assert_eq!(
         client.handle_read(IncomingData {
             bytes: encode_packet(&connack),
@@ -2451,16 +2513,18 @@ fn app_topic_alias_setting_is_applied_when_connect_option_omits_alias_limit() {
     );
     assert!(matches!(client.poll_read(), Some(UserWriteOut::Connected)));
 
-    let alias_set_publish = ControlPacket::Publish(Publish {
-        kind: PublishKind::FireAndForget,
-        retain: false,
-        payload: Payload::new(b"alias-set".as_slice()),
-        topic: Topic::try_new("alias/source").expect("valid topic"),
-        properties: PublishProperties {
-            topic_alias: Some(NonZero::new(2).expect("non-zero alias")),
-            ..PublishProperties::default()
-        },
-    });
+    let alias_set_publish = ControlPacket::Publish(
+        Publish::builder()
+            .kind(PublishKind::FireAndForget)
+            .payload(Payload::new(b"alias-set".as_slice()))
+            .topic(Topic::try_new("alias/source").expect("valid topic"))
+            .properties(
+                PublishProperties::builder()
+                    .topic_alias(NonZero::new(2).expect("non-zero alias"))
+                    .build(),
+            )
+            .build(),
+    );
     assert_eq!(
         client.handle_read(IncomingData {
             bytes: encode_packet(&alias_set_publish),
@@ -2473,16 +2537,18 @@ fn app_topic_alias_setting_is_applied_when_connect_option_omits_alias_limit() {
         Some(UserWriteOut::ReceivedMessage(_))
     ));
 
-    let alias_over_limit_publish = ControlPacket::Publish(Publish {
-        kind: PublishKind::FireAndForget,
-        retain: false,
-        payload: Payload::new(b"alias-over".as_slice()),
-        topic: Topic::try_new("alias/over").expect("valid topic"),
-        properties: PublishProperties {
-            topic_alias: Some(NonZero::new(3).expect("non-zero alias")),
-            ..PublishProperties::default()
-        },
-    });
+    let alias_over_limit_publish = ControlPacket::Publish(
+        Publish::builder()
+            .kind(PublishKind::FireAndForget)
+            .payload(Payload::new(b"alias-over".as_slice()))
+            .topic(Topic::try_new("alias/over").expect("valid topic"))
+            .properties(
+                PublishProperties::builder()
+                    .topic_alias(NonZero::new(3).expect("non-zero alias"))
+                    .build(),
+            )
+            .build(),
+    );
     assert_eq!(
         client.handle_read(IncomingData {
             bytes: encode_packet(&alias_over_limit_publish),
@@ -2502,15 +2568,14 @@ fn app_retain_policy_false_blocks_retain_publish_even_if_broker_allows() {
 
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     assert!(client.poll_write().is_some());
-    let connack = ControlPacket::ConnAck(ConnAck {
-        kind: ConnAckKind::Other {
-            reason_code: ConnackReasonCode::Success,
-        },
-        properties: ConnAckProperties {
-            retain_available: Some(true),
-            ..ConnAckProperties::default()
-        },
-    });
+    let connack = ControlPacket::ConnAck(
+        ConnAck::builder()
+            .kind(ConnAckKind::Other {
+                reason_code: ConnackReasonCode::Success,
+            })
+            .properties(ConnAckProperties::builder().retain_available(true).build())
+            .build(),
+    );
     assert_eq!(
         client.handle_read(IncomingData {
             bytes: encode_packet(&connack),
@@ -2544,17 +2609,20 @@ fn app_subscription_policy_flags_override_broker_allowances() {
 
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     assert!(client.poll_write().is_some());
-    let connack = ControlPacket::ConnAck(ConnAck {
-        kind: ConnAckKind::Other {
-            reason_code: ConnackReasonCode::Success,
-        },
-        properties: ConnAckProperties {
-            wildcard_subscription_available: Some(true),
-            shared_subscription_available: Some(true),
-            subscription_identifiers_available: Some(true),
-            ..ConnAckProperties::default()
-        },
-    });
+    let connack = ControlPacket::ConnAck(
+        ConnAck::builder()
+            .kind(ConnAckKind::Other {
+                reason_code: ConnackReasonCode::Success,
+            })
+            .properties(
+                ConnAckProperties::builder()
+                    .wildcard_subscription_available(true)
+                    .shared_subscription_available(true)
+                    .subscription_identifiers_available(true)
+                    .build(),
+            )
+            .build(),
+    );
     assert_eq!(
         client.handle_read(IncomingData {
             bytes: encode_packet(&connack),
@@ -2592,12 +2660,13 @@ fn outbound_qos2_publish_emits_completed_event_on_pubcomp() {
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     assert!(client.poll_write().is_some());
 
-    let connack = ControlPacket::ConnAck(ConnAck {
-        kind: ConnAckKind::Other {
-            reason_code: ConnackReasonCode::Success,
-        },
-        properties: ConnAckProperties::default(),
-    });
+    let connack = ControlPacket::ConnAck(
+        ConnAck::builder()
+            .kind(ConnAckKind::Other {
+                reason_code: ConnackReasonCode::Success,
+            })
+            .build(),
+    );
     assert_eq!(
         client.handle_read(IncomingData {
             bytes: encode_packet(&connack),
@@ -2623,24 +2692,25 @@ fn outbound_qos2_publish_emits_completed_event_on_pubcomp() {
     );
 
     let packet_id = NonZero::new(1).expect("non-zero packet id");
-    let expected_publish = ControlPacket::Publish(Publish {
-        kind: PublishKind::Repetible {
-            packet_id,
-            qos: GuaranteedQoS::ExactlyOnce,
-            dup: false,
-        },
-        retain: false,
-        payload: qos2_message.payload,
-        topic,
-        properties: PublishProperties::default(),
-    });
+    let expected_publish = ControlPacket::Publish(
+        Publish::builder()
+            .kind(PublishKind::Repetible {
+                packet_id,
+                qos: GuaranteedQoS::ExactlyOnce,
+                dup: false,
+            })
+            .payload(qos2_message.payload)
+            .topic(topic)
+            .build(),
+    );
     assert_eq!(client.poll_write(), Some(encode_packet(&expected_publish)));
 
-    let pubrec = ControlPacket::PubRec(PubRec {
-        packet_id,
-        reason_code: PubRecReasonCode::Success,
-        properties: PubRecProperties::default(),
-    });
+    let pubrec = ControlPacket::PubRec(
+        PubRec::builder()
+            .packet_id(packet_id)
+            .reason_code(PubRecReasonCode::Success)
+            .build(),
+    );
     assert_eq!(
         client.handle_read(IncomingData {
             bytes: encode_packet(&pubrec),
@@ -2649,18 +2719,20 @@ fn outbound_qos2_publish_emits_completed_event_on_pubcomp() {
         Ok(())
     );
 
-    let expected_pubrel = ControlPacket::PubRel(PubRel {
-        packet_id,
-        reason_code: PubRelReasonCode::Success,
-        properties: PubRelProperties::default(),
-    });
+    let expected_pubrel = ControlPacket::PubRel(
+        PubRel::builder()
+            .packet_id(packet_id)
+            .reason_code(PubRelReasonCode::Success)
+            .build(),
+    );
     assert_eq!(client.poll_write(), Some(encode_packet(&expected_pubrel)));
 
-    let pubcomp = ControlPacket::PubComp(PubComp {
-        packet_id,
-        reason_code: PubCompReasonCode::Success,
-        properties: PubCompProperties::default(),
-    });
+    let pubcomp = ControlPacket::PubComp(
+        PubComp::builder()
+            .packet_id(packet_id)
+            .reason_code(PubCompReasonCode::Success)
+            .build(),
+    );
     assert_eq!(
         client.handle_read(IncomingData {
             bytes: encode_packet(&pubcomp),
@@ -2682,12 +2754,13 @@ fn unexpected_pubcomp_before_pubrec_transition_triggers_protocol_error_close() {
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     assert!(client.poll_write().is_some());
 
-    let connack = ControlPacket::ConnAck(ConnAck {
-        kind: ConnAckKind::Other {
-            reason_code: ConnackReasonCode::Success,
-        },
-        properties: ConnAckProperties::default(),
-    });
+    let connack = ControlPacket::ConnAck(
+        ConnAck::builder()
+            .kind(ConnAckKind::Other {
+                reason_code: ConnackReasonCode::Success,
+            })
+            .build(),
+    );
     assert_eq!(
         client.handle_read(IncomingData {
             bytes: encode_packet(&connack),
@@ -2713,11 +2786,12 @@ fn unexpected_pubcomp_before_pubrec_transition_triggers_protocol_error_close() {
     assert!(client.poll_write().is_some());
 
     let packet_id = NonZero::new(1).expect("non-zero packet id");
-    let pubcomp = ControlPacket::PubComp(PubComp {
-        packet_id,
-        reason_code: PubCompReasonCode::Success,
-        properties: PubCompProperties::default(),
-    });
+    let pubcomp = ControlPacket::PubComp(
+        PubComp::builder()
+            .packet_id(packet_id)
+            .reason_code(PubCompReasonCode::Success)
+            .build(),
+    );
 
     assert_eq!(
         client.handle_read(IncomingData {
@@ -2743,15 +2817,18 @@ fn receive_maximum_full_returns_immediate_error_for_new_qos2_publish() {
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     assert!(client.poll_write().is_some());
 
-    let connack = ControlPacket::ConnAck(ConnAck {
-        kind: ConnAckKind::Other {
-            reason_code: ConnackReasonCode::Success,
-        },
-        properties: ConnAckProperties {
-            receive_maximum: NonZero::new(1),
-            ..ConnAckProperties::default()
-        },
-    });
+    let connack = ControlPacket::ConnAck(
+        ConnAck::builder()
+            .kind(ConnAckKind::Other {
+                reason_code: ConnackReasonCode::Success,
+            })
+            .properties(
+                ConnAckProperties::builder()
+                    .maybe_receive_maximum(NonZero::new(1))
+                    .build(),
+            )
+            .build(),
+    );
     assert_eq!(
         client.handle_read(IncomingData {
             bytes: encode_packet(&connack),
@@ -2776,17 +2853,17 @@ fn receive_maximum_full_returns_immediate_error_for_new_qos2_publish() {
     );
 
     let first_packet_id = NonZero::new(1).expect("non-zero packet id");
-    let expected_first_publish = ControlPacket::Publish(Publish {
-        kind: PublishKind::Repetible {
-            packet_id: first_packet_id,
-            qos: GuaranteedQoS::ExactlyOnce,
-            dup: false,
-        },
-        retain: false,
-        payload: first_message.payload,
-        topic,
-        properties: PublishProperties::default(),
-    });
+    let expected_first_publish = ControlPacket::Publish(
+        Publish::builder()
+            .kind(PublishKind::Repetible {
+                packet_id: first_packet_id,
+                qos: GuaranteedQoS::ExactlyOnce,
+                dup: false,
+            })
+            .payload(first_message.payload)
+            .topic(topic)
+            .build(),
+    );
     assert_eq!(
         client.poll_write(),
         Some(encode_packet(&expected_first_publish))
@@ -2812,12 +2889,13 @@ fn duplicate_pubrec_in_qos2_await_pubcomp_resends_pubrel_without_disconnect() {
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     assert!(client.poll_write().is_some());
 
-    let connack = ControlPacket::ConnAck(ConnAck {
-        kind: ConnAckKind::Other {
-            reason_code: ConnackReasonCode::Success,
-        },
-        properties: ConnAckProperties::default(),
-    });
+    let connack = ControlPacket::ConnAck(
+        ConnAck::builder()
+            .kind(ConnAckKind::Other {
+                reason_code: ConnackReasonCode::Success,
+            })
+            .build(),
+    );
     assert_eq!(
         client.handle_read(IncomingData {
             bytes: encode_packet(&connack),
@@ -2842,24 +2920,25 @@ fn duplicate_pubrec_in_qos2_await_pubcomp_resends_pubrel_without_disconnect() {
     );
 
     let packet_id = NonZero::new(1).expect("non-zero packet id");
-    let expected_publish = ControlPacket::Publish(Publish {
-        kind: PublishKind::Repetible {
-            packet_id,
-            qos: GuaranteedQoS::ExactlyOnce,
-            dup: false,
-        },
-        retain: false,
-        payload: qos2_message.payload,
-        topic,
-        properties: PublishProperties::default(),
-    });
+    let expected_publish = ControlPacket::Publish(
+        Publish::builder()
+            .kind(PublishKind::Repetible {
+                packet_id,
+                qos: GuaranteedQoS::ExactlyOnce,
+                dup: false,
+            })
+            .payload(qos2_message.payload)
+            .topic(topic)
+            .build(),
+    );
     assert_eq!(client.poll_write(), Some(encode_packet(&expected_publish)));
 
-    let pubrec = ControlPacket::PubRec(PubRec {
-        packet_id,
-        reason_code: PubRecReasonCode::Success,
-        properties: PubRecProperties::default(),
-    });
+    let pubrec = ControlPacket::PubRec(
+        PubRec::builder()
+            .packet_id(packet_id)
+            .reason_code(PubRecReasonCode::Success)
+            .build(),
+    );
     assert_eq!(
         client.handle_read(IncomingData {
             bytes: encode_packet(&pubrec),
@@ -2868,11 +2947,12 @@ fn duplicate_pubrec_in_qos2_await_pubcomp_resends_pubrel_without_disconnect() {
         Ok(())
     );
 
-    let expected_pubrel = ControlPacket::PubRel(PubRel {
-        packet_id,
-        reason_code: PubRelReasonCode::Success,
-        properties: PubRelProperties::default(),
-    });
+    let expected_pubrel = ControlPacket::PubRel(
+        PubRel::builder()
+            .packet_id(packet_id)
+            .reason_code(PubRelReasonCode::Success)
+            .build(),
+    );
     assert_eq!(client.poll_write(), Some(encode_packet(&expected_pubrel)));
 
     assert_eq!(
@@ -2885,11 +2965,12 @@ fn duplicate_pubrec_in_qos2_await_pubcomp_resends_pubrel_without_disconnect() {
     assert_eq!(client.poll_write(), Some(encode_packet(&expected_pubrel)));
     assert!(client.poll_event().is_none());
 
-    let pubcomp = ControlPacket::PubComp(PubComp {
-        packet_id,
-        reason_code: PubCompReasonCode::Success,
-        properties: PubCompProperties::default(),
-    });
+    let pubcomp = ControlPacket::PubComp(
+        PubComp::builder()
+            .packet_id(packet_id)
+            .reason_code(PubCompReasonCode::Success)
+            .build(),
+    );
     assert_eq!(
         client.handle_read(IncomingData {
             bytes: encode_packet(&pubcomp),
@@ -2910,12 +2991,13 @@ fn qos2_pubrec_failure_reason_drops_inflight_without_pubrel() {
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     assert!(client.poll_write().is_some());
 
-    let connack = ControlPacket::ConnAck(ConnAck {
-        kind: ConnAckKind::Other {
-            reason_code: ConnackReasonCode::Success,
-        },
-        properties: ConnAckProperties::default(),
-    });
+    let connack = ControlPacket::ConnAck(
+        ConnAck::builder()
+            .kind(ConnAckKind::Other {
+                reason_code: ConnackReasonCode::Success,
+            })
+            .build(),
+    );
     assert_eq!(
         client.handle_read(IncomingData {
             bytes: encode_packet(&connack),
@@ -2942,11 +3024,12 @@ fn qos2_pubrec_failure_reason_drops_inflight_without_pubrel() {
     let packet_id = NonZero::new(1).expect("non-zero packet id");
     assert!(client.poll_write().is_some());
 
-    let pubrec = ControlPacket::PubRec(PubRec {
-        packet_id,
-        reason_code: PubRecReasonCode::NotAuthorized,
-        properties: PubRecProperties::default(),
-    });
+    let pubrec = ControlPacket::PubRec(
+        PubRec::builder()
+            .packet_id(packet_id)
+            .reason_code(PubRecReasonCode::NotAuthorized)
+            .build(),
+    );
     assert_eq!(
         client.handle_read(IncomingData {
             bytes: encode_packet(&pubrec),
@@ -2960,11 +3043,12 @@ fn qos2_pubrec_failure_reason_drops_inflight_without_pubrel() {
         Some(UserWriteOut::PublishDroppedDueToBrokerRejectedPubRec(id, PubRecReasonCode::NotAuthorized)) if id == packet_id
     ));
 
-    let pubcomp = ControlPacket::PubComp(PubComp {
-        packet_id,
-        reason_code: PubCompReasonCode::Success,
-        properties: PubCompProperties::default(),
-    });
+    let pubcomp = ControlPacket::PubComp(
+        PubComp::builder()
+            .packet_id(packet_id)
+            .reason_code(PubCompReasonCode::Success)
+            .build(),
+    );
     assert_eq!(
         client.handle_read(IncomingData {
             bytes: encode_packet(&pubcomp),
@@ -2985,15 +3069,18 @@ fn publish_rejects_packet_exceeding_connack_maximum_packet_size() {
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     assert!(client.poll_write().is_some());
 
-    let connack = ControlPacket::ConnAck(ConnAck {
-        kind: ConnAckKind::Other {
-            reason_code: ConnackReasonCode::Success,
-        },
-        properties: ConnAckProperties {
-            maximum_packet_size: NonZero::new(16),
-            ..ConnAckProperties::default()
-        },
-    });
+    let connack = ControlPacket::ConnAck(
+        ConnAck::builder()
+            .kind(ConnAckKind::Other {
+                reason_code: ConnackReasonCode::Success,
+            })
+            .properties(
+                ConnAckProperties::builder()
+                    .maybe_maximum_packet_size(NonZero::new(16))
+                    .build(),
+            )
+            .build(),
+    );
     assert_eq!(
         client.handle_read(IncomingData {
             bytes: encode_packet(&connack),
@@ -3026,15 +3113,18 @@ fn subscribe_rejects_packet_exceeding_connack_maximum_packet_size() {
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     assert!(client.poll_write().is_some());
 
-    let connack = ControlPacket::ConnAck(ConnAck {
-        kind: ConnAckKind::Other {
-            reason_code: ConnackReasonCode::Success,
-        },
-        properties: ConnAckProperties {
-            maximum_packet_size: NonZero::new(20),
-            ..ConnAckProperties::default()
-        },
-    });
+    let connack = ControlPacket::ConnAck(
+        ConnAck::builder()
+            .kind(ConnAckKind::Other {
+                reason_code: ConnackReasonCode::Success,
+            })
+            .properties(
+                ConnAckProperties::builder()
+                    .maybe_maximum_packet_size(NonZero::new(20))
+                    .build(),
+            )
+            .build(),
+    );
     assert_eq!(
         client.handle_read(IncomingData {
             bytes: encode_packet(&connack),
@@ -3045,13 +3135,11 @@ fn subscribe_rejects_packet_exceeding_connack_maximum_packet_size() {
     assert!(matches!(client.poll_read(), Some(UserWriteOut::Connected)));
 
     let subscribe = SubscribeOptions {
-        subscription: Subscription {
-            topic_filter: Utf8String::try_from("a/very/long/topic/filter").expect("valid utf8"),
-            qos: Qos::AtMostOnce,
-            no_local: false,
-            retain_as_published: false,
-            retain_handling: RetainHandling::SendRetained,
-        },
+        subscription: Subscription::builder()
+            .topic_filter(Utf8String::try_from("a/very/long/topic/filter").expect("valid utf8"))
+            .qos(Qos::AtMostOnce)
+            .retain_handling(RetainHandling::SendRetained)
+            .build(),
         extra_subscriptions: Vec::new(),
         subscription_identifier: None,
         user_properties: Vec::new(),
@@ -3138,15 +3226,18 @@ fn reconnect_ignores_previous_connack_maximum_packet_size_for_connect() {
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     let first_connect = client.poll_write().expect("connect bytes are queued");
 
-    let connack_with_tiny_limit = ControlPacket::ConnAck(ConnAck {
-        kind: ConnAckKind::Other {
-            reason_code: ConnackReasonCode::Success,
-        },
-        properties: ConnAckProperties {
-            maximum_packet_size: NonZero::new(8),
-            ..ConnAckProperties::default()
-        },
-    });
+    let connack_with_tiny_limit = ControlPacket::ConnAck(
+        ConnAck::builder()
+            .kind(ConnAckKind::Other {
+                reason_code: ConnackReasonCode::Success,
+            })
+            .properties(
+                ConnAckProperties::builder()
+                    .maybe_maximum_packet_size(NonZero::new(8))
+                    .build(),
+            )
+            .build(),
+    );
     assert_eq!(
         client.handle_read(IncomingData {
             bytes: encode_packet(&connack_with_tiny_limit),
@@ -3187,10 +3278,11 @@ fn connack_resume_with_clean_start_is_protocol_error() {
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     assert!(client.poll_write().is_some());
 
-    let resumed_connack = ControlPacket::ConnAck(ConnAck {
-        kind: ConnAckKind::ResumePreviousSession,
-        properties: ConnAckProperties::default(),
-    });
+    let resumed_connack = ControlPacket::ConnAck(
+        ConnAck::builder()
+            .kind(ConnAckKind::ResumePreviousSession)
+            .build(),
+    );
 
     assert_eq!(
         client.handle_read(IncomingData {
@@ -3225,10 +3317,11 @@ fn connack_resume_without_local_state_is_accepted_when_clean_start_false() {
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     assert!(client.poll_write().is_some());
 
-    let resumed_connack = ControlPacket::ConnAck(ConnAck {
-        kind: ConnAckKind::ResumePreviousSession,
-        properties: ConnAckProperties::default(),
-    });
+    let resumed_connack = ControlPacket::ConnAck(
+        ConnAck::builder()
+            .kind(ConnAckKind::ResumePreviousSession)
+            .build(),
+    );
 
     assert_eq!(
         client.handle_read(IncomingData {
@@ -3259,12 +3352,13 @@ fn resumed_session_replays_outbound_qos_publish_with_dup_set() {
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     assert!(client.poll_write().is_some());
 
-    let initial_connack = ControlPacket::ConnAck(ConnAck {
-        kind: ConnAckKind::Other {
-            reason_code: ConnackReasonCode::Success,
-        },
-        properties: ConnAckProperties::default(),
-    });
+    let initial_connack = ControlPacket::ConnAck(
+        ConnAck::builder()
+            .kind(ConnAckKind::Other {
+                reason_code: ConnackReasonCode::Success,
+            })
+            .build(),
+    );
     assert_eq!(
         client.handle_read(IncomingData {
             bytes: encode_packet(&initial_connack),
@@ -3289,17 +3383,17 @@ fn resumed_session_replays_outbound_qos_publish_with_dup_set() {
     );
 
     let packet_id = NonZero::new(1).expect("non-zero packet id");
-    let first_publish = ControlPacket::Publish(Publish {
-        kind: PublishKind::Repetible {
-            packet_id,
-            qos: GuaranteedQoS::AtLeastOnce,
-            dup: false,
-        },
-        retain: false,
-        payload: outbound.payload,
-        topic,
-        properties: PublishProperties::default(),
-    });
+    let first_publish = ControlPacket::Publish(
+        Publish::builder()
+            .kind(PublishKind::Repetible {
+                packet_id,
+                qos: GuaranteedQoS::AtLeastOnce,
+                dup: false,
+            })
+            .payload(outbound.payload)
+            .topic(topic)
+            .build(),
+    );
     assert_eq!(client.poll_write(), Some(encode_packet(&first_publish)));
 
     assert_eq!(client.handle_event(DriverEventIn::SocketClosed), Ok(()));
@@ -3311,10 +3405,11 @@ fn resumed_session_replays_outbound_qos_publish_with_dup_set() {
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     assert!(client.poll_write().is_some());
 
-    let resumed_connack = ControlPacket::ConnAck(ConnAck {
-        kind: ConnAckKind::ResumePreviousSession,
-        properties: ConnAckProperties::default(),
-    });
+    let resumed_connack = ControlPacket::ConnAck(
+        ConnAck::builder()
+            .kind(ConnAckKind::ResumePreviousSession)
+            .build(),
+    );
     assert_eq!(
         client.handle_read(IncomingData {
             bytes: encode_packet(&resumed_connack),
@@ -3324,25 +3419,28 @@ fn resumed_session_replays_outbound_qos_publish_with_dup_set() {
     );
     assert!(matches!(client.poll_read(), Some(UserWriteOut::Connected)));
 
-    let replay_publish = ControlPacket::Publish(Publish {
-        kind: PublishKind::Repetible {
-            packet_id,
-            qos: GuaranteedQoS::AtLeastOnce,
-            dup: true,
-        },
-        retain: false,
-        payload: Payload::from(&b"replay"[..]),
-        topic: Topic::try_from(Utf8String::try_from("replay/topic").expect("valid utf8"))
-            .expect("valid topic"),
-        properties: PublishProperties::default(),
-    });
+    let replay_publish = ControlPacket::Publish(
+        Publish::builder()
+            .kind(PublishKind::Repetible {
+                packet_id,
+                qos: GuaranteedQoS::AtLeastOnce,
+                dup: true,
+            })
+            .payload(Payload::from(&b"replay"[..]))
+            .topic(
+                Topic::try_from(Utf8String::try_from("replay/topic").expect("valid utf8"))
+                    .expect("valid topic"),
+            )
+            .build(),
+    );
     assert_eq!(client.poll_write(), Some(encode_packet(&replay_publish)));
 
-    let puback = ControlPacket::PubAck(PubAck {
-        packet_id,
-        reason_code: PubAckReasonCode::Success,
-        properties: PubAckProperties::default(),
-    });
+    let puback = ControlPacket::PubAck(
+        PubAck::builder()
+            .packet_id(packet_id)
+            .reason_code(PubAckReasonCode::Success)
+            .build(),
+    );
     assert_eq!(
         client.handle_read(IncomingData {
             bytes: encode_packet(&puback),
@@ -3374,12 +3472,13 @@ fn resumed_session_replay_failure_does_not_emit_connected_and_closes() {
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     assert!(client.poll_write().is_some());
 
-    let initial_connack = ControlPacket::ConnAck(ConnAck {
-        kind: ConnAckKind::Other {
-            reason_code: ConnackReasonCode::Success,
-        },
-        properties: ConnAckProperties::default(),
-    });
+    let initial_connack = ControlPacket::ConnAck(
+        ConnAck::builder()
+            .kind(ConnAckKind::Other {
+                reason_code: ConnackReasonCode::Success,
+            })
+            .build(),
+    );
     assert_eq!(
         client.handle_read(IncomingData {
             bytes: encode_packet(&initial_connack),
@@ -3406,17 +3505,17 @@ fn resumed_session_replay_failure_does_not_emit_connected_and_closes() {
     let packet_id = NonZero::new(1).expect("non-zero packet id");
     assert_eq!(
         client.poll_write(),
-        Some(encode_packet(&ControlPacket::Publish(Publish {
-            kind: PublishKind::Repetible {
-                packet_id,
-                qos: GuaranteedQoS::AtLeastOnce,
-                dup: false,
-            },
-            retain: false,
-            payload: outbound.payload,
-            topic,
-            properties: PublishProperties::default(),
-        })))
+        Some(encode_packet(&ControlPacket::Publish(
+            Publish::builder()
+                .kind(PublishKind::Repetible {
+                    packet_id,
+                    qos: GuaranteedQoS::AtLeastOnce,
+                    dup: false,
+                })
+                .payload(outbound.payload)
+                .topic(topic)
+                .build()
+        )))
     );
 
     assert_eq!(client.handle_event(DriverEventIn::SocketClosed), Ok(()));
@@ -3428,13 +3527,16 @@ fn resumed_session_replay_failure_does_not_emit_connected_and_closes() {
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     assert!(client.poll_write().is_some());
 
-    let resumed_connack = ControlPacket::ConnAck(ConnAck {
-        kind: ConnAckKind::ResumePreviousSession,
-        properties: ConnAckProperties {
-            maximum_packet_size: NonZero::new(16),
-            ..ConnAckProperties::default()
-        },
-    });
+    let resumed_connack = ControlPacket::ConnAck(
+        ConnAck::builder()
+            .kind(ConnAckKind::ResumePreviousSession)
+            .properties(
+                ConnAckProperties::builder()
+                    .maybe_maximum_packet_size(NonZero::new(16))
+                    .build(),
+            )
+            .build(),
+    );
     assert_eq!(
         client.handle_read(IncomingData {
             bytes: encode_packet(&resumed_connack),
@@ -3467,12 +3569,13 @@ fn resumed_session_replays_unacknowledged_pubrel() {
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     assert!(client.poll_write().is_some());
 
-    let initial_connack = ControlPacket::ConnAck(ConnAck {
-        kind: ConnAckKind::Other {
-            reason_code: ConnackReasonCode::Success,
-        },
-        properties: ConnAckProperties::default(),
-    });
+    let initial_connack = ControlPacket::ConnAck(
+        ConnAck::builder()
+            .kind(ConnAckKind::Other {
+                reason_code: ConnackReasonCode::Success,
+            })
+            .build(),
+    );
     assert_eq!(
         client.handle_read(IncomingData {
             bytes: encode_packet(&initial_connack),
@@ -3499,24 +3602,25 @@ fn resumed_session_replays_unacknowledged_pubrel() {
     let packet_id = NonZero::new(1).expect("non-zero packet id");
     assert_eq!(
         client.poll_write(),
-        Some(encode_packet(&ControlPacket::Publish(Publish {
-            kind: PublishKind::Repetible {
-                packet_id,
-                qos: GuaranteedQoS::ExactlyOnce,
-                dup: false,
-            },
-            retain: false,
-            payload: outbound.payload,
-            topic,
-            properties: PublishProperties::default(),
-        })))
+        Some(encode_packet(&ControlPacket::Publish(
+            Publish::builder()
+                .kind(PublishKind::Repetible {
+                    packet_id,
+                    qos: GuaranteedQoS::ExactlyOnce,
+                    dup: false,
+                })
+                .payload(outbound.payload)
+                .topic(topic)
+                .build()
+        )))
     );
 
-    let pubrec = ControlPacket::PubRec(PubRec {
-        packet_id,
-        reason_code: PubRecReasonCode::Success,
-        properties: PubRecProperties::default(),
-    });
+    let pubrec = ControlPacket::PubRec(
+        PubRec::builder()
+            .packet_id(packet_id)
+            .reason_code(PubRecReasonCode::Success)
+            .build(),
+    );
     assert_eq!(
         client.handle_read(IncomingData {
             bytes: encode_packet(&pubrec),
@@ -3526,11 +3630,12 @@ fn resumed_session_replays_unacknowledged_pubrel() {
     );
     assert_eq!(
         client.poll_write(),
-        Some(encode_packet(&ControlPacket::PubRel(PubRel {
-            packet_id,
-            reason_code: PubRelReasonCode::Success,
-            properties: PubRelProperties::default(),
-        })))
+        Some(encode_packet(&ControlPacket::PubRel(
+            PubRel::builder()
+                .packet_id(packet_id)
+                .reason_code(PubRelReasonCode::Success)
+                .build()
+        )))
     );
 
     assert_eq!(client.handle_event(DriverEventIn::SocketClosed), Ok(()));
@@ -3542,10 +3647,11 @@ fn resumed_session_replays_unacknowledged_pubrel() {
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     assert!(client.poll_write().is_some());
 
-    let resumed_connack = ControlPacket::ConnAck(ConnAck {
-        kind: ConnAckKind::ResumePreviousSession,
-        properties: ConnAckProperties::default(),
-    });
+    let resumed_connack = ControlPacket::ConnAck(
+        ConnAck::builder()
+            .kind(ConnAckKind::ResumePreviousSession)
+            .build(),
+    );
     assert_eq!(
         client.handle_read(IncomingData {
             bytes: encode_packet(&resumed_connack),
@@ -3556,18 +3662,20 @@ fn resumed_session_replays_unacknowledged_pubrel() {
     assert!(matches!(client.poll_read(), Some(UserWriteOut::Connected)));
     assert_eq!(
         client.poll_write(),
-        Some(encode_packet(&ControlPacket::PubRel(PubRel {
-            packet_id,
-            reason_code: PubRelReasonCode::Success,
-            properties: PubRelProperties::default(),
-        })))
+        Some(encode_packet(&ControlPacket::PubRel(
+            PubRel::builder()
+                .packet_id(packet_id)
+                .reason_code(PubRelReasonCode::Success)
+                .build()
+        )))
     );
 
-    let pubcomp = ControlPacket::PubComp(PubComp {
-        packet_id,
-        reason_code: PubCompReasonCode::Success,
-        properties: PubCompProperties::default(),
-    });
+    let pubcomp = ControlPacket::PubComp(
+        PubComp::builder()
+            .packet_id(packet_id)
+            .reason_code(PubCompReasonCode::Success)
+            .build(),
+    );
     assert_eq!(
         client.handle_read(IncomingData {
             bytes: encode_packet(&pubcomp),
@@ -3599,12 +3707,13 @@ fn non_resumed_session_drops_inflight_and_emits_publish_dropped_events() {
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     assert!(client.poll_write().is_some());
 
-    let initial_connack = ControlPacket::ConnAck(ConnAck {
-        kind: ConnAckKind::Other {
-            reason_code: ConnackReasonCode::Success,
-        },
-        properties: ConnAckProperties::default(),
-    });
+    let initial_connack = ControlPacket::ConnAck(
+        ConnAck::builder()
+            .kind(ConnAckKind::Other {
+                reason_code: ConnackReasonCode::Success,
+            })
+            .build(),
+    );
     assert_eq!(
         client.handle_read(IncomingData {
             bytes: encode_packet(&initial_connack),
@@ -3631,17 +3740,17 @@ fn non_resumed_session_drops_inflight_and_emits_publish_dropped_events() {
     let qos1_packet_id = NonZero::new(1).expect("non-zero packet id");
     assert_eq!(
         client.poll_write(),
-        Some(encode_packet(&ControlPacket::Publish(Publish {
-            kind: PublishKind::Repetible {
-                packet_id: qos1_packet_id,
-                qos: GuaranteedQoS::AtLeastOnce,
-                dup: false,
-            },
-            retain: false,
-            payload: Payload::from(&b"qos1"[..]),
-            topic: topic.clone(),
-            properties: PublishProperties::default(),
-        })))
+        Some(encode_packet(&ControlPacket::Publish(
+            Publish::builder()
+                .kind(PublishKind::Repetible {
+                    packet_id: qos1_packet_id,
+                    qos: GuaranteedQoS::AtLeastOnce,
+                    dup: false,
+                })
+                .payload(Payload::from(&b"qos1"[..]))
+                .topic(topic.clone())
+                .build()
+        )))
     );
 
     let qos2 = ClientMessage {
@@ -3658,32 +3767,34 @@ fn non_resumed_session_drops_inflight_and_emits_publish_dropped_events() {
     let qos2_packet_id = NonZero::new(2).expect("non-zero packet id");
     assert_eq!(
         client.poll_write(),
-        Some(encode_packet(&ControlPacket::Publish(Publish {
-            kind: PublishKind::Repetible {
-                packet_id: qos2_packet_id,
-                qos: GuaranteedQoS::ExactlyOnce,
-                dup: false,
-            },
-            retain: false,
-            payload: Payload::from(&b"qos2"[..]),
-            topic: topic.clone(),
-            properties: PublishProperties::default(),
-        })))
+        Some(encode_packet(&ControlPacket::Publish(
+            Publish::builder()
+                .kind(PublishKind::Repetible {
+                    packet_id: qos2_packet_id,
+                    qos: GuaranteedQoS::ExactlyOnce,
+                    dup: false,
+                })
+                .payload(Payload::from(&b"qos2"[..]))
+                .topic(topic.clone())
+                .build()
+        )))
     );
 
     let inbound_packet_id = NonZero::new(33).expect("non-zero packet id");
-    let inbound_publish = ControlPacket::Publish(Publish {
-        kind: PublishKind::Repetible {
-            packet_id: inbound_packet_id,
-            qos: GuaranteedQoS::ExactlyOnce,
-            dup: false,
-        },
-        retain: false,
-        payload: Payload::from(&b"inbound"[..]),
-        topic: Topic::try_from(Utf8String::try_from("inbound/topic").expect("valid utf8"))
-            .expect("valid topic"),
-        properties: PublishProperties::default(),
-    });
+    let inbound_publish = ControlPacket::Publish(
+        Publish::builder()
+            .kind(PublishKind::Repetible {
+                packet_id: inbound_packet_id,
+                qos: GuaranteedQoS::ExactlyOnce,
+                dup: false,
+            })
+            .payload(Payload::from(&b"inbound"[..]))
+            .topic(
+                Topic::try_from(Utf8String::try_from("inbound/topic").expect("valid utf8"))
+                    .expect("valid topic"),
+            )
+            .build(),
+    );
     assert_eq!(
         client.handle_read(IncomingData {
             bytes: encode_packet(&inbound_publish),
@@ -3703,12 +3814,13 @@ fn non_resumed_session_drops_inflight_and_emits_publish_dropped_events() {
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     assert!(client.poll_write().is_some());
 
-    let non_resumed_connack = ControlPacket::ConnAck(ConnAck {
-        kind: ConnAckKind::Other {
-            reason_code: ConnackReasonCode::Success,
-        },
-        properties: ConnAckProperties::default(),
-    });
+    let non_resumed_connack = ControlPacket::ConnAck(
+        ConnAck::builder()
+            .kind(ConnAckKind::Other {
+                reason_code: ConnackReasonCode::Success,
+            })
+            .build(),
+    );
     assert_eq!(
         client.handle_read(IncomingData {
             bytes: encode_packet(&non_resumed_connack),
@@ -3728,11 +3840,12 @@ fn non_resumed_session_drops_inflight_and_emits_publish_dropped_events() {
     assert!(client.poll_read().is_none());
     assert_eq!(client.poll_write(), None);
 
-    let pubrel = ControlPacket::PubRel(PubRel {
-        packet_id: inbound_packet_id,
-        reason_code: PubRelReasonCode::Success,
-        properties: PubRelProperties::default(),
-    });
+    let pubrel = ControlPacket::PubRel(
+        PubRel::builder()
+            .packet_id(inbound_packet_id)
+            .reason_code(PubRelReasonCode::Success)
+            .build(),
+    );
     assert_eq!(
         client.handle_read(IncomingData {
             bytes: encode_packet(&pubrel),
@@ -3742,11 +3855,12 @@ fn non_resumed_session_drops_inflight_and_emits_publish_dropped_events() {
     );
     assert_eq!(
         client.poll_write(),
-        Some(encode_packet(&ControlPacket::PubComp(PubComp {
-            packet_id: inbound_packet_id,
-            reason_code: PubCompReasonCode::PacketIdentifierNotFound,
-            properties: PubCompProperties::default(),
-        })))
+        Some(encode_packet(&ControlPacket::PubComp(
+            PubComp::builder()
+                .packet_id(inbound_packet_id)
+                .reason_code(PubCompReasonCode::PacketIdentifierNotFound)
+                .build()
+        )))
     );
 }
 
@@ -3757,12 +3871,13 @@ fn non_resumed_connack_discards_all_local_session_state() {
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     assert!(client.poll_write().is_some());
 
-    let initial_connack = ControlPacket::ConnAck(ConnAck {
-        kind: ConnAckKind::Other {
-            reason_code: ConnackReasonCode::Success,
-        },
-        properties: ConnAckProperties::default(),
-    });
+    let initial_connack = ControlPacket::ConnAck(
+        ConnAck::builder()
+            .kind(ConnAckKind::Other {
+                reason_code: ConnackReasonCode::Success,
+            })
+            .build(),
+    );
     assert_eq!(
         client.handle_read(IncomingData {
             bytes: encode_packet(&initial_connack),
@@ -3787,18 +3902,20 @@ fn non_resumed_connack_discards_all_local_session_state() {
     assert!(client.poll_write().is_some());
 
     let inbound_packet_id = NonZero::new(55).expect("non-zero packet id");
-    let inbound_publish = ControlPacket::Publish(Publish {
-        kind: PublishKind::Repetible {
-            packet_id: inbound_packet_id,
-            qos: GuaranteedQoS::ExactlyOnce,
-            dup: false,
-        },
-        retain: false,
-        payload: Payload::from(&b"inbound"[..]),
-        topic: Topic::try_from(Utf8String::try_from("state/inbound").expect("valid utf8"))
-            .expect("valid topic"),
-        properties: PublishProperties::default(),
-    });
+    let inbound_publish = ControlPacket::Publish(
+        Publish::builder()
+            .kind(PublishKind::Repetible {
+                packet_id: inbound_packet_id,
+                qos: GuaranteedQoS::ExactlyOnce,
+                dup: false,
+            })
+            .payload(Payload::from(&b"inbound"[..]))
+            .topic(
+                Topic::try_from(Utf8String::try_from("state/inbound").expect("valid utf8"))
+                    .expect("valid topic"),
+            )
+            .build(),
+    );
     assert_eq!(
         client.handle_read(IncomingData {
             bytes: encode_packet(&inbound_publish),
@@ -3840,12 +3957,13 @@ fn non_resumed_connack_discards_all_local_session_state() {
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     assert!(client.poll_write().is_some());
 
-    let non_resumed_connack = ControlPacket::ConnAck(ConnAck {
-        kind: ConnAckKind::Other {
-            reason_code: ConnackReasonCode::Success,
-        },
-        properties: ConnAckProperties::default(),
-    });
+    let non_resumed_connack = ControlPacket::ConnAck(
+        ConnAck::builder()
+            .kind(ConnAckKind::Other {
+                reason_code: ConnackReasonCode::Success,
+            })
+            .build(),
+    );
     assert_eq!(
         client.handle_read(IncomingData {
             bytes: encode_packet(&non_resumed_connack),
@@ -3855,11 +3973,12 @@ fn non_resumed_connack_discards_all_local_session_state() {
     );
     assert!(matches!(client.poll_read(), Some(UserWriteOut::Connected)));
 
-    let pubrel = ControlPacket::PubRel(PubRel {
-        packet_id: inbound_packet_id,
-        reason_code: PubRelReasonCode::Success,
-        properties: PubRelProperties::default(),
-    });
+    let pubrel = ControlPacket::PubRel(
+        PubRel::builder()
+            .packet_id(inbound_packet_id)
+            .reason_code(PubRelReasonCode::Success)
+            .build(),
+    );
     assert_eq!(
         client.handle_read(IncomingData {
             bytes: encode_packet(&pubrel),
@@ -3869,18 +3988,20 @@ fn non_resumed_connack_discards_all_local_session_state() {
     );
     assert_eq!(
         client.poll_write(),
-        Some(encode_packet(&ControlPacket::PubComp(PubComp {
-            packet_id: inbound_packet_id,
-            reason_code: PubCompReasonCode::PacketIdentifierNotFound,
-            properties: PubCompProperties::default(),
-        })))
+        Some(encode_packet(&ControlPacket::PubComp(
+            PubComp::builder()
+                .packet_id(inbound_packet_id)
+                .reason_code(PubCompReasonCode::PacketIdentifierNotFound)
+                .build()
+        )))
     );
 
-    let stale_suback = ControlPacket::SubAck(sansio_mqtt_v5_types::SubAck {
-        packet_id: NonZero::new(2).expect("non-zero"),
-        properties: sansio_mqtt_v5_types::SubAckProperties::default(),
-        reason_codes: vec![sansio_mqtt_v5_types::SubAckReasonCode::SuccessQoS0],
-    });
+    let stale_suback = ControlPacket::SubAck(
+        sansio_mqtt_v5_types::SubAck::builder()
+            .packet_id(NonZero::new(2).expect("non-zero"))
+            .reason_codes(vec![sansio_mqtt_v5_types::SubAckReasonCode::SuccessQoS0])
+            .build(),
+    );
     assert_eq!(
         client.handle_read(IncomingData {
             bytes: encode_packet(&stale_suback),
@@ -3931,11 +4052,12 @@ fn non_resumed_connack_discards_all_local_session_state() {
     );
     assert!(matches!(client.poll_read(), Some(UserWriteOut::Connected)));
 
-    let stale_unsuback = ControlPacket::UnsubAck(sansio_mqtt_v5_types::UnsubAck {
-        packet_id: NonZero::new(1).expect("non-zero"),
-        properties: sansio_mqtt_v5_types::UnsubAckProperties::default(),
-        reason_codes: vec![sansio_mqtt_v5_types::UnsubAckReasonCode::Success],
-    });
+    let stale_unsuback = ControlPacket::UnsubAck(
+        sansio_mqtt_v5_types::UnsubAck::builder()
+            .packet_id(NonZero::new(1).expect("non-zero"))
+            .reason_codes(vec![sansio_mqtt_v5_types::UnsubAckReasonCode::Success])
+            .build(),
+    );
     assert_eq!(
         client.handle_read(IncomingData {
             bytes: encode_packet(&stale_unsuback),
@@ -3973,12 +4095,13 @@ fn stale_read_buffer_is_cleared_on_socket_closed() {
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     assert!(client.poll_write().is_some());
 
-    let connack = ControlPacket::ConnAck(ConnAck {
-        kind: ConnAckKind::Other {
-            reason_code: ConnackReasonCode::Success,
-        },
-        properties: ConnAckProperties::default(),
-    });
+    let connack = ControlPacket::ConnAck(
+        ConnAck::builder()
+            .kind(ConnAckKind::Other {
+                reason_code: ConnackReasonCode::Success,
+            })
+            .build(),
+    );
     assert_eq!(
         client.handle_read(IncomingData {
             bytes: encode_packet(&connack),
@@ -4016,12 +4139,13 @@ fn stale_read_buffer_is_cleared_on_socket_error() {
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     assert!(client.poll_write().is_some());
 
-    let connack = ControlPacket::ConnAck(ConnAck {
-        kind: ConnAckKind::Other {
-            reason_code: ConnackReasonCode::Success,
-        },
-        properties: ConnAckProperties::default(),
-    });
+    let connack = ControlPacket::ConnAck(
+        ConnAck::builder()
+            .kind(ConnAckKind::Other {
+                reason_code: ConnackReasonCode::Success,
+            })
+            .build(),
+    );
     assert_eq!(
         client.handle_read(IncomingData {
             bytes: encode_packet(&connack),
@@ -4060,12 +4184,13 @@ fn stale_read_buffer_is_cleared_on_user_disconnect() {
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     assert!(client.poll_write().is_some());
 
-    let connack = ControlPacket::ConnAck(ConnAck {
-        kind: ConnAckKind::Other {
-            reason_code: ConnackReasonCode::Success,
-        },
-        properties: ConnAckProperties::default(),
-    });
+    let connack = ControlPacket::ConnAck(
+        ConnAck::builder()
+            .kind(ConnAckKind::Other {
+                reason_code: ConnackReasonCode::Success,
+            })
+            .build(),
+    );
     assert_eq!(
         client.handle_read(IncomingData {
             bytes: encode_packet(&connack),
@@ -4104,12 +4229,13 @@ fn stale_read_buffer_is_cleared_on_close() {
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     assert!(client.poll_write().is_some());
 
-    let connack = ControlPacket::ConnAck(ConnAck {
-        kind: ConnAckKind::Other {
-            reason_code: ConnackReasonCode::Success,
-        },
-        properties: ConnAckProperties::default(),
-    });
+    let connack = ControlPacket::ConnAck(
+        ConnAck::builder()
+            .kind(ConnAckKind::Other {
+                reason_code: ConnackReasonCode::Success,
+            })
+            .build(),
+    );
     assert_eq!(
         client.handle_read(IncomingData {
             bytes: encode_packet(&connack),
@@ -4136,12 +4262,13 @@ fn timeout_in_connected_state_enqueues_pingreq() {
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     let _ = client.poll_write().expect("connect frame expected");
 
-    let connack = ControlPacket::ConnAck(ConnAck {
-        kind: ConnAckKind::Other {
-            reason_code: ConnackReasonCode::Success,
-        },
-        properties: ConnAckProperties::default(),
-    });
+    let connack = ControlPacket::ConnAck(
+        ConnAck::builder()
+            .kind(ConnAckKind::Other {
+                reason_code: ConnackReasonCode::Success,
+            })
+            .build(),
+    );
     assert_eq!(
         client.handle_read(IncomingData {
             bytes: encode_packet(&connack),
@@ -4153,8 +4280,9 @@ fn timeout_in_connected_state_enqueues_pingreq() {
 
     assert_eq!(client.handle_timeout(Duration::from_secs(42)), Ok(()));
     assert_eq!(client.poll_write(), Some(Bytes::from_static(&[0xC0, 0x00])));
-    // [MQTT-3.1.2-24] After PINGREQ the next deadline is now + interval/2 (= 42 + 5
-    // = 47) so total elapsed from last packet is 1.5× the keep-alive interval.
+    // [MQTT-3.1.2-24] After PINGREQ the next deadline is now + interval/2 (= 42
+    // + 5 = 47) so total elapsed from last packet is 1.5× the keep-alive
+    // interval.
     assert_eq!(client.poll_timeout(), Some(Duration::from_secs(47)));
 }
 
@@ -4165,12 +4293,13 @@ fn close_enqueues_disconnect_and_close_socket() {
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     assert!(client.poll_write().is_some());
 
-    let connack = ControlPacket::ConnAck(ConnAck {
-        kind: ConnAckKind::Other {
-            reason_code: ConnackReasonCode::Success,
-        },
-        properties: ConnAckProperties::default(),
-    });
+    let connack = ControlPacket::ConnAck(
+        ConnAck::builder()
+            .kind(ConnAckKind::Other {
+                reason_code: ConnackReasonCode::Success,
+            })
+            .build(),
+    );
     assert_eq!(
         client.handle_read(IncomingData {
             bytes: encode_packet(&connack),
@@ -4203,15 +4332,18 @@ fn close_succeeds_even_when_disconnect_packet_exceeds_maximum_packet_size() {
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     assert!(client.poll_write().is_some());
 
-    let connack = ControlPacket::ConnAck(ConnAck {
-        kind: ConnAckKind::Other {
-            reason_code: ConnackReasonCode::Success,
-        },
-        properties: ConnAckProperties {
-            maximum_packet_size: NonZero::new(1),
-            ..ConnAckProperties::default()
-        },
-    });
+    let connack = ControlPacket::ConnAck(
+        ConnAck::builder()
+            .kind(ConnAckKind::Other {
+                reason_code: ConnackReasonCode::Success,
+            })
+            .properties(
+                ConnAckProperties::builder()
+                    .maybe_maximum_packet_size(NonZero::new(1))
+                    .build(),
+            )
+            .build(),
+    );
     assert_eq!(
         client.handle_read(IncomingData {
             bytes: encode_packet(&connack),
@@ -4244,15 +4376,18 @@ fn user_disconnect_succeeds_even_when_disconnect_packet_exceeds_maximum_packet_s
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     assert!(client.poll_write().is_some());
 
-    let connack = ControlPacket::ConnAck(ConnAck {
-        kind: ConnAckKind::Other {
-            reason_code: ConnackReasonCode::Success,
-        },
-        properties: ConnAckProperties {
-            maximum_packet_size: NonZero::new(1),
-            ..ConnAckProperties::default()
-        },
-    });
+    let connack = ControlPacket::ConnAck(
+        ConnAck::builder()
+            .kind(ConnAckKind::Other {
+                reason_code: ConnackReasonCode::Success,
+            })
+            .properties(
+                ConnAckProperties::builder()
+                    .maybe_maximum_packet_size(NonZero::new(1))
+                    .build(),
+            )
+            .build(),
+    );
     assert_eq!(
         client.handle_read(IncomingData {
             bytes: encode_packet(&connack),
@@ -4300,12 +4435,13 @@ fn timeout_is_cleared_on_close() {
     );
     assert!(close_client.poll_write().is_some());
 
-    let connack = ControlPacket::ConnAck(ConnAck {
-        kind: ConnAckKind::Other {
-            reason_code: ConnackReasonCode::Success,
-        },
-        properties: ConnAckProperties::default(),
-    });
+    let connack = ControlPacket::ConnAck(
+        ConnAck::builder()
+            .kind(ConnAckKind::Other {
+                reason_code: ConnackReasonCode::Success,
+            })
+            .build(),
+    );
     assert_eq!(
         close_client.handle_read(IncomingData {
             bytes: encode_packet(&connack),
@@ -4319,8 +4455,8 @@ fn timeout_is_cleared_on_close() {
     ));
 
     assert_eq!(close_client.handle_timeout(Duration::from_secs(42)), Ok(()));
-    // [MQTT-3.1.2-24] After PINGREQ the next deadline is now + interval/2 (= 42 + 5
-    // = 47).
+    // [MQTT-3.1.2-24] After PINGREQ the next deadline is now + interval/2 (= 42
+    // + 5 = 47).
     assert_eq!(close_client.poll_timeout(), Some(Duration::from_secs(47)));
 
     assert_eq!(close_client.close(), Ok(()));
@@ -4361,8 +4497,8 @@ fn timeout_is_cleared_on_close() {
         socket_closed_client.handle_timeout(Duration::from_secs(99)),
         Ok(())
     );
-    // [MQTT-3.1.2-24] After PINGREQ the next deadline is now + interval/2 (= 99 + 5
-    // = 104).
+    // [MQTT-3.1.2-24] After PINGREQ the next deadline is now + interval/2 (= 99
+    // + 5 = 104).
     assert_eq!(
         socket_closed_client.poll_timeout(),
         Some(Duration::from_secs(104))
@@ -4395,15 +4531,18 @@ fn connecting_accepts_auth_and_stays_open() {
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     assert!(client.poll_write().is_some());
 
-    let auth = ControlPacket::Auth(Auth {
-        reason_code: AuthReasonCode::ContinueAuthentication,
-        properties: AuthProperties {
-            authentication: Some(sansio_mqtt_v5_types::AuthenticationKind::WithoutData {
-                method: Utf8String::try_from("SCRAM").expect("valid utf8"),
-            }),
-            ..AuthProperties::default()
-        },
-    });
+    let auth = ControlPacket::Auth(
+        Auth::builder()
+            .reason_code(AuthReasonCode::ContinueAuthentication)
+            .properties(
+                AuthProperties::builder()
+                    .authentication(sansio_mqtt_v5_types::AuthenticationKind::WithoutData {
+                        method: Utf8String::try_from("SCRAM").expect("valid utf8"),
+                    })
+                    .build(),
+            )
+            .build(),
+    );
     assert_eq!(
         client.handle_read(IncomingData {
             bytes: encode_packet(&auth),
@@ -4434,15 +4573,18 @@ fn connecting_auth_then_connack_success_transitions_connected() {
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     assert!(client.poll_write().is_some());
 
-    let auth = ControlPacket::Auth(Auth {
-        reason_code: AuthReasonCode::ContinueAuthentication,
-        properties: AuthProperties {
-            authentication: Some(sansio_mqtt_v5_types::AuthenticationKind::WithoutData {
-                method: Utf8String::try_from("SCRAM").expect("valid utf8"),
-            }),
-            ..AuthProperties::default()
-        },
-    });
+    let auth = ControlPacket::Auth(
+        Auth::builder()
+            .reason_code(AuthReasonCode::ContinueAuthentication)
+            .properties(
+                AuthProperties::builder()
+                    .authentication(sansio_mqtt_v5_types::AuthenticationKind::WithoutData {
+                        method: Utf8String::try_from("SCRAM").expect("valid utf8"),
+                    })
+                    .build(),
+            )
+            .build(),
+    );
     assert_eq!(
         client.handle_read(IncomingData {
             bytes: encode_packet(&auth),
@@ -4451,12 +4593,13 @@ fn connecting_auth_then_connack_success_transitions_connected() {
         Ok(())
     );
 
-    let connack = ControlPacket::ConnAck(ConnAck {
-        kind: ConnAckKind::Other {
-            reason_code: ConnackReasonCode::Success,
-        },
-        properties: ConnAckProperties::default(),
-    });
+    let connack = ControlPacket::ConnAck(
+        ConnAck::builder()
+            .kind(ConnAckKind::Other {
+                reason_code: ConnackReasonCode::Success,
+            })
+            .build(),
+    );
     assert_eq!(
         client.handle_read(IncomingData {
             bytes: encode_packet(&connack),
@@ -4474,10 +4617,11 @@ fn connecting_auth_without_configured_authentication_is_protocol_error() {
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     assert!(client.poll_write().is_some());
 
-    let auth = ControlPacket::Auth(Auth {
-        reason_code: AuthReasonCode::ContinueAuthentication,
-        properties: AuthProperties::default(),
-    });
+    let auth = ControlPacket::Auth(
+        Auth::builder()
+            .reason_code(AuthReasonCode::ContinueAuthentication)
+            .build(),
+    );
     assert_eq!(
         client.handle_read(IncomingData {
             bytes: encode_packet(&auth),
@@ -4511,15 +4655,18 @@ fn connecting_auth_with_reason_other_than_continue_is_protocol_error() {
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     assert!(client.poll_write().is_some());
 
-    let auth = ControlPacket::Auth(Auth {
-        reason_code: AuthReasonCode::Success,
-        properties: AuthProperties {
-            authentication: Some(sansio_mqtt_v5_types::AuthenticationKind::WithoutData {
-                method: Utf8String::try_from("SCRAM").expect("valid utf8"),
-            }),
-            ..AuthProperties::default()
-        },
-    });
+    let auth = ControlPacket::Auth(
+        Auth::builder()
+            .reason_code(AuthReasonCode::Success)
+            .properties(
+                AuthProperties::builder()
+                    .authentication(sansio_mqtt_v5_types::AuthenticationKind::WithoutData {
+                        method: Utf8String::try_from("SCRAM").expect("valid utf8"),
+                    })
+                    .build(),
+            )
+            .build(),
+    );
     assert_eq!(
         client.handle_read(IncomingData {
             bytes: encode_packet(&auth),
@@ -4540,15 +4687,18 @@ fn publish_qos_above_server_maximum_qos_is_rejected() {
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     assert!(client.poll_write().is_some());
 
-    let connack = ControlPacket::ConnAck(ConnAck {
-        kind: ConnAckKind::Other {
-            reason_code: ConnackReasonCode::Success,
-        },
-        properties: ConnAckProperties {
-            maximum_qos: Some(MaximumQoS::AtMostOnce),
-            ..ConnAckProperties::default()
-        },
-    });
+    let connack = ControlPacket::ConnAck(
+        ConnAck::builder()
+            .kind(ConnAckKind::Other {
+                reason_code: ConnackReasonCode::Success,
+            })
+            .properties(
+                ConnAckProperties::builder()
+                    .maximum_qos(MaximumQoS::AtMostOnce)
+                    .build(),
+            )
+            .build(),
+    );
     assert_eq!(
         client.handle_read(IncomingData {
             bytes: encode_packet(&connack),
@@ -4580,15 +4730,14 @@ fn publish_retain_when_server_retain_not_available_is_rejected() {
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     assert!(client.poll_write().is_some());
 
-    let connack = ControlPacket::ConnAck(ConnAck {
-        kind: ConnAckKind::Other {
-            reason_code: ConnackReasonCode::Success,
-        },
-        properties: ConnAckProperties {
-            retain_available: Some(false),
-            ..ConnAckProperties::default()
-        },
-    });
+    let connack = ControlPacket::ConnAck(
+        ConnAck::builder()
+            .kind(ConnAckKind::Other {
+                reason_code: ConnackReasonCode::Success,
+            })
+            .properties(ConnAckProperties::builder().retain_available(false).build())
+            .build(),
+    );
     assert_eq!(
         client.handle_read(IncomingData {
             bytes: encode_packet(&connack),
@@ -4622,12 +4771,13 @@ fn subscribe_shared_with_no_local_is_rejected() {
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     assert!(client.poll_write().is_some());
 
-    let connack = ControlPacket::ConnAck(ConnAck {
-        kind: ConnAckKind::Other {
-            reason_code: ConnackReasonCode::Success,
-        },
-        properties: ConnAckProperties::default(),
-    });
+    let connack = ControlPacket::ConnAck(
+        ConnAck::builder()
+            .kind(ConnAckKind::Other {
+                reason_code: ConnackReasonCode::Success,
+            })
+            .build(),
+    );
     assert_eq!(
         client.handle_read(IncomingData {
             bytes: encode_packet(&connack),
@@ -4638,10 +4788,12 @@ fn subscribe_shared_with_no_local_is_rejected() {
     assert!(matches!(client.poll_read(), Some(UserWriteOut::Connected)));
 
     let subscribe = SubscribeOptions {
-        subscription: Subscription {
-            no_local: true,
-            ..make_subscription("$share/group/topic")
-        },
+        subscription: Subscription::builder()
+            .topic_filter(Utf8String::try_from("$share/group/topic").expect("valid utf8"))
+            .qos(Qos::AtMostOnce)
+            .no_local(true)
+            .retain_handling(RetainHandling::SendRetained)
+            .build(),
         extra_subscriptions: Vec::new(),
         subscription_identifier: None,
         user_properties: Vec::new(),
@@ -4661,15 +4813,18 @@ fn subscribe_wildcard_when_server_disallows_is_rejected() {
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     assert!(client.poll_write().is_some());
 
-    let connack = ControlPacket::ConnAck(ConnAck {
-        kind: ConnAckKind::Other {
-            reason_code: ConnackReasonCode::Success,
-        },
-        properties: ConnAckProperties {
-            wildcard_subscription_available: Some(false),
-            ..ConnAckProperties::default()
-        },
-    });
+    let connack = ControlPacket::ConnAck(
+        ConnAck::builder()
+            .kind(ConnAckKind::Other {
+                reason_code: ConnackReasonCode::Success,
+            })
+            .properties(
+                ConnAckProperties::builder()
+                    .wildcard_subscription_available(false)
+                    .build(),
+            )
+            .build(),
+    );
     assert_eq!(
         client.handle_read(IncomingData {
             bytes: encode_packet(&connack),
@@ -4700,15 +4855,18 @@ fn subscribe_shared_when_server_disallows_is_rejected() {
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     assert!(client.poll_write().is_some());
 
-    let connack = ControlPacket::ConnAck(ConnAck {
-        kind: ConnAckKind::Other {
-            reason_code: ConnackReasonCode::Success,
-        },
-        properties: ConnAckProperties {
-            shared_subscription_available: Some(false),
-            ..ConnAckProperties::default()
-        },
-    });
+    let connack = ControlPacket::ConnAck(
+        ConnAck::builder()
+            .kind(ConnAckKind::Other {
+                reason_code: ConnackReasonCode::Success,
+            })
+            .properties(
+                ConnAckProperties::builder()
+                    .shared_subscription_available(false)
+                    .build(),
+            )
+            .build(),
+    );
     assert_eq!(
         client.handle_read(IncomingData {
             bytes: encode_packet(&connack),
@@ -4739,15 +4897,18 @@ fn subscribe_identifier_when_server_disallows_is_rejected() {
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     assert!(client.poll_write().is_some());
 
-    let connack = ControlPacket::ConnAck(ConnAck {
-        kind: ConnAckKind::Other {
-            reason_code: ConnackReasonCode::Success,
-        },
-        properties: ConnAckProperties {
-            subscription_identifiers_available: Some(false),
-            ..ConnAckProperties::default()
-        },
-    });
+    let connack = ControlPacket::ConnAck(
+        ConnAck::builder()
+            .kind(ConnAckKind::Other {
+                reason_code: ConnackReasonCode::Success,
+            })
+            .properties(
+                ConnAckProperties::builder()
+                    .subscription_identifiers_available(false)
+                    .build(),
+            )
+            .build(),
+    );
     assert_eq!(
         client.handle_read(IncomingData {
             bytes: encode_packet(&connack),
@@ -4789,15 +4950,18 @@ fn connecting_auth_continue_then_connack_success_connects() {
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     assert!(client.poll_write().is_some());
 
-    let auth = ControlPacket::Auth(Auth {
-        reason_code: AuthReasonCode::ContinueAuthentication,
-        properties: AuthProperties {
-            authentication: Some(sansio_mqtt_v5_types::AuthenticationKind::WithoutData {
-                method: Utf8String::try_from("SCRAM").expect("valid utf8"),
-            }),
-            ..AuthProperties::default()
-        },
-    });
+    let auth = ControlPacket::Auth(
+        Auth::builder()
+            .reason_code(AuthReasonCode::ContinueAuthentication)
+            .properties(
+                AuthProperties::builder()
+                    .authentication(sansio_mqtt_v5_types::AuthenticationKind::WithoutData {
+                        method: Utf8String::try_from("SCRAM").expect("valid utf8"),
+                    })
+                    .build(),
+            )
+            .build(),
+    );
     assert_eq!(
         client.handle_read(IncomingData {
             bytes: encode_packet(&auth),
@@ -4806,12 +4970,13 @@ fn connecting_auth_continue_then_connack_success_connects() {
         Ok(())
     );
 
-    let connack = ControlPacket::ConnAck(ConnAck {
-        kind: ConnAckKind::Other {
-            reason_code: ConnackReasonCode::Success,
-        },
-        properties: ConnAckProperties::default(),
-    });
+    let connack = ControlPacket::ConnAck(
+        ConnAck::builder()
+            .kind(ConnAckKind::Other {
+                reason_code: ConnackReasonCode::Success,
+            })
+            .build(),
+    );
     assert_eq!(
         client.handle_read(IncomingData {
             bytes: encode_packet(&connack),
@@ -4832,12 +4997,13 @@ fn auth_in_connected_state_is_forwarded_not_protocol_error() {
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     assert!(client.poll_write().is_some());
 
-    let connack = ControlPacket::ConnAck(ConnAck {
-        kind: ConnAckKind::Other {
-            reason_code: ConnackReasonCode::Success,
-        },
-        properties: ConnAckProperties::default(),
-    });
+    let connack = ControlPacket::ConnAck(
+        ConnAck::builder()
+            .kind(ConnAckKind::Other {
+                reason_code: ConnackReasonCode::Success,
+            })
+            .build(),
+    );
     assert_eq!(
         client.handle_read(IncomingData {
             bytes: encode_packet(&connack),
@@ -4847,10 +5013,11 @@ fn auth_in_connected_state_is_forwarded_not_protocol_error() {
     );
     assert!(matches!(client.poll_read(), Some(UserWriteOut::Connected)));
 
-    let auth = ControlPacket::Auth(Auth {
-        reason_code: AuthReasonCode::ContinueAuthentication,
-        properties: AuthProperties::default(),
-    });
+    let auth = ControlPacket::Auth(
+        Auth::builder()
+            .reason_code(AuthReasonCode::ContinueAuthentication)
+            .build(),
+    );
     // [MQTT-4.12.0-2] Must succeed (not return ProtocolError).
     assert_eq!(
         client.handle_read(IncomingData {
@@ -4875,12 +5042,13 @@ fn keepalive_disabled_without_interval_no_pingreq() {
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     assert!(client.poll_write().is_some());
 
-    let connack = ControlPacket::ConnAck(ConnAck {
-        kind: ConnAckKind::Other {
-            reason_code: ConnackReasonCode::Success,
-        },
-        properties: ConnAckProperties::default(),
-    });
+    let connack = ControlPacket::ConnAck(
+        ConnAck::builder()
+            .kind(ConnAckKind::Other {
+                reason_code: ConnackReasonCode::Success,
+            })
+            .build(),
+    );
     assert_eq!(
         client.handle_read(IncomingData {
             bytes: encode_packet(&connack),
@@ -4911,15 +5079,14 @@ fn connack_server_keep_alive_zero_disables_keepalive_without_panic() {
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     let _ = client.poll_write().expect("connect frame expected");
 
-    let connack = ControlPacket::ConnAck(ConnAck {
-        kind: ConnAckKind::Other {
-            reason_code: ConnackReasonCode::Success,
-        },
-        properties: ConnAckProperties {
-            server_keep_alive: Some(0),
-            ..ConnAckProperties::default()
-        },
-    });
+    let connack = ControlPacket::ConnAck(
+        ConnAck::builder()
+            .kind(ConnAckKind::Other {
+                reason_code: ConnackReasonCode::Success,
+            })
+            .properties(ConnAckProperties::builder().server_keep_alive(0).build())
+            .build(),
+    );
     assert_eq!(
         client.handle_read(IncomingData {
             bytes: encode_packet(&connack),
@@ -4950,12 +5117,13 @@ fn keepalive_timeout_without_pingresp_closes_connection() {
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     let _ = client.poll_write().expect("connect frame expected");
 
-    let connack = ControlPacket::ConnAck(ConnAck {
-        kind: ConnAckKind::Other {
-            reason_code: ConnackReasonCode::Success,
-        },
-        properties: ConnAckProperties::default(),
-    });
+    let connack = ControlPacket::ConnAck(
+        ConnAck::builder()
+            .kind(ConnAckKind::Other {
+                reason_code: ConnackReasonCode::Success,
+            })
+            .build(),
+    );
     assert_eq!(
         client.handle_read(IncomingData {
             bytes: encode_packet(&connack),
@@ -5075,15 +5243,18 @@ fn connack_session_expiry_zero_overrides_client_session_should_persist() {
 
     // Server responds with session_expiry_interval=0, overriding the client's
     // value.
-    let connack_no_persist = ControlPacket::ConnAck(ConnAck {
-        kind: ConnAckKind::Other {
-            reason_code: ConnackReasonCode::Success,
-        },
-        properties: ConnAckProperties {
-            session_expiry_interval: Some(0),
-            ..ConnAckProperties::default()
-        },
-    });
+    let connack_no_persist = ControlPacket::ConnAck(
+        ConnAck::builder()
+            .kind(ConnAckKind::Other {
+                reason_code: ConnackReasonCode::Success,
+            })
+            .properties(
+                ConnAckProperties::builder()
+                    .session_expiry_interval(0)
+                    .build(),
+            )
+            .build(),
+    );
     assert_eq!(
         client.handle_read(IncomingData {
             bytes: encode_packet(&connack_no_persist),
@@ -5167,15 +5338,18 @@ fn connack_session_expiry_nonzero_sets_session_should_persist() {
     let _ = client.poll_write().expect("connect frame expected");
 
     // Server overrides with session_expiry_interval=120 (persistence enabled).
-    let connack_persist = ControlPacket::ConnAck(ConnAck {
-        kind: ConnAckKind::Other {
-            reason_code: ConnackReasonCode::Success,
-        },
-        properties: ConnAckProperties {
-            session_expiry_interval: Some(120),
-            ..ConnAckProperties::default()
-        },
-    });
+    let connack_persist = ControlPacket::ConnAck(
+        ConnAck::builder()
+            .kind(ConnAckKind::Other {
+                reason_code: ConnackReasonCode::Success,
+            })
+            .properties(
+                ConnAckProperties::builder()
+                    .session_expiry_interval(120)
+                    .build(),
+            )
+            .build(),
+    );
     assert_eq!(
         client.handle_read(IncomingData {
             bytes: encode_packet(&connack_persist),
@@ -5258,12 +5432,13 @@ fn clean_start_true_clears_local_session_before_connect() {
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     let _ = client.poll_write().expect("connect frame expected");
 
-    let connack = ControlPacket::ConnAck(ConnAck {
-        kind: ConnAckKind::Other {
-            reason_code: ConnackReasonCode::Success,
-        },
-        properties: ConnAckProperties::default(),
-    });
+    let connack = ControlPacket::ConnAck(
+        ConnAck::builder()
+            .kind(ConnAckKind::Other {
+                reason_code: ConnackReasonCode::Success,
+            })
+            .build(),
+    );
     assert_eq!(
         client.handle_read(IncomingData {
             bytes: encode_packet(&connack),
@@ -5313,10 +5488,11 @@ fn clean_start_true_clears_local_session_before_connect() {
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     let _ = client.poll_write().expect("connect frame expected");
 
-    let resumed_connack = ControlPacket::ConnAck(ConnAck {
-        kind: ConnAckKind::ResumePreviousSession,
-        properties: ConnAckProperties::default(),
-    });
+    let resumed_connack = ControlPacket::ConnAck(
+        ConnAck::builder()
+            .kind(ConnAckKind::ResumePreviousSession)
+            .build(),
+    );
     assert_eq!(
         client.handle_read(IncomingData {
             bytes: encode_packet(&resumed_connack),
@@ -5347,12 +5523,13 @@ fn session_with_expiry_keeps_inflight_across_graceful_disconnect() {
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     assert!(client.poll_write().is_some());
 
-    let connack = ControlPacket::ConnAck(ConnAck {
-        kind: ConnAckKind::Other {
-            reason_code: ConnackReasonCode::Success,
-        },
-        properties: ConnAckProperties::default(),
-    });
+    let connack = ControlPacket::ConnAck(
+        ConnAck::builder()
+            .kind(ConnAckKind::Other {
+                reason_code: ConnackReasonCode::Success,
+            })
+            .build(),
+    );
     assert_eq!(
         client.handle_read(IncomingData {
             bytes: encode_packet(&connack),
@@ -5389,10 +5566,11 @@ fn session_with_expiry_keeps_inflight_across_graceful_disconnect() {
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     assert!(client.poll_write().is_some());
 
-    let resumed_connack = ControlPacket::ConnAck(ConnAck {
-        kind: ConnAckKind::ResumePreviousSession,
-        properties: ConnAckProperties::default(),
-    });
+    let resumed_connack = ControlPacket::ConnAck(
+        ConnAck::builder()
+            .kind(ConnAckKind::ResumePreviousSession)
+            .build(),
+    );
     assert_eq!(
         client.handle_read(IncomingData {
             bytes: encode_packet(&resumed_connack),
@@ -5423,12 +5601,13 @@ fn zero_session_expiry_clears_inflight_on_disconnect() {
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     assert!(client.poll_write().is_some());
 
-    let connack = ControlPacket::ConnAck(ConnAck {
-        kind: ConnAckKind::Other {
-            reason_code: ConnackReasonCode::Success,
-        },
-        properties: ConnAckProperties::default(),
-    });
+    let connack = ControlPacket::ConnAck(
+        ConnAck::builder()
+            .kind(ConnAckKind::Other {
+                reason_code: ConnackReasonCode::Success,
+            })
+            .build(),
+    );
     assert_eq!(
         client.handle_read(IncomingData {
             bytes: encode_packet(&connack),
@@ -5465,10 +5644,11 @@ fn zero_session_expiry_clears_inflight_on_disconnect() {
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     assert!(client.poll_write().is_some());
 
-    let resumed_connack = ControlPacket::ConnAck(ConnAck {
-        kind: ConnAckKind::ResumePreviousSession,
-        properties: ConnAckProperties::default(),
-    });
+    let resumed_connack = ControlPacket::ConnAck(
+        ConnAck::builder()
+            .kind(ConnAckKind::ResumePreviousSession)
+            .build(),
+    );
     assert_eq!(
         client.handle_read(IncomingData {
             bytes: encode_packet(&resumed_connack),
@@ -5497,12 +5677,13 @@ fn zero_session_expiry_clears_inflight_on_socket_closed() {
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     assert!(client.poll_write().is_some());
 
-    let connack = ControlPacket::ConnAck(ConnAck {
-        kind: ConnAckKind::Other {
-            reason_code: ConnackReasonCode::Success,
-        },
-        properties: ConnAckProperties::default(),
-    });
+    let connack = ControlPacket::ConnAck(
+        ConnAck::builder()
+            .kind(ConnAckKind::Other {
+                reason_code: ConnackReasonCode::Success,
+            })
+            .build(),
+    );
     assert_eq!(
         client.handle_read(IncomingData {
             bytes: encode_packet(&connack),
@@ -5534,10 +5715,11 @@ fn zero_session_expiry_clears_inflight_on_socket_closed() {
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     assert!(client.poll_write().is_some());
 
-    let resumed_connack = ControlPacket::ConnAck(ConnAck {
-        kind: ConnAckKind::ResumePreviousSession,
-        properties: ConnAckProperties::default(),
-    });
+    let resumed_connack = ControlPacket::ConnAck(
+        ConnAck::builder()
+            .kind(ConnAckKind::ResumePreviousSession)
+            .build(),
+    );
     assert_eq!(
         client.handle_read(IncomingData {
             bytes: encode_packet(&resumed_connack),
@@ -5569,12 +5751,13 @@ fn keepalive_timeout_with_session_expiry_preserves_inflight_for_resume() {
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     assert!(client.poll_write().is_some());
 
-    let connack = ControlPacket::ConnAck(ConnAck {
-        kind: ConnAckKind::Other {
-            reason_code: ConnackReasonCode::Success,
-        },
-        properties: ConnAckProperties::default(),
-    });
+    let connack = ControlPacket::ConnAck(
+        ConnAck::builder()
+            .kind(ConnAckKind::Other {
+                reason_code: ConnackReasonCode::Success,
+            })
+            .build(),
+    );
     assert_eq!(
         client.handle_read(IncomingData {
             bytes: encode_packet(&connack),
@@ -5621,10 +5804,11 @@ fn keepalive_timeout_with_session_expiry_preserves_inflight_for_resume() {
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     assert!(client.poll_write().is_some());
 
-    let resumed_connack = ControlPacket::ConnAck(ConnAck {
-        kind: ConnAckKind::ResumePreviousSession,
-        properties: ConnAckProperties::default(),
-    });
+    let resumed_connack = ControlPacket::ConnAck(
+        ConnAck::builder()
+            .kind(ConnAckKind::ResumePreviousSession)
+            .build(),
+    );
     assert_eq!(
         client.handle_read(IncomingData {
             bytes: encode_packet(&resumed_connack),
@@ -5646,12 +5830,13 @@ fn subscribe_tracks_packet_id_until_suback() {
 
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     assert!(client.poll_write().is_some());
-    let connack = ControlPacket::ConnAck(ConnAck {
-        kind: ConnAckKind::Other {
-            reason_code: ConnackReasonCode::Success,
-        },
-        properties: ConnAckProperties::default(),
-    });
+    let connack = ControlPacket::ConnAck(
+        ConnAck::builder()
+            .kind(ConnAckKind::Other {
+                reason_code: ConnackReasonCode::Success,
+            })
+            .build(),
+    );
     assert_eq!(
         client.handle_read(IncomingData {
             bytes: encode_packet(&connack),
@@ -5687,11 +5872,12 @@ fn subscribe_tracks_packet_id_until_suback() {
     let publish_frame = client.poll_write().expect("publish frame expected");
     assert_ne!(publish_frame, subscribe_frame);
 
-    let suback = ControlPacket::SubAck(sansio_mqtt_v5_types::SubAck {
-        packet_id: NonZero::new(1).expect("non-zero"),
-        properties: sansio_mqtt_v5_types::SubAckProperties::default(),
-        reason_codes: vec![sansio_mqtt_v5_types::SubAckReasonCode::SuccessQoS0],
-    });
+    let suback = ControlPacket::SubAck(
+        sansio_mqtt_v5_types::SubAck::builder()
+            .packet_id(NonZero::new(1).expect("non-zero"))
+            .reason_codes(vec![sansio_mqtt_v5_types::SubAckReasonCode::SuccessQoS0])
+            .build(),
+    );
     assert_eq!(
         client.handle_read(IncomingData {
             bytes: encode_packet(&suback),
@@ -5707,12 +5893,13 @@ fn unsubscribe_tracks_packet_id_until_unsuback() {
 
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     assert!(client.poll_write().is_some());
-    let connack = ControlPacket::ConnAck(ConnAck {
-        kind: ConnAckKind::Other {
-            reason_code: ConnackReasonCode::Success,
-        },
-        properties: ConnAckProperties::default(),
-    });
+    let connack = ControlPacket::ConnAck(
+        ConnAck::builder()
+            .kind(ConnAckKind::Other {
+                reason_code: ConnackReasonCode::Success,
+            })
+            .build(),
+    );
     assert_eq!(
         client.handle_read(IncomingData {
             bytes: encode_packet(&connack),
@@ -5746,11 +5933,12 @@ fn unsubscribe_tracks_packet_id_until_unsuback() {
     let publish_frame = client.poll_write().expect("publish frame expected");
     assert_ne!(publish_frame, unsub_frame);
 
-    let unsuback = ControlPacket::UnsubAck(sansio_mqtt_v5_types::UnsubAck {
-        packet_id: NonZero::new(1).expect("non-zero"),
-        properties: sansio_mqtt_v5_types::UnsubAckProperties::default(),
-        reason_codes: vec![sansio_mqtt_v5_types::UnsubAckReasonCode::Success],
-    });
+    let unsuback = ControlPacket::UnsubAck(
+        sansio_mqtt_v5_types::UnsubAck::builder()
+            .packet_id(NonZero::new(1).expect("non-zero"))
+            .reason_codes(vec![sansio_mqtt_v5_types::UnsubAckReasonCode::Success])
+            .build(),
+    );
     assert_eq!(
         client.handle_read(IncomingData {
             bytes: encode_packet(&unsuback),
@@ -5766,12 +5954,13 @@ fn unknown_suback_or_unsuback_is_protocol_error() {
 
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     assert!(client.poll_write().is_some());
-    let connack = ControlPacket::ConnAck(ConnAck {
-        kind: ConnAckKind::Other {
-            reason_code: ConnackReasonCode::Success,
-        },
-        properties: ConnAckProperties::default(),
-    });
+    let connack = ControlPacket::ConnAck(
+        ConnAck::builder()
+            .kind(ConnAckKind::Other {
+                reason_code: ConnackReasonCode::Success,
+            })
+            .build(),
+    );
     assert_eq!(
         client.handle_read(IncomingData {
             bytes: encode_packet(&connack),
@@ -5781,11 +5970,12 @@ fn unknown_suback_or_unsuback_is_protocol_error() {
     );
     assert!(matches!(client.poll_read(), Some(UserWriteOut::Connected)));
 
-    let suback = ControlPacket::SubAck(sansio_mqtt_v5_types::SubAck {
-        packet_id: NonZero::new(123).expect("non-zero"),
-        properties: sansio_mqtt_v5_types::SubAckProperties::default(),
-        reason_codes: vec![sansio_mqtt_v5_types::SubAckReasonCode::SuccessQoS0],
-    });
+    let suback = ControlPacket::SubAck(
+        sansio_mqtt_v5_types::SubAck::builder()
+            .packet_id(NonZero::new(123).expect("non-zero"))
+            .reason_codes(vec![sansio_mqtt_v5_types::SubAckReasonCode::SuccessQoS0])
+            .build(),
+    );
     assert_eq!(
         client.handle_read(IncomingData {
             bytes: encode_packet(&suback),
@@ -5810,11 +6000,12 @@ fn unknown_suback_or_unsuback_is_protocol_error() {
     );
     assert!(matches!(client.poll_read(), Some(UserWriteOut::Connected)));
 
-    let unsuback = ControlPacket::UnsubAck(sansio_mqtt_v5_types::UnsubAck {
-        packet_id: NonZero::new(123).expect("non-zero"),
-        properties: sansio_mqtt_v5_types::UnsubAckProperties::default(),
-        reason_codes: vec![sansio_mqtt_v5_types::UnsubAckReasonCode::Success],
-    });
+    let unsuback = ControlPacket::UnsubAck(
+        sansio_mqtt_v5_types::UnsubAck::builder()
+            .packet_id(NonZero::new(123).expect("non-zero"))
+            .reason_codes(vec![sansio_mqtt_v5_types::UnsubAckReasonCode::Success])
+            .build(),
+    );
     assert_eq!(
         client.handle_read(IncomingData {
             bytes: encode_packet(&unsuback),
@@ -5840,12 +6031,13 @@ fn server_disconnect_with_reason_code_forwarded_to_application() {
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     let _ = client.poll_write().expect("CONNECT frame expected");
 
-    let connack = ControlPacket::ConnAck(ConnAck {
-        kind: ConnAckKind::Other {
-            reason_code: ConnackReasonCode::Success,
-        },
-        properties: ConnAckProperties::default(),
-    });
+    let connack = ControlPacket::ConnAck(
+        ConnAck::builder()
+            .kind(ConnAckKind::Other {
+                reason_code: ConnackReasonCode::Success,
+            })
+            .build(),
+    );
     assert_eq!(
         client.handle_read(IncomingData {
             bytes: encode_packet(&connack),
@@ -5856,10 +6048,11 @@ fn server_disconnect_with_reason_code_forwarded_to_application() {
     assert!(matches!(client.poll_read(), Some(UserWriteOut::Connected)));
 
     // Server sends DISCONNECT with a non-normal reason code.
-    let server_disconnect = ControlPacket::Disconnect(Disconnect {
-        reason_code: DisconnectReasonCode::ServerBusy,
-        properties: DisconnectProperties::default(),
-    });
+    let server_disconnect = ControlPacket::Disconnect(
+        Disconnect::builder()
+            .reason_code(DisconnectReasonCode::ServerBusy)
+            .build(),
+    );
     assert_eq!(
         client.handle_read(IncomingData {
             bytes: encode_packet(&server_disconnect),
@@ -5892,12 +6085,13 @@ fn server_normal_disconnect_reason_code_forwarded() {
 
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     let _ = client.poll_write().expect("CONNECT frame expected");
-    let connack = ControlPacket::ConnAck(ConnAck {
-        kind: ConnAckKind::Other {
-            reason_code: ConnackReasonCode::Success,
-        },
-        properties: ConnAckProperties::default(),
-    });
+    let connack = ControlPacket::ConnAck(
+        ConnAck::builder()
+            .kind(ConnAckKind::Other {
+                reason_code: ConnackReasonCode::Success,
+            })
+            .build(),
+    );
     assert_eq!(
         client.handle_read(IncomingData {
             bytes: encode_packet(&connack),
@@ -5907,10 +6101,11 @@ fn server_normal_disconnect_reason_code_forwarded() {
     );
     assert!(matches!(client.poll_read(), Some(UserWriteOut::Connected)));
 
-    let server_disconnect = ControlPacket::Disconnect(Disconnect {
-        reason_code: DisconnectReasonCode::NormalDisconnection,
-        properties: DisconnectProperties::default(),
-    });
+    let server_disconnect = ControlPacket::Disconnect(
+        Disconnect::builder()
+            .reason_code(DisconnectReasonCode::NormalDisconnection)
+            .build(),
+    );
     assert_eq!(
         client.handle_read(IncomingData {
             bytes: encode_packet(&server_disconnect),
@@ -5936,12 +6131,13 @@ fn client_initiated_disconnect_emits_disconnected_none() {
 
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     let _ = client.poll_write().expect("CONNECT frame expected");
-    let connack = ControlPacket::ConnAck(ConnAck {
-        kind: ConnAckKind::Other {
-            reason_code: ConnackReasonCode::Success,
-        },
-        properties: ConnAckProperties::default(),
-    });
+    let connack = ControlPacket::ConnAck(
+        ConnAck::builder()
+            .kind(ConnAckKind::Other {
+                reason_code: ConnackReasonCode::Success,
+            })
+            .build(),
+    );
     assert_eq!(
         client.handle_read(IncomingData {
             bytes: encode_packet(&connack),
@@ -5970,12 +6166,13 @@ fn auth_packet_in_connected_state_forwarded_to_application() {
 
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     let _ = client.poll_write().expect("CONNECT frame expected");
-    let connack = ControlPacket::ConnAck(ConnAck {
-        kind: ConnAckKind::Other {
-            reason_code: ConnackReasonCode::Success,
-        },
-        properties: ConnAckProperties::default(),
-    });
+    let connack = ControlPacket::ConnAck(
+        ConnAck::builder()
+            .kind(ConnAckKind::Other {
+                reason_code: ConnackReasonCode::Success,
+            })
+            .build(),
+    );
     assert_eq!(
         client.handle_read(IncomingData {
             bytes: encode_packet(&connack),
@@ -5986,10 +6183,11 @@ fn auth_packet_in_connected_state_forwarded_to_application() {
     assert!(matches!(client.poll_read(), Some(UserWriteOut::Connected)));
 
     // Server sends AUTH to initiate re-authentication. [MQTT-4.12.0-2]
-    let auth_packet = ControlPacket::Auth(Auth {
-        reason_code: AuthReasonCode::ReAuthenticate,
-        properties: AuthProperties::default(),
-    });
+    let auth_packet = ControlPacket::Auth(
+        Auth::builder()
+            .reason_code(AuthReasonCode::ReAuthenticate)
+            .build(),
+    );
     assert_eq!(
         client.handle_read(IncomingData {
             bytes: encode_packet(&auth_packet),
@@ -6023,15 +6221,18 @@ fn make_connected_client_with_keep_alive(keep_alive_secs: Option<u16>) -> Client
     assert!(client.poll_write().is_some()); // drain CONNECT frame
 
     let server_keep_alive = keep_alive_secs.and_then(|s| NonZero::new(s).map(|_| s));
-    let connack = ControlPacket::ConnAck(ConnAck {
-        kind: ConnAckKind::Other {
-            reason_code: ConnackReasonCode::Success,
-        },
-        properties: ConnAckProperties {
-            server_keep_alive,
-            ..ConnAckProperties::default()
-        },
-    });
+    let connack = ControlPacket::ConnAck(
+        ConnAck::builder()
+            .kind(ConnAckKind::Other {
+                reason_code: ConnackReasonCode::Success,
+            })
+            .properties(
+                ConnAckProperties::builder()
+                    .maybe_server_keep_alive(server_keep_alive)
+                    .build(),
+            )
+            .build(),
+    );
     assert_eq!(
         client.handle_read(IncomingData {
             bytes: encode_packet(&connack),
@@ -6056,15 +6257,14 @@ fn keep_alive_timer_armed_after_connack_uses_received_at_timestamp() {
     let mut client = Client::<Duration>::default();
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     assert!(client.poll_write().is_some());
-    let connack = ControlPacket::ConnAck(ConnAck {
-        kind: ConnAckKind::Other {
-            reason_code: ConnackReasonCode::Success,
-        },
-        properties: ConnAckProperties {
-            server_keep_alive: Some(30),
-            ..ConnAckProperties::default()
-        },
-    });
+    let connack = ControlPacket::ConnAck(
+        ConnAck::builder()
+            .kind(ConnAckKind::Other {
+                reason_code: ConnackReasonCode::Success,
+            })
+            .properties(ConnAckProperties::builder().server_keep_alive(30).build())
+            .build(),
+    );
     assert_eq!(
         client.handle_read(IncomingData {
             bytes: encode_packet(&connack),
@@ -6128,8 +6328,8 @@ fn handle_timeout_sends_pingreq_and_reschedules_at_half_interval_per_mqtt_3_1_2_
     // Timer armed at CONNACK received_at=0 → deadline = 10.
     assert_eq!(client.poll_timeout(), Some(Duration::from_secs(10)));
 
-    // First timeout: no traffic → send PINGREQ, next deadline is now + interval/2 =
-    // 15.
+    // First timeout: no traffic → send PINGREQ, next deadline is now +
+    // interval/2 = 15.
     assert_eq!(client.handle_timeout(Duration::from_secs(10)), Ok(()));
     assert_eq!(
         client.poll_write(),
@@ -6142,7 +6342,8 @@ fn handle_timeout_sends_pingreq_and_reschedules_at_half_interval_per_mqtt_3_1_2_
         "next deadline must be interval/2 after PINGREQ so total is 1.5× interval"
     );
 
-    // Second timeout fires at t=15 (1.5× interval from t=0): no PINGRESP → close.
+    // Second timeout fires at t=15 (1.5× interval from t=0): no PINGRESP →
+    // close.
     assert_eq!(
         client.handle_timeout(Duration::from_secs(15)),
         Err(Error::ProtocolError),
@@ -6223,16 +6424,18 @@ fn socket_connected_preserves_connect_options_for_effective_limit_recomputation(
         Some(DriverEventOut::OpenSocket)
     ));
 
-    // SocketConnected must not erase pending_connect_options from the scratchpad.
+    // SocketConnected must not erase pending_connect_options from the
+    // scratchpad.
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     let _ = client.poll_write().expect("connect frame expected");
 
-    let connack = ControlPacket::ConnAck(ConnAck {
-        kind: ConnAckKind::Other {
-            reason_code: ConnackReasonCode::Success,
-        },
-        properties: ConnAckProperties::default(),
-    });
+    let connack = ControlPacket::ConnAck(
+        ConnAck::builder()
+            .kind(ConnAckKind::Other {
+                reason_code: ConnackReasonCode::Success,
+            })
+            .build(),
+    );
     assert_eq!(
         client.handle_read(IncomingData {
             bytes: encode_packet(&connack),
@@ -6247,16 +6450,14 @@ fn socket_connected_preserves_connect_options_for_effective_limit_recomputation(
     // would be rejected as ProtocolError. After the fix it must succeed.
     let topic = Topic::try_new("test/topic").expect("valid topic");
     let alias = NonZero::new(5).expect("non-zero alias");
-    let publish_with_alias = ControlPacket::Publish(Publish {
-        kind: PublishKind::FireAndForget,
-        retain: false,
-        payload: Payload::new(b"hello".as_slice()),
-        topic: topic.clone(),
-        properties: PublishProperties {
-            topic_alias: Some(alias),
-            ..PublishProperties::default()
-        },
-    });
+    let publish_with_alias = ControlPacket::Publish(
+        Publish::builder()
+            .kind(PublishKind::FireAndForget)
+            .payload(Payload::new(b"hello".as_slice()))
+            .topic(topic.clone())
+            .properties(PublishProperties::builder().topic_alias(alias).build())
+            .build(),
+    );
 
     assert_eq!(
         client.handle_read(IncomingData {
@@ -6295,12 +6496,13 @@ fn reconnect_from_disconnected_preserves_connect_options_for_effective_limit_rec
     assert_eq!(client.handle_event(DriverEventIn::SocketConnected), Ok(()));
     let _ = client.poll_write().expect("connect frame expected");
 
-    let connack = ControlPacket::ConnAck(ConnAck {
-        kind: ConnAckKind::Other {
-            reason_code: ConnackReasonCode::Success,
-        },
-        properties: ConnAckProperties::default(),
-    });
+    let connack = ControlPacket::ConnAck(
+        ConnAck::builder()
+            .kind(ConnAckKind::Other {
+                reason_code: ConnackReasonCode::Success,
+            })
+            .build(),
+    );
     assert_eq!(
         client.handle_read(IncomingData {
             bytes: encode_packet(&connack),
@@ -6349,16 +6551,14 @@ fn reconnect_from_disconnected_preserves_connect_options_for_effective_limit_rec
     // A PUBLISH with topic alias 5 must be accepted after reconnect.
     let topic = Topic::try_new("test/topic").expect("valid topic");
     let alias = NonZero::new(5).expect("non-zero alias");
-    let publish_with_alias = ControlPacket::Publish(Publish {
-        kind: PublishKind::FireAndForget,
-        retain: false,
-        payload: Payload::new(b"hello".as_slice()),
-        topic: topic.clone(),
-        properties: PublishProperties {
-            topic_alias: Some(alias),
-            ..PublishProperties::default()
-        },
-    });
+    let publish_with_alias = ControlPacket::Publish(
+        Publish::builder()
+            .kind(PublishKind::FireAndForget)
+            .payload(Payload::new(b"hello".as_slice()))
+            .topic(topic.clone())
+            .properties(PublishProperties::builder().topic_alias(alias).build())
+            .build(),
+    );
 
     assert_eq!(
         client.handle_read(IncomingData {

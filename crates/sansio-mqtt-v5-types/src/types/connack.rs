@@ -13,13 +13,15 @@ use super::*;
 /// server-negotiated `CONNACK` properties. Conformance:
 /// `[MQTT-3.2.0-1]`, `[MQTT-3.2.0-2]`, `[MQTT-3.2.2-1]`,
 /// `[MQTT-3.2.2-2]`, `[MQTT-3.2.2-7]`, `[MQTT-3.2.2-8]`.
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone, bon::Builder)]
+#[non_exhaustive]
 pub struct ConnAck {
     /// Acknowledge Flags and Reason Code
     /// ([§3.2.2](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901077)).
     pub kind: ConnAckKind,
     /// `CONNACK` Properties
     /// ([§3.2.2.3](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901080)).
+    #[builder(default)]
     pub properties: ConnAckProperties,
 }
 
@@ -64,7 +66,8 @@ impl From<ConnAckHeaderFlags> for u8 {
 ///
 /// Set by the Server to negotiate session parameters; all fields are
 /// optional and use spec-mandated defaults when absent.
-#[derive(Debug, PartialEq, Eq, Clone, Default)]
+#[derive(Debug, PartialEq, Eq, Clone, Default, bon::Builder)]
+#[non_exhaustive]
 pub struct ConnAckProperties {
     /// Session Expiry Interval in seconds
     /// ([§3.2.2.3.2](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901082),
@@ -124,5 +127,6 @@ pub struct ConnAckProperties {
     pub authentication: Option<AuthenticationKind>,
     /// User Properties
     /// ([§3.2.2.3.10](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901090)).
+    #[builder(default)]
     pub user_properties: Vec<(Utf8String, Utf8String)>,
 }

@@ -135,8 +135,8 @@ where
                 }
                 Err(ErrMode::Incomplete(_)) => break,
                 Err(ErrMode::Backtrack(_) | ErrMode::Cut(_)) => {
-                    // [MQTT-4.13.1-1] Malformed Control Packet is a protocol error and requires
-                    // disconnect.
+                    // [MQTT-4.13.1-1] Malformed Control Packet is a protocol
+                    // error and requires disconnect.
                     let _ = self.dispatch(|_s, set, ses, sp| {
                         queues::disconnect_and_reset(
                             set,
@@ -194,8 +194,8 @@ where
 
     #[tracing::instrument(skip_all)]
     fn handle_write(&mut self, msg: UserWriteIn) -> Result<(), Self::Error> {
-        // Keep-alive activity is tracked in `queues::enqueue_packet`, at the one
-        // point where a packet actually reaches the write queue.
+        // Keep-alive activity is tracked in `queues::enqueue_packet`, at the
+        // one point where a packet actually reaches the write queue.
         self.dispatch(|s, set, ses, sp| s.handle_write(set, ses, sp, msg))
     }
 

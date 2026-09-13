@@ -100,8 +100,9 @@ impl Payload {
     pub fn try_new(value: impl Into<bytes::Bytes>) -> Result<Self, PayloadError> {
         let value = value.into();
         if value.len() > u64::MAX as usize {
-            // This check should never fail in practice since sizeof(u64) == sizeof(usize)
-            // on basically all platforms, but we include it for completeness.
+            // This check should never fail in practice since sizeof(u64) ==
+            // sizeof(usize) on basically all platforms, but we
+            // include it for completeness.
             return Err(PayloadError);
         }
 
@@ -414,8 +415,8 @@ impl core::fmt::Display for Topic {
 impl core::convert::AsRef<str> for Utf8String {
     #[inline]
     fn as_ref(&self) -> &str {
-        // SAFETY: The Utf8String is guaranteed to be valid UTF-8 as per the validation
-        // predicate.
+        // SAFETY: The Utf8String is guaranteed to be valid UTF-8 as per the
+        // validation predicate.
         unsafe { core::str::from_utf8_unchecked(self.as_bytes()) }
     }
 }
@@ -632,6 +633,7 @@ impl From<RetainHandling> for u8 {
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy, Error)]
 #[error("Invalid retain handling value: {value}")]
 #[repr(transparent)]
+#[non_exhaustive]
 pub struct InvalidRetainHandlingError {
     /// Offending byte value that could not be mapped onto a
     /// [`RetainHandling`] variant.
@@ -661,6 +663,7 @@ impl From<FormatIndicator> for u8 {
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy, Error)]
 #[error("Unknown format indicator: {format_indicator}")]
 #[repr(transparent)]
+#[non_exhaustive]
 pub struct UnknownFormatIndicatorError {
     /// Offending byte value that could not be mapped onto a
     /// [`FormatIndicator`] variant.
@@ -694,6 +697,7 @@ impl From<Qos> for u8 {
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy, Error)]
 #[error("Invalid QoS value: {qos}")]
 #[repr(transparent)]
+#[non_exhaustive]
 pub struct InvalidQosError {
     /// Offending byte value that could not be mapped onto a valid
     /// QoS variant.

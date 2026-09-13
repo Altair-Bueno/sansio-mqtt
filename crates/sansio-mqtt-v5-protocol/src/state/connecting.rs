@@ -57,55 +57,66 @@ fn build_connect(settings: &ClientSettings, options: &ConnectionOptions) -> Resu
                 .map(|interval| u32::try_from(interval.as_secs()).map_err(|_| Error::ProtocolError))
                 .transpose()?;
 
-            Ok(ConnectWill {
-                topic: will.topic.clone(),
-                payload,
-                qos: will.qos,
-                retain: will.retain,
-                properties: WillProperties {
-                    will_delay_interval: will.will_delay_interval,
-                    payload_format_indicator: will.payload_format_indicator,
-                    message_expiry_interval,
-                    content_type: will.content_type.clone(),
-                    response_topic: will.response_topic.clone(),
-                    correlation_data: will.correlation_data.clone(),
-                    user_properties: will.user_properties.clone(),
-                },
-            })
+            Ok(ConnectWill::builder()
+                .topic(will.topic.clone())
+                .payload(payload)
+                .qos(will.qos)
+                .retain(will.retain)
+                .properties(
+                    WillProperties::builder()
+                        .maybe_will_delay_interval(will.will_delay_interval)
+                        .maybe_payload_format_indicator(will.payload_format_indicator)
+                        .maybe_message_expiry_interval(message_expiry_interval)
+                        .maybe_content_type(will.content_type.clone())
+                        .maybe_response_topic(will.response_topic.clone())
+                        .maybe_correlation_data(will.correlation_data.clone())
+                        .user_properties(will.user_properties.clone())
+                        .build(),
+                )
+                .build())
         })
         .transpose()?;
 
-    Ok(Connect {
-        protocol_name: Utf8String::try_from("MQTT")
-            .expect("MQTT protocol name is always valid UTF-8 string"),
-        protocol_version: 5,
-        clean_start: options.clean_start,
-        client_identifier: options.client_identifier.clone(),
-        will,
-        user_name: options.user_name.clone(),
-        password: options.password.clone(),
-        keep_alive: options.keep_alive.or(settings.default_keep_alive),
-        properties: ConnectProperties {
-            session_expiry_interval: options.session_expiry_interval,
-            receive_maximum: [
-                options.receive_maximum,
-                settings.max_incoming_receive_maximum,
-            ]
-            .into_iter()
-            .flatten()
-            .min(),
-            maximum_packet_size: limits::client_maximum_packet_size(settings, options),
-            topic_alias_maximum: limits::client_topic_alias_maximum(settings, options),
-            request_response_information: options
-                .request_response_information
-                .or(settings.default_request_response_information),
-            request_problem_information: options
-                .request_problem_information
-                .or(settings.default_request_problem_information),
-            authentication: options.authentication.clone(),
-            user_properties: options.user_properties.clone(),
-        },
-    })
+    Ok(Connect::builder()
+        .protocol_name(
+            Utf8String::try_from("MQTT").expect("MQTT protocol name is always valid UTF-8 string"),
+        )
+        .protocol_version(5)
+        .clean_start(options.clean_start)
+        .client_identifier(options.client_identifier.clone())
+        .maybe_will(will)
+        .maybe_user_name(options.user_name.clone())
+        .maybe_password(options.password.clone())
+        .maybe_keep_alive(options.keep_alive.or(settings.default_keep_alive))
+        .properties(
+            ConnectProperties::builder()
+                .maybe_session_expiry_interval(options.session_expiry_interval)
+                .maybe_receive_maximum(
+                    [
+                        options.receive_maximum,
+                        settings.max_incoming_receive_maximum,
+                    ]
+                    .into_iter()
+                    .flatten()
+                    .min(),
+                )
+                .maybe_maximum_packet_size(limits::client_maximum_packet_size(settings, options))
+                .maybe_topic_alias_maximum(limits::client_topic_alias_maximum(settings, options))
+                .maybe_request_response_information(
+                    options
+                        .request_response_information
+                        .or(settings.default_request_response_information),
+                )
+                .maybe_request_problem_information(
+                    options
+                        .request_problem_information
+                        .or(settings.default_request_problem_information),
+                )
+                .maybe_authentication(options.authentication.clone())
+                .user_properties(options.user_properties.clone())
+                .build(),
+        )
+        .build())
 }
 
 /// Handles a `SocketConnected` event while in the Connecting state.
@@ -353,14 +364,16 @@ where
         match evt {
             DriverEventIn::SocketConnected => {
                 if self.connect_sent {
-                    // CONNECT was already sent; a second SocketConnected is invalid.
+                    // CONNECT was already sent; a second SocketConnected is
+                    // invalid.
                     (
                         ClientState::Connecting(self),
                         Err(Error::InvalidStateTransition),
                     )
                 } else {
-                    // CONNECT not yet sent (transition came from handle_write(Connect));
-                    // send CONNECT now.
+                    // CONNECT not yet sent (transition came from
+                    // handle_write(Connect)); send CONNECT
+                    // now.
                     on_socket_connected(settings, session, scratchpad)
                 }
             }
@@ -380,9 +393,9 @@ where
         scratchpad: &mut ClientScratchpad<Time>,
         _now: Time,
     ) -> (ClientState, Result<(), Error>) {
-        // [MQTT-3.1.4-5] A timeout in the Connecting state means the server did not
-        // respond with CONNACK within the caller-imposed deadline. Close the
-        // socket and signal the error.
+        // [MQTT-3.1.4-5] A timeout in the Connecting state means the server did
+        // not respond with CONNACK within the caller-imposed deadline.
+        // Close the socket and signal the error.
         scratchpad
             .action_queue
             .push_back(DriverEventOut::CloseSocket);

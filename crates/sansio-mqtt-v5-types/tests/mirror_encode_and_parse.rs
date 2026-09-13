@@ -325,49 +325,55 @@ fn assert_that_parsing_an_invalid_field_on_unsuback_fails(
         0, 4, // Will payload length
         4, 3, 2, 1, // Will payload
     ],
-    ControlPacket::Connect(Connect {
-        protocol_name: Utf8String::new("MQTT"),
-        protocol_version: 5,
-        clean_start: true,
-        client_identifier: Utf8String::new("test"),
-        keep_alive: NonZero::new(30),
-        user_name: None,
-        password: None,
-        will: Some(Will {
-            topic: Topic::new("topic"),
-            payload: BinaryData::new([4, 3, 2, 1].as_slice()),
-            qos: Qos::ExactlyOnce,
-            retain: true,
-            properties: WillProperties {
-                will_delay_interval: Some(1234),
-                payload_format_indicator: Some(FormatIndicator::Unspecified),
-                message_expiry_interval: Some(4321),
-                content_type: Some(Utf8String::new("test")),
-                response_topic: Some(Topic::new("topic")),
-                correlation_data: BinaryData::try_from(&[1, 2, 3, 4]).ok(),
-                user_properties: vec! [(
-                    Utf8String::new("test"),
-                    Utf8String::new("test"),
-                )],
-            },
-        }),
-        properties: ConnectProperties {
-            session_expiry_interval: Some(1234),
-            receive_maximum: NonZero::new(432),
-            maximum_packet_size: NonZero::new(100),
-            topic_alias_maximum: Some(456),
-            request_response_information: Some(true),
-            request_problem_information: Some(true),
-            authentication: Some(AuthenticationKind::WithData {
-                method: Utf8String::new("test"),
-                data: BinaryData::new([1, 2, 3, 4].as_slice()),
-            }),
-            user_properties: vec! [(
-                Utf8String::new("test"),
-                Utf8String::new("test"),
-            )],
-        },
-    })
+    ControlPacket::Connect(
+        Connect::builder()
+            .protocol_name(Utf8String::new("MQTT"))
+            .protocol_version(5)
+            .clean_start(true)
+            .client_identifier(Utf8String::new("test"))
+            .maybe_keep_alive(NonZero::new(30))
+            .will(
+                Will::builder()
+                    .topic(Topic::new("topic"))
+                    .payload(BinaryData::new([4, 3, 2, 1].as_slice()))
+                    .qos(Qos::ExactlyOnce)
+                    .retain(true)
+                    .properties(
+                        WillProperties::builder()
+                            .will_delay_interval(1234)
+                            .payload_format_indicator(FormatIndicator::Unspecified)
+                            .message_expiry_interval(4321)
+                            .content_type(Utf8String::new("test"))
+                            .response_topic(Topic::new("topic"))
+                            .maybe_correlation_data(BinaryData::try_from(&[1, 2, 3, 4]).ok())
+                            .user_properties(vec![(
+                                Utf8String::new("test"),
+                                Utf8String::new("test"),
+                            )])
+                            .build(),
+                    )
+                    .build(),
+            )
+            .properties(
+                ConnectProperties::builder()
+                    .session_expiry_interval(1234)
+                    .maybe_receive_maximum(NonZero::new(432))
+                    .maybe_maximum_packet_size(NonZero::new(100))
+                    .topic_alias_maximum(456)
+                    .request_response_information(true)
+                    .request_problem_information(true)
+                    .authentication(AuthenticationKind::WithData {
+                        method: Utf8String::new("test"),
+                        data: BinaryData::new([1, 2, 3, 4].as_slice()),
+                    })
+                    .user_properties(vec![(
+                        Utf8String::new("test"),
+                        Utf8String::new("test"),
+                    )])
+                    .build(),
+            )
+            .build(),
+    )
 )]
 #[case::connect_mqtt_5_with_will_properties_but_with_empty_will_payload(
     vec! [
@@ -401,49 +407,55 @@ fn assert_that_parsing_an_invalid_field_on_unsuback_fails(
         116, 111, 112, 105, 99, // Will topic
         0, 0, // Will payload length
     ],
-    ControlPacket::Connect(Connect {
-        protocol_name: Utf8String::new("MQTT"),
-        protocol_version: 5,
-        clean_start: true,
-        client_identifier: Utf8String::new("test"),
-        keep_alive: NonZero::new(30),
-        user_name: None,
-        password: None,
-        will: Some(Will {
-            topic: Topic::new("topic"),
-            payload: BinaryData::default(),
-            qos: Qos::ExactlyOnce,
-            retain: true,
-            properties: WillProperties {
-                will_delay_interval: Some(1234),
-                payload_format_indicator: Some(FormatIndicator::Unspecified),
-                message_expiry_interval: Some(4321),
-                content_type: Some(Utf8String::new("test")),
-                response_topic: Some(Topic::new("topic")),
-                correlation_data: BinaryData::try_from(&[1, 2, 3, 4]).ok(),
-                user_properties: vec! [(
-                    Utf8String::new("test"),
-                    Utf8String::new("test"),
-                )],
-            },
-        }),
-        properties: ConnectProperties {
-            session_expiry_interval: Some(1234),
-            receive_maximum: NonZero::new(432),
-            maximum_packet_size: NonZero::new(100),
-            topic_alias_maximum: Some(456),
-            request_response_information: Some(true),
-            request_problem_information: Some(true),
-            authentication: Some(AuthenticationKind::WithData {
-                method: Utf8String::new("test"),
-                data: BinaryData::new([1, 2, 3, 4].as_slice()),
-            }),
-            user_properties: vec! [(
-                Utf8String::new("test"),
-                Utf8String::new("test"),
-            )],
-        },
-    })
+    ControlPacket::Connect(
+        Connect::builder()
+            .protocol_name(Utf8String::new("MQTT"))
+            .protocol_version(5)
+            .clean_start(true)
+            .client_identifier(Utf8String::new("test"))
+            .maybe_keep_alive(NonZero::new(30))
+            .will(
+                Will::builder()
+                    .topic(Topic::new("topic"))
+                    .payload(BinaryData::default())
+                    .qos(Qos::ExactlyOnce)
+                    .retain(true)
+                    .properties(
+                        WillProperties::builder()
+                            .will_delay_interval(1234)
+                            .payload_format_indicator(FormatIndicator::Unspecified)
+                            .message_expiry_interval(4321)
+                            .content_type(Utf8String::new("test"))
+                            .response_topic(Topic::new("topic"))
+                            .maybe_correlation_data(BinaryData::try_from(&[1, 2, 3, 4]).ok())
+                            .user_properties(vec![(
+                                Utf8String::new("test"),
+                                Utf8String::new("test"),
+                            )])
+                            .build(),
+                    )
+                    .build(),
+            )
+            .properties(
+                ConnectProperties::builder()
+                    .session_expiry_interval(1234)
+                    .maybe_receive_maximum(NonZero::new(432))
+                    .maybe_maximum_packet_size(NonZero::new(100))
+                    .topic_alias_maximum(456)
+                    .request_response_information(true)
+                    .request_problem_information(true)
+                    .authentication(AuthenticationKind::WithData {
+                        method: Utf8String::new("test"),
+                        data: BinaryData::new([1, 2, 3, 4].as_slice()),
+                    })
+                    .user_properties(vec![(
+                        Utf8String::new("test"),
+                        Utf8String::new("test"),
+                    )])
+                    .build(),
+            )
+            .build(),
+    )
 )]
 #[case::connect_mqtt_5_without_will_properties(
     vec! [
@@ -471,38 +483,41 @@ fn assert_that_parsing_an_invalid_field_on_unsuback_fails(
         0, 4, // Will payload length
         4, 3, 2, 1, // Will payload
     ],
-    ControlPacket::Connect(Connect {
-        protocol_name: Utf8String::new("MQTT"),
-        protocol_version: 5,
-        clean_start: true,
-        client_identifier: Utf8String::new("test"),
-        keep_alive: NonZero::new(30),
-        user_name: None,
-        password: None,
-        will: Some(Will {
-            topic: Topic::new("topic"),
-            payload: BinaryData::new([4, 3, 2, 1].as_slice()),
-            qos: Qos::ExactlyOnce,
-            retain: true,
-            properties: WillProperties::default(),
-        }),
-        properties: ConnectProperties {
-            session_expiry_interval: Some(1234),
-            receive_maximum: NonZero::new(432),
-            maximum_packet_size: NonZero::new(100),
-            topic_alias_maximum: Some(456),
-            request_response_information: Some(true),
-            request_problem_information: Some(true),
-            authentication: Some(AuthenticationKind::WithData {
-                method: Utf8String::new("test"),
-                data: BinaryData::new([1, 2, 3, 4].as_slice()),
-            }),
-            user_properties: vec! [(
-                Utf8String::new("test"),
-                Utf8String::new("test"),
-            )],
-        },
-    })
+    ControlPacket::Connect(
+        Connect::builder()
+            .protocol_name(Utf8String::new("MQTT"))
+            .protocol_version(5)
+            .clean_start(true)
+            .client_identifier(Utf8String::new("test"))
+            .maybe_keep_alive(NonZero::new(30))
+            .will(
+                Will::builder()
+                    .topic(Topic::new("topic"))
+                    .payload(BinaryData::new([4, 3, 2, 1].as_slice()))
+                    .qos(Qos::ExactlyOnce)
+                    .retain(true)
+                    .build(),
+            )
+            .properties(
+                ConnectProperties::builder()
+                    .session_expiry_interval(1234)
+                    .maybe_receive_maximum(NonZero::new(432))
+                    .maybe_maximum_packet_size(NonZero::new(100))
+                    .topic_alias_maximum(456)
+                    .request_response_information(true)
+                    .request_problem_information(true)
+                    .authentication(AuthenticationKind::WithData {
+                        method: Utf8String::new("test"),
+                        data: BinaryData::new([1, 2, 3, 4].as_slice()),
+                    })
+                    .user_properties(vec![(
+                        Utf8String::new("test"),
+                        Utf8String::new("test"),
+                    )])
+                    .build(),
+            )
+            .build(),
+    )
 )]
 #[case::no_clientid_with_5(
     vec! [
@@ -516,20 +531,20 @@ fn assert_that_parsing_an_invalid_field_on_unsuback_fails(
         33, 0, 20, // receiveMaximum
         0, 0, // Client ID length
     ],
-    ControlPacket::Connect(Connect {
-        protocol_name: Utf8String::new("MQTT"),
-        protocol_version: 5,
-        clean_start: true,
-        client_identifier: Utf8String::new(""),
-        keep_alive: NonZero::new(60),
-        user_name: None,
-        password: None,
-        will: None,
-        properties: ConnectProperties {
-            receive_maximum: NonZero::new(20),
-            ..Default::default()
-        },
-    })
+    ControlPacket::Connect(
+        Connect::builder()
+            .protocol_name(Utf8String::new("MQTT"))
+            .protocol_version(5)
+            .clean_start(true)
+            .client_identifier(Utf8String::new(""))
+            .maybe_keep_alive(NonZero::new(60))
+            .properties(
+                ConnectProperties::builder()
+                    .maybe_receive_maximum(NonZero::new(20))
+                    .build(),
+            )
+            .build(),
+    )
 )]
 // Note: The original test was not MQTT5 compliant because the properties were missing.
 #[case::utf8_clientid_with_5(
@@ -548,17 +563,15 @@ fn assert_that_parsing_an_invalid_field_on_unsuback_fails(
         116, // t (utf-8: 0x74)
         240, 159, 156, 132, // 🜄 (utf-8: 0xf09f9c84)
     ],
-    ControlPacket::Connect(Connect {
-        protocol_name: Utf8String::new("MQTT"),
-        protocol_version: 5,
-        clean_start: true,
-        client_identifier: Utf8String::new("Ŧėśt🜄"),
-        keep_alive: NonZero::new(30),
-        user_name: None,
-        password: None,
-        will: None,
-        properties: ConnectProperties::default(),
-    })
+    ControlPacket::Connect(
+        Connect::builder()
+            .protocol_name(Utf8String::new("MQTT"))
+            .protocol_version(5)
+            .clean_start(true)
+            .client_identifier(Utf8String::new("Ŧėśt🜄"))
+            .maybe_keep_alive(NonZero::new(30))
+            .build(),
+    )
 )]
 #[case::version_5_conack(
     vec! [
@@ -566,23 +579,25 @@ fn assert_that_parsing_an_invalid_field_on_unsuback_fails(
         0, 140, // Variable Header (Session not present, Bad authentication method)
         0,   // Property Length Zero
     ],
-    ControlPacket::ConnAck(ConnAck {
-        kind: ConnAckKind::Other {
-            reason_code: ConnackReasonCode::BadAuthenticationMethod,
-        },
-        properties: ConnAckProperties::default(),
-    })
+    ControlPacket::ConnAck(
+        ConnAck::builder()
+            .kind(ConnAckKind::Other {
+                reason_code: ConnackReasonCode::BadAuthenticationMethod,
+            })
+            .build(),
+    )
 )]
 #[case::version_5_puback(
     vec! [
         64, 2, // Fixed Header (PUBACK, Remaining Length)
         0, 42, // Variable Header (Message ID)
     ],
-    ControlPacket::PubAck(PubAck {
-        packet_id: NonZero::new(42).unwrap(),
-        reason_code: PubAckReasonCode::Success,
-        properties: PubAckProperties::default(),
-    })
+    ControlPacket::PubAck(
+        PubAck::builder()
+            .packet_id(NonZero::new(42).unwrap())
+            .reason_code(PubAckReasonCode::Success)
+            .build(),
+    )
 )]
 // Note: This test had a reason code of 0, which by itself is not valid.
 #[case::version_5_puback_2_1(
@@ -590,11 +605,12 @@ fn assert_that_parsing_an_invalid_field_on_unsuback_fails(
         64, 2, // Fixed Header (PUBACK, Remaining Length)
         0, 42,
     ],
-    ControlPacket::PubAck(PubAck {
-        packet_id: NonZero::new(42).unwrap(),
-        reason_code: PubAckReasonCode::Success,
-        properties: PubAckProperties::default(),
-    })
+    ControlPacket::PubAck(
+        PubAck::builder()
+            .packet_id(NonZero::new(42).unwrap())
+            .reason_code(PubAckReasonCode::Success)
+            .build(),
+    )
 )]
 #[case::version_5_puback_3(
     vec! [
@@ -602,11 +618,12 @@ fn assert_that_parsing_an_invalid_field_on_unsuback_fails(
         0, 42, 0, // Variable Header (2 Bytes: Packet Identifier 42, Reason code: 0 Success)
         0, // no properties
     ],
-    ControlPacket::PubAck(PubAck {
-        packet_id: NonZero::new(42).unwrap(),
-        reason_code: PubAckReasonCode::Success,
-        properties: PubAckProperties::default(),
-    })
+    ControlPacket::PubAck(
+        PubAck::builder()
+            .packet_id(NonZero::new(42).unwrap())
+            .reason_code(PubAckReasonCode::Success)
+            .build(),
+    )
 )]
 // Note: The original test was not MQTT5 compliant because the properties and reason code were
 // missing.
@@ -616,10 +633,11 @@ fn assert_that_parsing_an_invalid_field_on_unsuback_fails(
         1, // Variable Header. Session present set
         0, 0,
     ],
-    ControlPacket::ConnAck(ConnAck {
-        kind: ConnAckKind::ResumePreviousSession,
-        properties: ConnAckProperties::default(),
-    })
+    ControlPacket::ConnAck(
+        ConnAck::builder()
+            .kind(ConnAckKind::ResumePreviousSession)
+            .build(),
+    )
 )]
 #[case::version_5_connack_3(
     vec! [
@@ -627,19 +645,21 @@ fn assert_that_parsing_an_invalid_field_on_unsuback_fails(
         1, 0, // Variable Header (Session Present: 1 => true, Implied Reason code: Success)
         0, // no properties
     ],
-    ControlPacket::ConnAck(ConnAck {
-        kind: ConnAckKind::ResumePreviousSession,
-        properties: ConnAckProperties::default(),
-    })
+    ControlPacket::ConnAck(
+        ConnAck::builder()
+            .kind(ConnAckKind::ResumePreviousSession)
+            .build(),
+    )
 )]
 #[case::version_5_disconnect_1(
     vec! [
         224, 0, // Fixed Header (DISCONNECT, Remaining Length)
     ],
-    ControlPacket::Disconnect(Disconnect {
-        reason_code: DisconnectReasonCode::NormalDisconnection,
-        properties: DisconnectProperties::default(),
-    })
+    ControlPacket::Disconnect(
+        Disconnect::builder()
+            .reason_code(DisconnectReasonCode::NormalDisconnection)
+            .build(),
+    )
 )]
 #[case::version_5_disconnect_2(
     vec! [
@@ -647,10 +667,11 @@ fn assert_that_parsing_an_invalid_field_on_unsuback_fails(
         0, // Variable Header (Reason code: 0 Success)
         0, // no properties
     ],
-    ControlPacket::Disconnect(Disconnect {
-        reason_code: DisconnectReasonCode::NormalDisconnection,
-        properties: DisconnectProperties::default(),
-    })
+    ControlPacket::Disconnect(
+        Disconnect::builder()
+            .reason_code(DisconnectReasonCode::NormalDisconnection)
+            .build(),
+    )
 )]
 // Note: This test was invalid because the properties were missing.
 #[case::connack_with_return_code_0(
@@ -659,12 +680,13 @@ fn assert_that_parsing_an_invalid_field_on_unsuback_fails(
         0, 0, // Variable Header (Session not present, Return code: 0 Success)
         0, // Property Length Zero
     ],
-    ControlPacket::ConnAck(ConnAck {
-        kind: ConnAckKind::Other {
-            reason_code: ConnackReasonCode::Success,
-        },
-        properties: ConnAckProperties::default(),
-    })
+    ControlPacket::ConnAck(
+        ConnAck::builder()
+            .kind(ConnAckKind::Other {
+                reason_code: ConnackReasonCode::Success,
+            })
+            .build(),
+    )
 )]
 #[case::connack_mqtt_5_with_properties(
     vec! [
@@ -687,35 +709,39 @@ fn assert_that_parsing_an_invalid_field_on_unsuback_fails(
         21, 0, 4, 116, 101, 115, 116, // authenticationMethod
         22, 0, 4, 1, 2, 3, 4, // authenticationData
     ],
-    ControlPacket::ConnAck(ConnAck {
-        kind: ConnAckKind::Other {
-            reason_code: ConnackReasonCode::Success,
-        },
-        properties: ConnAckProperties {
-            session_expiry_interval: Some(1234),
-            receive_maximum: NonZero::new(432),
-            maximum_qos: Some(MaximumQoS::AtLeastOnce),
-            retain_available: Some(true),
-            maximum_packet_size: NonZero::new(100),
-            assigned_client_identifier: Some(Utf8String::new("test")),
-            topic_alias_maximum: Some(456),
-            reason_string: Some(Utf8String::new("test")),
-            user_properties: vec! [(
-                Utf8String::new("test"),
-                Utf8String::new("test"),
-            )],
-            wildcard_subscription_available: Some(true),
-            subscription_identifiers_available: Some(true),
-            shared_subscription_available: Some(false),
-            server_keep_alive: Some(1234),
-            response_information: Some(Utf8String::new("test")),
-            server_reference: Some(Utf8String::new("test")),
-            authentication: Some(AuthenticationKind::WithData {
-                method: Utf8String::new("test"),
-                data: BinaryData::new([1, 2, 3, 4].as_slice()),
-            }),
-        },
-    })
+    ControlPacket::ConnAck(
+        ConnAck::builder()
+            .kind(ConnAckKind::Other {
+                reason_code: ConnackReasonCode::Success,
+            })
+            .properties(
+                ConnAckProperties::builder()
+                    .session_expiry_interval(1234)
+                    .maybe_receive_maximum(NonZero::new(432))
+                    .maximum_qos(MaximumQoS::AtLeastOnce)
+                    .retain_available(true)
+                    .maybe_maximum_packet_size(NonZero::new(100))
+                    .assigned_client_identifier(Utf8String::new("test"))
+                    .topic_alias_maximum(456)
+                    .reason_string(Utf8String::new("test"))
+                    .user_properties(vec![(
+                        Utf8String::new("test"),
+                        Utf8String::new("test"),
+                    )])
+                    .wildcard_subscription_available(true)
+                    .subscription_identifiers_available(true)
+                    .shared_subscription_available(false)
+                    .server_keep_alive(1234)
+                    .response_information(Utf8String::new("test"))
+                    .server_reference(Utf8String::new("test"))
+                    .authentication(AuthenticationKind::WithData {
+                        method: Utf8String::new("test"),
+                        data: BinaryData::new([1, 2, 3, 4].as_slice()),
+                    })
+                    .build(),
+            )
+            .build(),
+    )
 )]
 // Note: This test was modified as the maximum_qos value was not spec compliant
 #[case::connack_mqtt_5_with_properties_and_doubled_user_properties(
@@ -740,41 +766,39 @@ fn assert_that_parsing_an_invalid_field_on_unsuback_fails(
         21, 0, 4, 116, 101, 115, 116, // authenticationMethod
         22, 0, 4, 1, 2, 3, 4, // authenticationData
     ],
-    ControlPacket::ConnAck(ConnAck {
-        kind: ConnAckKind::Other {
-            reason_code: ConnackReasonCode::Success,
-        },
-        properties: ConnAckProperties {
-            session_expiry_interval: Some(1234),
-            receive_maximum: NonZero::new(432),
-            maximum_qos: Some(MaximumQoS::AtLeastOnce),
-            retain_available: Some(true),
-            maximum_packet_size: NonZero::new(100),
-            assigned_client_identifier: Some(Utf8String::new("test")),
-            topic_alias_maximum: Some(456),
-            reason_string: Some(Utf8String::new("test")),
-            user_properties: vec! [
-                (
-                    Utf8String::new("test"),
-                    Utf8String::new("test"),
-                ),
-                (
-                    Utf8String::new("test"),
-                    Utf8String::new("test"),
-                ),
-            ],
-            wildcard_subscription_available: Some(true),
-            subscription_identifiers_available: Some(true),
-            shared_subscription_available: Some(false),
-            server_keep_alive: Some(1234),
-            response_information: Some(Utf8String::new("test")),
-            server_reference: Some(Utf8String::new("test")),
-            authentication: Some(AuthenticationKind::WithData {
-                method: Utf8String::new("test"),
-                data: BinaryData::new([1, 2, 3, 4].as_slice()),
-            }),
-        },
-    })
+    ControlPacket::ConnAck(
+        ConnAck::builder()
+            .kind(ConnAckKind::Other {
+                reason_code: ConnackReasonCode::Success,
+            })
+            .properties(
+                ConnAckProperties::builder()
+                    .session_expiry_interval(1234)
+                    .maybe_receive_maximum(NonZero::new(432))
+                    .maximum_qos(MaximumQoS::AtLeastOnce)
+                    .retain_available(true)
+                    .maybe_maximum_packet_size(NonZero::new(100))
+                    .assigned_client_identifier(Utf8String::new("test"))
+                    .topic_alias_maximum(456)
+                    .reason_string(Utf8String::new("test"))
+                    .user_properties(vec![
+                        (Utf8String::new("test"), Utf8String::new("test")),
+                        (Utf8String::new("test"), Utf8String::new("test")),
+                    ])
+                    .wildcard_subscription_available(true)
+                    .subscription_identifiers_available(true)
+                    .shared_subscription_available(false)
+                    .server_keep_alive(1234)
+                    .response_information(Utf8String::new("test"))
+                    .server_reference(Utf8String::new("test"))
+                    .authentication(AuthenticationKind::WithData {
+                        method: Utf8String::new("test"),
+                        data: BinaryData::new([1, 2, 3, 4].as_slice()),
+                    })
+                    .build(),
+            )
+            .build(),
+    )
 )]
 #[case::publish_mqtt_5_properties(
     vec! [
@@ -795,39 +819,34 @@ fn assert_that_parsing_an_invalid_field_on_unsuback_fails(
         3, 0, 4, 116, 101, 115, 116, // content type
         116, 101, 115, 116, // Payload (test)
     ],
-    ControlPacket::Publish(Publish {
-        kind: PublishKind::Repetible {
-            packet_id: NonZero::new(10).unwrap(),
-            qos: GuaranteedQoS::ExactlyOnce,
-            dup: true,
-        },
-        retain: true,
-        topic: Topic::new("test"),
-        payload: Payload::new([116, 101, 115, 116].as_slice()),
-        properties: PublishProperties {
-            payload_format_indicator: Some(FormatIndicator::Utf8),
-            message_expiry_interval: Some(4321),
-            topic_alias: NonZero::new(100),
-            response_topic: Some(Topic::new("topic")),
-            correlation_data: BinaryData::try_from(&[1, 2, 3, 4]).ok(),
-            user_properties: vec! [
-                (
-                    Utf8String::new("test"),
-                    Utf8String::new("test"),
-                ),
-                (
-                    Utf8String::new("test"),
-                    Utf8String::new("test"),
-                ),
-                (
-                    Utf8String::new("test"),
-                    Utf8String::new("test"),
-                ),
-            ],
-            subscription_identifiers: vec![NonZero::new(120).unwrap()],
-            content_type: Utf8String::try_from("test").ok(),
-        },
-    })
+    ControlPacket::Publish(
+        Publish::builder()
+            .kind(PublishKind::Repetible {
+                packet_id: NonZero::new(10).unwrap(),
+                qos: GuaranteedQoS::ExactlyOnce,
+                dup: true,
+            })
+            .retain(true)
+            .topic(Topic::new("test"))
+            .payload(Payload::new([116, 101, 115, 116].as_slice()))
+            .properties(
+                PublishProperties::builder()
+                    .payload_format_indicator(FormatIndicator::Utf8)
+                    .message_expiry_interval(4321)
+                    .maybe_topic_alias(NonZero::new(100))
+                    .response_topic(Topic::new("topic"))
+                    .maybe_correlation_data(BinaryData::try_from(&[1, 2, 3, 4]).ok())
+                    .user_properties(vec![
+                        (Utf8String::new("test"), Utf8String::new("test")),
+                        (Utf8String::new("test"), Utf8String::new("test")),
+                        (Utf8String::new("test"), Utf8String::new("test")),
+                    ])
+                    .subscription_identifiers(vec![NonZero::new(120).unwrap()])
+                    .maybe_content_type(Utf8String::try_from("test").ok())
+                    .build(),
+            )
+            .build(),
+    )
 )]
 #[case::publish_with_multiple_subscription_identifiers(
     vec![
@@ -841,29 +860,27 @@ fn assert_that_parsing_an_invalid_field_on_unsuback_fails(
         11, 255, 255, 255, 127, // SubscriptionIdentifier = 268_435_455 (VBI max)
         116, 101, 115, 116, // Payload ("test")
     ],
-    ControlPacket::Publish(Publish {
-        kind: PublishKind::Repetible {
-            packet_id: NonZero::new(10).unwrap(),
-            qos: GuaranteedQoS::ExactlyOnce,
-            dup: true,
-        },
-        retain: true,
-        topic: Topic::new("test"),
-        payload: Payload::new([116, 101, 115, 116].as_slice()),
-        properties: PublishProperties {
-            payload_format_indicator: Some(FormatIndicator::Unspecified),
-            message_expiry_interval: None,
-            topic_alias: None,
-            response_topic: None,
-            correlation_data: None,
-            user_properties: vec![],
-            subscription_identifiers: vec![
-                NonZero::new(1).unwrap(),
-                NonZero::new(268_435_455).unwrap(),
-            ],
-            content_type: None,
-        },
-    })
+    ControlPacket::Publish(
+        Publish::builder()
+            .kind(PublishKind::Repetible {
+                packet_id: NonZero::new(10).unwrap(),
+                qos: GuaranteedQoS::ExactlyOnce,
+                dup: true,
+            })
+            .retain(true)
+            .topic(Topic::new("test"))
+            .payload(Payload::new([116, 101, 115, 116].as_slice()))
+            .properties(
+                PublishProperties::builder()
+                    .payload_format_indicator(FormatIndicator::Unspecified)
+                    .subscription_identifiers(vec![
+                        NonZero::new(1).unwrap(),
+                        NonZero::new(268_435_455).unwrap(),
+                    ])
+                    .build(),
+            )
+            .build(),
+    )
 )]
 fn assert_that_different_packets_can_be_decoded_and_encoded(
     settings: ParserSettings,
@@ -892,43 +909,38 @@ fn assert_that_different_packets_can_be_decoded_and_encoded(
 
 #[rstest::rstest]
 #[case::user_name_some_password_none(
-    ControlPacket::Connect(Connect {
-        protocol_name: Utf8String::new("MQTT"),
-        protocol_version: 5,
-        clean_start: true,
-        client_identifier: Utf8String::new(""),
-        keep_alive: None,
-        user_name: Some(Utf8String::new("alice")),
-        password: None,
-        will: None,
-        properties: ConnectProperties::default(),
-    })
+    ControlPacket::Connect(
+        Connect::builder()
+            .protocol_name(Utf8String::new("MQTT"))
+            .protocol_version(5)
+            .clean_start(true)
+            .client_identifier(Utf8String::new(""))
+            .user_name(Utf8String::new("alice"))
+            .build(),
+    )
 )]
 #[case::user_name_none_password_some(
-    ControlPacket::Connect(Connect {
-        protocol_name: Utf8String::new("MQTT"),
-        protocol_version: 5,
-        clean_start: true,
-        client_identifier: Utf8String::new(""),
-        keep_alive: None,
-        user_name: None,
-        password: Some(BinaryData::new(b"secret".as_slice())),
-        will: None,
-        properties: ConnectProperties::default(),
-    })
+    ControlPacket::Connect(
+        Connect::builder()
+            .protocol_name(Utf8String::new("MQTT"))
+            .protocol_version(5)
+            .clean_start(true)
+            .client_identifier(Utf8String::new(""))
+            .password(BinaryData::new(b"secret".as_slice()))
+            .build(),
+    )
 )]
 #[case::user_name_some_password_some(
-    ControlPacket::Connect(Connect {
-        protocol_name: Utf8String::new("MQTT"),
-        protocol_version: 5,
-        clean_start: true,
-        client_identifier: Utf8String::new(""),
-        keep_alive: None,
-        user_name: Some(Utf8String::new("alice")),
-        password: Some(BinaryData::new(b"secret".as_slice())),
-        will: None,
-        properties: ConnectProperties::default(),
-    })
+    ControlPacket::Connect(
+        Connect::builder()
+            .protocol_name(Utf8String::new("MQTT"))
+            .protocol_version(5)
+            .clean_start(true)
+            .client_identifier(Utf8String::new(""))
+            .user_name(Utf8String::new("alice"))
+            .password(BinaryData::new(b"secret".as_slice()))
+            .build(),
+    )
 )]
 fn assert_connect_user_name_and_password_roundtrip(
     settings: ParserSettings,

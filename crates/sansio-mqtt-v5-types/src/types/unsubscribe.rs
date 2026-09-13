@@ -11,7 +11,8 @@ use super::*;
 ///
 /// At least one Topic Filter is required ([MQTT-3.10.3-1]); additional
 /// filters are stored in [`Unsubscribe::extra_filters`].
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone, bon::Builder)]
+#[non_exhaustive]
 pub struct Unsubscribe {
     /// Packet Identifier
     /// ([§3.10.2](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901181),
@@ -19,11 +20,13 @@ pub struct Unsubscribe {
     pub packet_id: NonZero<u16>,
     /// `UNSUBSCRIBE` Properties
     /// ([§3.10.2.1](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901182)).
+    #[builder(default)]
     pub properties: UnsubscribeProperties,
     /// First Topic Filter to unsubscribe from
     /// ([MQTT-3.10.3-1]).
     pub filter: Utf8String,
     /// Additional Topic Filters beyond the first, in wire order.
+    #[builder(default)]
     pub extra_filters: Vec<Utf8String>,
 }
 
@@ -43,9 +46,11 @@ impl From<UnsubscribeHeaderFlags> for u8 {
 
 /// `UNSUBSCRIBE` Properties
 /// ([§3.10.2.1](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901182)).
-#[derive(Debug, PartialEq, Eq, Clone, Default)]
+#[derive(Debug, PartialEq, Eq, Clone, Default, bon::Builder)]
+#[non_exhaustive]
 pub struct UnsubscribeProperties {
     /// User Properties
     /// ([§3.10.2.1.2](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901183)).
+    #[builder(default)]
     pub user_properties: Vec<(Utf8String, Utf8String)>,
 }

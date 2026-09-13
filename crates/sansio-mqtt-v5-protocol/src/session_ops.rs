@@ -6,7 +6,6 @@ use crate::types::UserWriteOut;
 use core::num::NonZero;
 use sansio_mqtt_v5_types::ControlPacket;
 use sansio_mqtt_v5_types::PubRel;
-use sansio_mqtt_v5_types::PubRelProperties;
 use sansio_mqtt_v5_types::PubRelReasonCode;
 use sansio_mqtt_v5_types::PublishKind;
 
@@ -113,11 +112,12 @@ pub(crate) fn replay_outbound_inflight_with_dup<Time>(
             OutboundInflightState::Qos2AwaitPubComp => {
                 crate::queues::enqueue_packet(
                     scratchpad,
-                    &ControlPacket::PubRel(PubRel {
-                        packet_id: *packet_id,
-                        reason_code: PubRelReasonCode::Success,
-                        properties: PubRelProperties::default(),
-                    }),
+                    &ControlPacket::PubRel(
+                        PubRel::builder()
+                            .packet_id(*packet_id)
+                            .reason_code(PubRelReasonCode::Success)
+                            .build(),
+                    ),
                 )?;
             }
         }

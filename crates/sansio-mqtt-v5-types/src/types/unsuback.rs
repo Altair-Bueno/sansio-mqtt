@@ -10,17 +10,20 @@ use super::*;
 ///
 /// The Reason Code list is ordered to match the Topic Filters of the
 /// originating `UNSUBSCRIBE` ([MQTT-3.11.3-1]).
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone, bon::Builder)]
+#[non_exhaustive]
 pub struct UnsubAck {
     /// Packet Identifier copied from the acknowledged `UNSUBSCRIBE`
     /// ([§3.11.2](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901189)).
     pub packet_id: NonZero<u16>,
     /// `UNSUBACK` Properties
     /// ([§3.11.2.1](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901190)).
+    #[builder(default)]
     pub properties: UnsubAckProperties,
     /// Reason Codes, one per Topic Filter in the original
     /// `UNSUBSCRIBE` ([§3.11.3](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901194),
     /// [MQTT-3.11.3-1], [MQTT-3.11.3-2]).
+    #[builder(default)]
     pub reason_codes: Vec<UnsubAckReasonCode>,
 }
 
@@ -39,12 +42,14 @@ impl From<UnsubAckHeaderFlags> for u8 {
 
 /// `UNSUBACK` Properties
 /// ([§3.11.2.1](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901190)).
-#[derive(Debug, PartialEq, Eq, Clone, Default)]
+#[derive(Debug, PartialEq, Eq, Clone, Default, bon::Builder)]
+#[non_exhaustive]
 pub struct UnsubAckProperties {
     /// Reason String — optional human-readable diagnostic
     /// ([§3.11.2.1.2](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901192)).
     pub reason_string: Option<Utf8String>,
     /// User Properties
     /// ([§3.11.2.1.3](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901193)).
+    #[builder(default)]
     pub user_properties: Vec<(Utf8String, Utf8String)>,
 }

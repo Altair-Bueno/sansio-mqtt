@@ -16,7 +16,8 @@ use super::*;
 /// `[MQTT-3.1.2-5]`, `[MQTT-3.1.2-6]`, `[MQTT-3.1.2-7]`,
 /// `[MQTT-3.1.2-8]`, `[MQTT-3.1.2-9]`, `[MQTT-3.1.3-1]`,
 /// `[MQTT-3.1.3-3]`, `[MQTT-3.1.3-4]`.
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone, bon::Builder)]
+#[non_exhaustive]
 pub struct Connect {
     /// Protocol Name; MUST equal `"MQTT"` for MQTT v5.0
     /// ([§3.1.2.1](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901036),
@@ -29,6 +30,7 @@ pub struct Connect {
     /// Clean Start
     /// ([§3.1.2.4](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901039),
     /// [MQTT-3.1.2-4], [MQTT-3.1.2-5], [MQTT-3.1.2-6]).
+    #[builder(default)]
     pub clean_start: bool,
     /// Client Identifier
     /// ([§3.1.3.1](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901059),
@@ -54,6 +56,7 @@ pub struct Connect {
     pub keep_alive: Option<NonZero<u16>>,
     /// `CONNECT` properties
     /// ([§3.1.2.11](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901046)).
+    #[builder(default)]
     pub properties: ConnectProperties,
 }
 
@@ -80,19 +83,23 @@ impl From<ConnectHeaderFlags> for u8 {
 /// `[MQTT-3.1.2-10]`, `[MQTT-3.1.2-11]`, `[MQTT-3.1.2-12]`,
 /// `[MQTT-3.1.2-13]`, `[MQTT-3.1.2-14]`, `[MQTT-3.1.2-15]`,
 /// `[MQTT-3.1.2-16]`.
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone, bon::Builder)]
+#[non_exhaustive]
 pub struct Will {
     /// Will Topic — topic to which the Will Message is published.
     pub topic: Topic,
     /// Will Payload — opaque bytes delivered as the Will Message.
     pub payload: BinaryData,
     /// Will QoS ([MQTT-3.1.2-11], [MQTT-3.1.2-12]).
+    #[builder(default)]
     pub qos: Qos,
     /// Will Retain flag ([MQTT-3.1.2-14], [MQTT-3.1.2-15],
     /// [MQTT-3.1.2-16]).
+    #[builder(default)]
     pub retain: bool,
     /// Will Properties
     /// ([§3.1.3.2](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901060)).
+    #[builder(default)]
     pub properties: WillProperties,
 }
 
@@ -101,7 +108,8 @@ pub struct Will {
 ///
 /// All fields are optional. `None` means "property absent on the
 /// wire".
-#[derive(Debug, PartialEq, Eq, Clone, Default)]
+#[derive(Debug, PartialEq, Eq, Clone, Default, bon::Builder)]
+#[non_exhaustive]
 pub struct WillProperties {
     /// Will Delay Interval in seconds
     /// ([§3.1.3.2.2](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901062)).
@@ -124,6 +132,7 @@ pub struct WillProperties {
     /// User Properties
     /// ([§3.1.3.2.8](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901068)).
     /// Order of user properties is preserved ([MQTT-3.1.3-10]).
+    #[builder(default)]
     pub user_properties: Vec<(Utf8String, Utf8String)>,
 }
 
@@ -133,7 +142,8 @@ pub struct WillProperties {
 /// All fields are optional. A `None` value indicates the property was
 /// absent on the wire; the Server then applies the spec-mandated
 /// default.
-#[derive(Debug, PartialEq, Eq, Clone, Default)]
+#[derive(Debug, PartialEq, Eq, Clone, Default, bon::Builder)]
+#[non_exhaustive]
 pub struct ConnectProperties {
     /// Session Expiry Interval in seconds
     /// ([§3.1.2.11.2](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901048)).
@@ -164,5 +174,6 @@ pub struct ConnectProperties {
     pub authentication: Option<AuthenticationKind>,
     /// User Properties
     /// ([§3.1.2.11.8](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901054)).
+    #[builder(default)]
     pub user_properties: Vec<(Utf8String, Utf8String)>,
 }

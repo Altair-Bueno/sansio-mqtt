@@ -10,20 +10,15 @@ use core::num::NonZero;
 use encode::Encodable;
 use sansio_mqtt_v5_types::ControlPacket;
 use sansio_mqtt_v5_types::Disconnect;
-use sansio_mqtt_v5_types::DisconnectProperties;
 use sansio_mqtt_v5_types::DisconnectReasonCode;
 use sansio_mqtt_v5_types::EncodeError;
 use sansio_mqtt_v5_types::PubAck;
-use sansio_mqtt_v5_types::PubAckProperties;
 use sansio_mqtt_v5_types::PubAckReasonCode;
 use sansio_mqtt_v5_types::PubComp;
-use sansio_mqtt_v5_types::PubCompProperties;
 use sansio_mqtt_v5_types::PubCompReasonCode;
 use sansio_mqtt_v5_types::PubRec;
-use sansio_mqtt_v5_types::PubRecProperties;
 use sansio_mqtt_v5_types::PubRecReasonCode;
 use sansio_mqtt_v5_types::PubRel;
-use sansio_mqtt_v5_types::PubRelProperties;
 use sansio_mqtt_v5_types::PubRelReasonCode;
 
 pub(crate) fn encode_control_packet(packet: &ControlPacket) -> Result<Bytes, Error> {
@@ -82,10 +77,7 @@ pub(crate) fn disconnect_and_reset<Time>(
 ) {
     let _ = enqueue_packet(
         scratchpad,
-        &ControlPacket::Disconnect(Disconnect {
-            reason_code: reason,
-            properties: DisconnectProperties::default(),
-        }),
+        &ControlPacket::Disconnect(Disconnect::builder().reason_code(reason).build()),
     );
     scratchpad
         .action_queue
@@ -140,33 +132,37 @@ pub(crate) fn enqueue_ack_or_fail_protocol<Time>(
 }
 
 pub(crate) fn pubrel(packet_id: NonZero<u16>) -> ControlPacket {
-    ControlPacket::PubRel(PubRel {
-        packet_id,
-        reason_code: PubRelReasonCode::Success,
-        properties: PubRelProperties::default(),
-    })
+    ControlPacket::PubRel(
+        PubRel::builder()
+            .packet_id(packet_id)
+            .reason_code(PubRelReasonCode::Success)
+            .build(),
+    )
 }
 
 pub(crate) fn puback(packet_id: NonZero<u16>, reason_code: PubAckReasonCode) -> ControlPacket {
-    ControlPacket::PubAck(PubAck {
-        packet_id,
-        reason_code,
-        properties: PubAckProperties::default(),
-    })
+    ControlPacket::PubAck(
+        PubAck::builder()
+            .packet_id(packet_id)
+            .reason_code(reason_code)
+            .build(),
+    )
 }
 
 pub(crate) fn pubrec(packet_id: NonZero<u16>, reason_code: PubRecReasonCode) -> ControlPacket {
-    ControlPacket::PubRec(PubRec {
-        packet_id,
-        reason_code,
-        properties: PubRecProperties::default(),
-    })
+    ControlPacket::PubRec(
+        PubRec::builder()
+            .packet_id(packet_id)
+            .reason_code(reason_code)
+            .build(),
+    )
 }
 
 pub(crate) fn pubcomp(packet_id: NonZero<u16>, reason_code: PubCompReasonCode) -> ControlPacket {
-    ControlPacket::PubComp(PubComp {
-        packet_id,
-        reason_code,
-        properties: PubCompProperties::default(),
-    })
+    ControlPacket::PubComp(
+        PubComp::builder()
+            .packet_id(packet_id)
+            .reason_code(reason_code)
+            .build(),
+    )
 }

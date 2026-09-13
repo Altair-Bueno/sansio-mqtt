@@ -56,16 +56,17 @@ fn header_flags_are_copy() {
     assert_copy(PingRespHeaderFlags);
     assert_copy(DisconnectHeaderFlags);
     assert_copy(AuthHeaderFlags);
-    assert_copy(PublishHeaderFlags {
-        kind: PublishHeaderFlagsKind::Simple,
-        retain: false,
-    });
+    assert_copy(
+        PublishHeaderFlags::builder()
+            .kind(PublishHeaderFlagsKind::Simple)
+            .build(),
+    );
 
     // Copy is what lets a value be read twice without cloning.
-    let flags = PublishHeaderFlags {
-        kind: PublishHeaderFlagsKind::Simple,
-        retain: true,
-    };
+    let flags = PublishHeaderFlags::builder()
+        .kind(PublishHeaderFlagsKind::Simple)
+        .retain(true)
+        .build();
     let first = flags;
     assert_eq!(first, flags);
 }
@@ -320,28 +321,26 @@ fn roundtrip(packet: &ControlPacket) -> Result<(), String> {
 
 #[test]
 fn connect_with_all_valid_properties_roundtrip() {
-    let connect = Connect {
-        protocol_name: Utf8String::new("MQTT"),
-        protocol_version: 5,
-        clean_start: true,
-        client_identifier: Utf8String::new("test"),
-        keep_alive: NonZero::new(60),
-        user_name: None,
-        password: None,
-        will: None,
-        properties: ConnectProperties {
-            session_expiry_interval: Some(100),
-            receive_maximum: NonZero::new(100),
-            maximum_packet_size: NonZero::new(1000),
-            topic_alias_maximum: Some(100),
-            request_response_information: Some(true),
-            request_problem_information: Some(true),
-            authentication: Some(AuthenticationKind::WithoutData {
-                method: Utf8String::new("test"),
-            }),
-            user_properties: vec![],
-        },
-    };
+    let connect = Connect::builder()
+        .protocol_name(Utf8String::new("MQTT"))
+        .protocol_version(5)
+        .clean_start(true)
+        .client_identifier(Utf8String::new("test"))
+        .maybe_keep_alive(NonZero::new(60))
+        .properties(
+            ConnectProperties::builder()
+                .session_expiry_interval(100)
+                .maybe_receive_maximum(NonZero::new(100))
+                .maybe_maximum_packet_size(NonZero::new(1000))
+                .topic_alias_maximum(100)
+                .request_response_information(true)
+                .request_problem_information(true)
+                .authentication(AuthenticationKind::WithoutData {
+                    method: Utf8String::new("test"),
+                })
+                .build(),
+        )
+        .build();
 
     let packet = ControlPacket::Connect(connect);
     roundtrip(&packet).unwrap();
@@ -349,31 +348,30 @@ fn connect_with_all_valid_properties_roundtrip() {
 
 #[test]
 fn will_with_all_valid_properties_roundtrip() {
-    let connect = Connect {
-        protocol_name: Utf8String::new("MQTT"),
-        protocol_version: 5,
-        clean_start: true,
-        client_identifier: Utf8String::new("test"),
-        keep_alive: NonZero::new(60),
-        user_name: None,
-        password: None,
-        will: Some(Will {
-            topic: Topic::try_new("topic").unwrap(),
-            payload: BinaryData::try_from(&[1, 2, 3, 4]).unwrap(),
-            qos: Qos::AtLeastOnce,
-            retain: false,
-            properties: WillProperties {
-                will_delay_interval: Some(100),
-                payload_format_indicator: Some(FormatIndicator::Utf8),
-                message_expiry_interval: Some(1000),
-                content_type: Some(Utf8String::new("text/plain")),
-                response_topic: Some(Topic::new("response/topic")),
-                correlation_data: BinaryData::try_from(&[1, 2]).ok(),
-                user_properties: vec![],
-            },
-        }),
-        properties: ConnectProperties::default(),
-    };
+    let connect = Connect::builder()
+        .protocol_name(Utf8String::new("MQTT"))
+        .protocol_version(5)
+        .clean_start(true)
+        .client_identifier(Utf8String::new("test"))
+        .maybe_keep_alive(NonZero::new(60))
+        .will(
+            Will::builder()
+                .topic(Topic::try_new("topic").unwrap())
+                .payload(BinaryData::try_from(&[1, 2, 3, 4]).unwrap())
+                .qos(Qos::AtLeastOnce)
+                .properties(
+                    WillProperties::builder()
+                        .will_delay_interval(100)
+                        .payload_format_indicator(FormatIndicator::Utf8)
+                        .message_expiry_interval(1000)
+                        .content_type(Utf8String::new("text/plain"))
+                        .response_topic(Topic::new("response/topic"))
+                        .maybe_correlation_data(BinaryData::try_from(&[1, 2]).ok())
+                        .build(),
+                )
+                .build(),
+        )
+        .build();
 
     let packet = ControlPacket::Connect(connect);
     roundtrip(&packet).unwrap();
@@ -381,31 +379,32 @@ fn will_with_all_valid_properties_roundtrip() {
 
 #[test]
 fn connack_with_all_valid_properties_roundtrip() {
-    let connack = ConnAck {
-        kind: ConnAckKind::Other {
+    let connack = ConnAck::builder()
+        .kind(ConnAckKind::Other {
             reason_code: ConnackReasonCode::Success,
-        },
-        properties: ConnAckProperties {
-            session_expiry_interval: Some(100),
-            receive_maximum: NonZero::new(100),
-            maximum_qos: Some(MaximumQoS::AtLeastOnce),
-            retain_available: Some(true),
-            maximum_packet_size: NonZero::new(1000),
-            assigned_client_identifier: Some(Utf8String::try_from("assigned").unwrap()),
-            topic_alias_maximum: Some(100),
-            reason_string: Some(Utf8String::try_from("success").unwrap()),
-            wildcard_subscription_available: Some(true),
-            subscription_identifiers_available: Some(true),
-            shared_subscription_available: Some(true),
-            server_keep_alive: Some(60),
-            response_information: Some(Utf8String::try_from("info").unwrap()),
-            server_reference: Some(Utf8String::try_from("server").unwrap()),
-            authentication: Some(AuthenticationKind::WithoutData {
-                method: Utf8String::try_from("method").unwrap(),
-            }),
-            user_properties: vec![],
-        },
-    };
+        })
+        .properties(
+            ConnAckProperties::builder()
+                .session_expiry_interval(100)
+                .maybe_receive_maximum(NonZero::new(100))
+                .maximum_qos(MaximumQoS::AtLeastOnce)
+                .retain_available(true)
+                .maybe_maximum_packet_size(NonZero::new(1000))
+                .assigned_client_identifier(Utf8String::try_from("assigned").unwrap())
+                .topic_alias_maximum(100)
+                .reason_string(Utf8String::try_from("success").unwrap())
+                .wildcard_subscription_available(true)
+                .subscription_identifiers_available(true)
+                .shared_subscription_available(true)
+                .server_keep_alive(60)
+                .response_information(Utf8String::try_from("info").unwrap())
+                .server_reference(Utf8String::try_from("server").unwrap())
+                .authentication(AuthenticationKind::WithoutData {
+                    method: Utf8String::try_from("method").unwrap(),
+                })
+                .build(),
+        )
+        .build();
 
     let packet = ControlPacket::ConnAck(connack);
     roundtrip(&packet).unwrap();
@@ -413,26 +412,27 @@ fn connack_with_all_valid_properties_roundtrip() {
 
 #[test]
 fn publish_with_all_valid_properties_roundtrip() {
-    let publish = Publish {
-        kind: PublishKind::Repetible {
+    let publish = Publish::builder()
+        .kind(PublishKind::Repetible {
             packet_id: NonZero::new(1).unwrap(),
             qos: GuaranteedQoS::AtLeastOnce,
             dup: false,
-        },
-        retain: true,
-        topic: Topic::try_new("test/topic").unwrap(),
-        payload: Payload::new([1, 2, 3, 4].as_slice()),
-        properties: PublishProperties {
-            payload_format_indicator: Some(FormatIndicator::Utf8),
-            message_expiry_interval: Some(1000),
-            topic_alias: NonZero::new(100),
-            response_topic: Some(Topic::new("response/topic")),
-            correlation_data: BinaryData::try_from(&[1, 2]).ok(),
-            subscription_identifiers: vec![NonZero::new(42).unwrap()],
-            content_type: Some(Utf8String::new("text/plain")),
-            user_properties: vec![],
-        },
-    };
+        })
+        .retain(true)
+        .topic(Topic::try_new("test/topic").unwrap())
+        .payload(Payload::new([1, 2, 3, 4].as_slice()))
+        .properties(
+            PublishProperties::builder()
+                .payload_format_indicator(FormatIndicator::Utf8)
+                .message_expiry_interval(1000)
+                .maybe_topic_alias(NonZero::new(100))
+                .response_topic(Topic::new("response/topic"))
+                .maybe_correlation_data(BinaryData::try_from(&[1, 2]).ok())
+                .subscription_identifiers(vec![NonZero::new(42).unwrap()])
+                .content_type(Utf8String::new("text/plain"))
+                .build(),
+        )
+        .build();
 
     let packet = ControlPacket::Publish(publish);
     roundtrip(&packet).unwrap();
@@ -440,21 +440,21 @@ fn publish_with_all_valid_properties_roundtrip() {
 
 #[test]
 fn subscribe_with_all_valid_properties_roundtrip() {
-    let subscribe = Subscribe {
-        packet_id: NonZero::new(1).unwrap(),
-        subscription: Subscription {
-            topic_filter: Utf8String::try_from("test/+").unwrap(),
-            qos: Qos::AtLeastOnce,
-            no_local: false,
-            retain_as_published: false,
-            retain_handling: RetainHandling::SendRetained,
-        },
-        extra_subscriptions: Vec::new(),
-        properties: SubscribeProperties {
-            subscription_identifier: NonZero::new(42),
-            user_properties: vec![],
-        },
-    };
+    let subscribe = Subscribe::builder()
+        .packet_id(NonZero::new(1).unwrap())
+        .subscription(
+            Subscription::builder()
+                .topic_filter(Utf8String::try_from("test/+").unwrap())
+                .qos(Qos::AtLeastOnce)
+                .retain_handling(RetainHandling::SendRetained)
+                .build(),
+        )
+        .properties(
+            SubscribeProperties::builder()
+                .maybe_subscription_identifier(NonZero::new(42))
+                .build(),
+        )
+        .build();
 
     let packet = ControlPacket::Subscribe(subscribe);
     roundtrip(&packet).unwrap();
@@ -462,15 +462,16 @@ fn subscribe_with_all_valid_properties_roundtrip() {
 
 #[test]
 fn disconnect_with_all_valid_properties_roundtrip() {
-    let disconnect = Disconnect {
-        reason_code: DisconnectReasonCode::NormalDisconnection,
-        properties: DisconnectProperties {
-            session_expiry_interval: Some(100),
-            reason_string: Some(Utf8String::try_from("done").unwrap()),
-            server_reference: Some(Utf8String::try_from("server2").unwrap()),
-            user_properties: vec![],
-        },
-    };
+    let disconnect = Disconnect::builder()
+        .reason_code(DisconnectReasonCode::NormalDisconnection)
+        .properties(
+            DisconnectProperties::builder()
+                .session_expiry_interval(100)
+                .reason_string(Utf8String::try_from("done").unwrap())
+                .server_reference(Utf8String::try_from("server2").unwrap())
+                .build(),
+        )
+        .build();
 
     let packet = ControlPacket::Disconnect(disconnect);
     roundtrip(&packet).unwrap();
@@ -478,17 +479,18 @@ fn disconnect_with_all_valid_properties_roundtrip() {
 
 #[test]
 fn auth_with_all_valid_properties_roundtrip() {
-    let auth = Auth {
-        reason_code: AuthReasonCode::Success,
-        properties: AuthProperties {
-            reason_string: Some(Utf8String::try_from("auth success").unwrap()),
-            authentication: Some(AuthenticationKind::WithData {
-                method: Utf8String::try_from("method").unwrap(),
-                data: BinaryData::try_from(&[1, 2, 3, 4]).unwrap(),
-            }),
-            user_properties: vec![],
-        },
-    };
+    let auth = Auth::builder()
+        .reason_code(AuthReasonCode::Success)
+        .properties(
+            AuthProperties::builder()
+                .reason_string(Utf8String::try_from("auth success").unwrap())
+                .authentication(AuthenticationKind::WithData {
+                    method: Utf8String::try_from("method").unwrap(),
+                    data: BinaryData::try_from(&[1, 2, 3, 4]).unwrap(),
+                })
+                .build(),
+        )
+        .build();
 
     let packet = ControlPacket::Auth(auth);
     roundtrip(&packet).unwrap();
@@ -496,14 +498,15 @@ fn auth_with_all_valid_properties_roundtrip() {
 
 #[test]
 fn suback_with_all_valid_properties_roundtrip() {
-    let suback = SubAck {
-        packet_id: NonZero::new(1).unwrap(),
-        properties: SubAckProperties {
-            reason_string: Some(Utf8String::try_from("granted").unwrap()),
-            user_properties: vec![],
-        },
-        reason_codes: vec![SubAckReasonCode::SuccessQoS0],
-    };
+    let suback = SubAck::builder()
+        .packet_id(NonZero::new(1).unwrap())
+        .properties(
+            SubAckProperties::builder()
+                .reason_string(Utf8String::try_from("granted").unwrap())
+                .build(),
+        )
+        .reason_codes(vec![SubAckReasonCode::SuccessQoS0])
+        .build();
 
     let packet = ControlPacket::SubAck(suback);
     roundtrip(&packet).unwrap();
@@ -511,14 +514,15 @@ fn suback_with_all_valid_properties_roundtrip() {
 
 #[test]
 fn puback_with_all_valid_properties_roundtrip() {
-    let puback = PubAck {
-        packet_id: NonZero::new(1).unwrap(),
-        reason_code: PubAckReasonCode::Success,
-        properties: PubAckProperties {
-            reason_string: Some(Utf8String::try_from("ok").unwrap()),
-            user_properties: vec![],
-        },
-    };
+    let puback = PubAck::builder()
+        .packet_id(NonZero::new(1).unwrap())
+        .reason_code(PubAckReasonCode::Success)
+        .properties(
+            PubAckProperties::builder()
+                .reason_string(Utf8String::try_from("ok").unwrap())
+                .build(),
+        )
+        .build();
 
     let packet = ControlPacket::PubAck(puback);
     roundtrip(&packet).unwrap();
@@ -526,14 +530,15 @@ fn puback_with_all_valid_properties_roundtrip() {
 
 #[test]
 fn unsuback_with_all_valid_properties_roundtrip() {
-    let unsuback = UnsubAck {
-        packet_id: NonZero::new(1).unwrap(),
-        properties: UnsubAckProperties {
-            reason_string: Some(Utf8String::try_from("unsubscribed").unwrap()),
-            user_properties: vec![],
-        },
-        reason_codes: vec![UnsubAckReasonCode::Success],
-    };
+    let unsuback = UnsubAck::builder()
+        .packet_id(NonZero::new(1).unwrap())
+        .properties(
+            UnsubAckProperties::builder()
+                .reason_string(Utf8String::try_from("unsubscribed").unwrap())
+                .build(),
+        )
+        .reason_codes(vec![UnsubAckReasonCode::Success])
+        .build();
 
     let packet = ControlPacket::UnsubAck(unsuback);
     roundtrip(&packet).unwrap();
@@ -541,17 +546,18 @@ fn unsuback_with_all_valid_properties_roundtrip() {
 
 #[test]
 fn unsubscribe_with_all_valid_properties_roundtrip() {
-    let unsubscribe = Unsubscribe {
-        packet_id: NonZero::new(1).unwrap(),
-        properties: UnsubscribeProperties {
-            user_properties: vec![(
-                Utf8String::try_from("key").unwrap(),
-                Utf8String::try_from("value").unwrap(),
-            )],
-        },
-        filter: Utf8String::try_from("test/+").unwrap(),
-        extra_filters: Vec::new(),
-    };
+    let unsubscribe = Unsubscribe::builder()
+        .packet_id(NonZero::new(1).unwrap())
+        .properties(
+            UnsubscribeProperties::builder()
+                .user_properties(vec![(
+                    Utf8String::try_from("key").unwrap(),
+                    Utf8String::try_from("value").unwrap(),
+                )])
+                .build(),
+        )
+        .filter(Utf8String::try_from("test/+").unwrap())
+        .build();
 
     let packet = ControlPacket::Unsubscribe(unsubscribe);
     roundtrip(&packet).unwrap();
@@ -559,14 +565,15 @@ fn unsubscribe_with_all_valid_properties_roundtrip() {
 
 #[test]
 fn pubcomp_with_all_valid_properties_roundtrip() {
-    let pubcomp = PubComp {
-        packet_id: NonZero::new(1).unwrap(),
-        reason_code: PubCompReasonCode::Success,
-        properties: PubCompProperties {
-            reason_string: Some(Utf8String::try_from("complete").unwrap()),
-            user_properties: vec![],
-        },
-    };
+    let pubcomp = PubComp::builder()
+        .packet_id(NonZero::new(1).unwrap())
+        .reason_code(PubCompReasonCode::Success)
+        .properties(
+            PubCompProperties::builder()
+                .reason_string(Utf8String::try_from("complete").unwrap())
+                .build(),
+        )
+        .build();
 
     let packet = ControlPacket::PubComp(pubcomp);
     roundtrip(&packet).unwrap();
@@ -574,14 +581,15 @@ fn pubcomp_with_all_valid_properties_roundtrip() {
 
 #[test]
 fn pubrec_with_all_valid_properties_roundtrip() {
-    let pubrec = PubRec {
-        packet_id: NonZero::new(1).unwrap(),
-        reason_code: PubRecReasonCode::Success,
-        properties: PubRecProperties {
-            reason_string: Some(Utf8String::try_from("received").unwrap()),
-            user_properties: vec![],
-        },
-    };
+    let pubrec = PubRec::builder()
+        .packet_id(NonZero::new(1).unwrap())
+        .reason_code(PubRecReasonCode::Success)
+        .properties(
+            PubRecProperties::builder()
+                .reason_string(Utf8String::try_from("received").unwrap())
+                .build(),
+        )
+        .build();
 
     let packet = ControlPacket::PubRec(pubrec);
     roundtrip(&packet).unwrap();
@@ -589,14 +597,15 @@ fn pubrec_with_all_valid_properties_roundtrip() {
 
 #[test]
 fn pubrel_with_all_valid_properties_roundtrip() {
-    let pubrel = PubRel {
-        packet_id: NonZero::new(1).unwrap(),
-        reason_code: PubRelReasonCode::Success,
-        properties: PubRelProperties {
-            reason_string: Some(Utf8String::try_from("released").unwrap()),
-            user_properties: vec![],
-        },
-    };
+    let pubrel = PubRel::builder()
+        .packet_id(NonZero::new(1).unwrap())
+        .reason_code(PubRelReasonCode::Success)
+        .properties(
+            PubRelProperties::builder()
+                .reason_string(Utf8String::try_from("released").unwrap())
+                .build(),
+        )
+        .build();
 
     let packet = ControlPacket::PubRel(pubrel);
     roundtrip(&packet).unwrap();
@@ -634,23 +643,20 @@ fn pingresp_parsing_valid() {
 
 #[test]
 fn connect_with_will_roundtrip() {
-    let connect = Connect {
-        protocol_name: Utf8String::new("MQTT"),
-        protocol_version: 5,
-        clean_start: true,
-        client_identifier: Utf8String::new("test"),
-        keep_alive: NonZero::new(60),
-        user_name: None,
-        password: None,
-        will: Some(Will {
-            topic: Topic::try_new("topic").unwrap(),
-            payload: BinaryData::try_from(&[1, 2, 3, 4]).unwrap(),
-            qos: Qos::AtLeastOnce,
-            retain: false,
-            properties: WillProperties::default(),
-        }),
-        properties: ConnectProperties::default(),
-    };
+    let connect = Connect::builder()
+        .protocol_name(Utf8String::new("MQTT"))
+        .protocol_version(5)
+        .clean_start(true)
+        .client_identifier(Utf8String::new("test"))
+        .maybe_keep_alive(NonZero::new(60))
+        .will(
+            Will::builder()
+                .topic(Topic::try_new("topic").unwrap())
+                .payload(BinaryData::try_from(&[1, 2, 3, 4]).unwrap())
+                .qos(Qos::AtLeastOnce)
+                .build(),
+        )
+        .build();
 
     let packet = ControlPacket::Connect(connect);
     roundtrip(&packet).unwrap();
@@ -658,17 +664,13 @@ fn connect_with_will_roundtrip() {
 
 #[test]
 fn connect_without_will_roundtrip() {
-    let connect = Connect {
-        protocol_name: Utf8String::new("MQTT"),
-        protocol_version: 5,
-        clean_start: true,
-        client_identifier: Utf8String::new("test"),
-        keep_alive: NonZero::new(60),
-        user_name: None,
-        password: None,
-        will: None,
-        properties: ConnectProperties::default(),
-    };
+    let connect = Connect::builder()
+        .protocol_name(Utf8String::new("MQTT"))
+        .protocol_version(5)
+        .clean_start(true)
+        .client_identifier(Utf8String::new("test"))
+        .maybe_keep_alive(NonZero::new(60))
+        .build();
 
     let packet = ControlPacket::Connect(connect);
     roundtrip(&packet).unwrap();
@@ -676,13 +678,11 @@ fn connect_without_will_roundtrip() {
 
 #[test]
 fn publish_qos0_fire_and_forget_roundtrip() {
-    let publish = Publish {
-        kind: PublishKind::FireAndForget,
-        retain: false,
-        topic: Topic::try_new("test/topic").unwrap(),
-        payload: Payload::new([1, 2, 3, 4].as_slice()),
-        properties: PublishProperties::default(),
-    };
+    let publish = Publish::builder()
+        .kind(PublishKind::FireAndForget)
+        .topic(Topic::try_new("test/topic").unwrap())
+        .payload(Payload::new([1, 2, 3, 4].as_slice()))
+        .build();
 
     let packet = ControlPacket::Publish(publish);
     roundtrip(&packet).unwrap();
@@ -693,19 +693,17 @@ fn pubcomp_properties_is_empty() {
     let empty = PubCompProperties::default();
     assert!(empty.is_empty());
 
-    let with_reason = PubCompProperties {
-        reason_string: Some(Utf8String::try_from("ok").unwrap()),
-        user_properties: vec![],
-    };
+    let with_reason = PubCompProperties::builder()
+        .reason_string(Utf8String::try_from("ok").unwrap())
+        .build();
     assert!(!with_reason.is_empty());
 
-    let with_user = PubCompProperties {
-        reason_string: None,
-        user_properties: vec![(
+    let with_user = PubCompProperties::builder()
+        .user_properties(vec![(
             Utf8String::try_from("key").unwrap(),
             Utf8String::try_from("value").unwrap(),
-        )],
-    };
+        )])
+        .build();
     assert!(!with_user.is_empty());
 }
 
@@ -714,19 +712,17 @@ fn pubrec_properties_is_empty() {
     let empty = PubRecProperties::default();
     assert!(empty.is_empty());
 
-    let with_reason = PubRecProperties {
-        reason_string: Some(Utf8String::try_from("ok").unwrap()),
-        user_properties: vec![],
-    };
+    let with_reason = PubRecProperties::builder()
+        .reason_string(Utf8String::try_from("ok").unwrap())
+        .build();
     assert!(!with_reason.is_empty());
 
-    let with_user = PubRecProperties {
-        reason_string: None,
-        user_properties: vec![(
+    let with_user = PubRecProperties::builder()
+        .user_properties(vec![(
             Utf8String::try_from("key").unwrap(),
             Utf8String::try_from("value").unwrap(),
-        )],
-    };
+        )])
+        .build();
     assert!(!with_user.is_empty());
 }
 
@@ -735,19 +731,17 @@ fn pubrel_properties_is_empty() {
     let empty = PubRelProperties::default();
     assert!(empty.is_empty());
 
-    let with_reason = PubRelProperties {
-        reason_string: Some(Utf8String::try_from("ok").unwrap()),
-        user_properties: vec![],
-    };
+    let with_reason = PubRelProperties::builder()
+        .reason_string(Utf8String::try_from("ok").unwrap())
+        .build();
     assert!(!with_reason.is_empty());
 
-    let with_user = PubRelProperties {
-        reason_string: None,
-        user_properties: vec![(
+    let with_user = PubRelProperties::builder()
+        .user_properties(vec![(
             Utf8String::try_from("key").unwrap(),
             Utf8String::try_from("value").unwrap(),
-        )],
-    };
+        )])
+        .build();
     assert!(!with_user.is_empty());
 }
 
@@ -845,9 +839,10 @@ fn settings_unlimited() {
 
 #[test]
 fn publish_parser_rejects_subscription_identifiers_exceeding_bound() {
-    // 3 subscription identifiers inside one PUBLISH, each encoded as `0x0B 0x01`
-    // (property id 11, VBI value 1). With max_subscription_identifiers_len = 2,
-    // the third identifier must trigger TooManySubscriptionIdentifiersError.
+    // 3 subscription identifiers inside one PUBLISH, each encoded as `0x0B
+    // 0x01` (property id 11, VBI value 1). With
+    // max_subscription_identifiers_len = 2, the third identifier must
+    // trigger TooManySubscriptionIdentifiersError.
     let bytes = vec![
         0x30, 17, // Header: PUBLISH, qos=0, retain=0; remaining length = 17
         0, 4, // Topic length
