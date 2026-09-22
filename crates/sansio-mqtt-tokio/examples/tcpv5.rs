@@ -43,7 +43,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                         .send(Command::Subscribe(
                             SubscribeOptions::builder()
                                 .subscriptions(vec![
-                                    Subscription::builder().filter("test/topic".into()).build(),
+                                    Subscription::builder().filter("test/topic").build(),
                                 ])
                                 .build(),
                         ))
@@ -53,8 +53,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                         .send(Command::Publish {
                             token: 1,
                             message: Message::builder()
-                                .topic("test/topic".into())
-                                .payload("Hello, MQTT!".into())
+                                .topic("test/topic")
+                                .payload("Hello, MQTT!")
                                 .build(),
                         })
                         .await?;

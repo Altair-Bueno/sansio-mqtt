@@ -1,3 +1,5 @@
+#![allow(clippy::duplicated_attributes)]
+
 use alloc::vec::Vec;
 use core::num::NonZero;
 use core::ops::Add;
@@ -39,6 +41,7 @@ pub enum PayloadFormat {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, bon::Builder)]
+#[builder(on(ByteString, into), on(Bytes, into))]
 #[non_exhaustive]
 pub struct Message {
     pub topic: ByteString,
@@ -52,16 +55,18 @@ pub struct Message {
     pub response_topic: Option<ByteString>,
     pub correlation_data: Option<Bytes>,
     pub content_type: Option<ByteString>,
-    #[builder(default)]
+    #[builder(default, with = FromIterator::from_iter)]
     pub user_properties: Vec<(ByteString, ByteString)>,
-    #[builder(default)]
+    #[builder(default, with = FromIterator::from_iter)]
     pub subscription_identifiers: Vec<NonZero<u64>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, bon::Builder)]
+#[builder(on(ByteString, into), on(Bytes, into))]
 #[non_exhaustive]
 pub struct Will {
     pub topic: ByteString,
+    #[builder(default)]
     pub payload: Bytes,
     #[builder(default)]
     pub qos: Qos,
@@ -73,11 +78,12 @@ pub struct Will {
     pub response_topic: Option<ByteString>,
     pub correlation_data: Option<Bytes>,
     pub content_type: Option<ByteString>,
-    #[builder(default)]
+    #[builder(default, with = FromIterator::from_iter)]
     pub user_properties: Vec<(ByteString, ByteString)>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, bon::Builder)]
+#[builder(on(ByteString, into), on(Bytes, into))]
 #[non_exhaustive]
 pub struct Subscription {
     pub filter: ByteString,
@@ -92,6 +98,7 @@ pub struct Subscription {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, bon::Builder)]
+#[builder(on(ByteString, into), on(Bytes, into))]
 #[non_exhaustive]
 pub struct Authentication {
     pub method: ByteString,
@@ -99,6 +106,7 @@ pub struct Authentication {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, bon::Builder)]
+#[builder(on(ByteString, into), on(Bytes, into))]
 #[non_exhaustive]
 pub struct ConnectOptions {
     #[builder(default)]
@@ -111,26 +119,28 @@ pub struct ConnectOptions {
     pub password: Option<Bytes>,
     pub will: Option<Will>,
     pub authentication: Option<Authentication>,
-    #[builder(default)]
+    #[builder(default, with = FromIterator::from_iter)]
     pub user_properties: Vec<(ByteString, ByteString)>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, bon::Builder)]
+#[builder(on(ByteString, into), on(Bytes, into))]
 #[non_exhaustive]
 pub struct SubscribeOptions {
-    #[builder(default)]
+    #[builder(default, with = FromIterator::from_iter)]
     pub subscriptions: Vec<Subscription>,
     pub identifier: Option<NonZero<u64>>,
-    #[builder(default)]
+    #[builder(default, with = FromIterator::from_iter)]
     pub user_properties: Vec<(ByteString, ByteString)>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, bon::Builder)]
+#[builder(on(ByteString, into), on(Bytes, into))]
 #[non_exhaustive]
 pub struct UnsubscribeOptions {
-    #[builder(default)]
+    #[builder(default, with = |filters: impl IntoIterator<Item: Into<ByteString>>| filters.into_iter().map(Into::into).collect())]
     pub filters: Vec<ByteString>,
-    #[builder(default)]
+    #[builder(default, with = FromIterator::from_iter)]
     pub user_properties: Vec<(ByteString, ByteString)>,
 }
 
