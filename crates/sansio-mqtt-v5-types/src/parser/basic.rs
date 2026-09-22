@@ -148,7 +148,7 @@ impl Utf8String {
         combinator::trace(type_name::<Self>(), move |input: &mut Input| {
             let taken = binary::length_take(two_byte_integer_len_with_limits(max_bytes))
                 .parse_next(input)?;
-            Self::try_new(input.owned_slice(taken))
+            Self::try_from(input.owned_slice(taken))
                 .map_err(|error| Error::from_external_error(input, error))
         })
         .context(StrContext::Label(type_name::<Self>()))

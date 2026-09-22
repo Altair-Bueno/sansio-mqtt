@@ -11,8 +11,10 @@ bon = { workspace = true }
 winnow = { workspace = true, features = ["alloc", "binary"] }
 strum = { workspace = true, features = ["derive"] }
 bytes = { workspace = true }
+bytestring = { workspace = true }
 thiserror = { workspace = true }
 encode = { workspace = true, features = ["alloc"] }
 
 [dev-dependencies]
 rstest = { workspace = true }
+bytestring = { workspace = true }

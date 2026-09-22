@@ -64,7 +64,7 @@ pub(crate) fn utf8_to_wire(value: ByteString) -> Result<Utf8String, Error> {
     if value.len() > u16::MAX as usize {
         return Err(Error::StringTooLong);
     }
-    Utf8String::try_new(value.into_bytes()).map_err(|_| Error::InvalidTopicFilter)
+    Utf8String::try_new(value).map_err(|_| Error::InvalidTopicFilter)
 }
 
 /// Converts an application byte string into a wire [`Topic`] (a Topic Name,
@@ -74,7 +74,7 @@ pub(crate) fn topic_to_wire(value: ByteString) -> Result<Topic, Error> {
     if value.len() > u16::MAX as usize {
         return Err(Error::StringTooLong);
     }
-    let utf8 = Utf8String::try_new(value.into_bytes()).map_err(|_| Error::InvalidTopicFilter)?;
+    let utf8 = Utf8String::try_new(value).map_err(|_| Error::InvalidTopicFilter)?;
     Topic::try_from(utf8).map_err(|_| Error::InvalidTopic)
 }
 
@@ -91,20 +91,6 @@ pub(crate) fn binary_to_wire(value: Bytes) -> Result<BinaryData, Error> {
 /// platform, so this conversion is infallible.
 pub(crate) fn payload_to_wire(value: Bytes) -> Payload {
     Payload::new(value)
-}
-
-/// Converts a wire [`Utf8String`] back into a [`ByteString`] without copying
-/// the underlying bytes.
-#[allow(unsafe_code)]
-pub(crate) fn utf8_from_wire(value: Utf8String) -> ByteString {
-    // SAFETY: `Utf8String`'s only constructors (`try_new`/`new_unchecked`)
-    // require the wrapped bytes to be well-formed UTF-8, which is exactly the
-    // invariant `ByteString::from_bytes_unchecked` requires of its argument.
-    unsafe { ByteString::from_bytes_unchecked(value.into_inner()) }
-}
-
-pub(crate) fn topic_from_wire(value: Topic) -> ByteString {
-    utf8_from_wire(value.into_inner())
 }
 
 pub(crate) fn binary_from_wire(value: BinaryData) -> Bytes {
@@ -129,7 +115,7 @@ pub(crate) fn user_properties_from_wire(
 ) -> Vec<(ByteString, ByteString)> {
     properties
         .into_iter()
-        .map(|(key, value)| (utf8_from_wire(key), utf8_from_wire(value)))
+        .map(|(key, value)| (key.into_inner(), value.into_inner()))
         .collect()
 }
 
@@ -304,7 +290,7 @@ pub(crate) fn publish_to_message(publish: Publish) -> Message {
     };
     let retain = publish.retain;
     let properties = publish.properties;
-    let topic = topic_from_wire(publish.topic);
+    let topic = publish.topic.into_inner().into_inner();
     let payload = payload_from_wire(publish.payload);
 
     Message::builder()
@@ -322,9 +308,13 @@ pub(crate) fn publish_to_message(publish: Publish) -> Message {
                 .message_expiry_interval
                 .map(|secs| Duration::from_secs(u64::from(secs))),
         )
-        .maybe_response_topic(properties.response_topic.map(topic_from_wire))
+        .maybe_response_topic(
+            properties
+                .response_topic
+                .map(|topic| topic.into_inner().into_inner()),
+        )
         .maybe_correlation_data(properties.correlation_data.map(binary_from_wire))
-        .maybe_content_type(properties.content_type.map(utf8_from_wire))
+        .maybe_content_type(properties.content_type.map(Utf8String::into_inner))
         .user_properties(user_properties_from_wire(properties.user_properties))
         .subscription_identifiers(properties.subscription_identifiers)
         .build()
@@ -516,9 +506,9 @@ fn auth_reason_code_to_protocol(code: AuthReasonCode) -> ReasonCode {
 pub(crate) fn auth_packet_to_event(auth: WireAuth) -> Event {
     let reason = auth_reason_code_to_protocol(auth.reason_code);
     let (method, data) = match auth.properties.authentication {
-        Some(AuthenticationKind::WithoutData { method }) => (utf8_from_wire(method), None),
+        Some(AuthenticationKind::WithoutData { method }) => (method.into_inner(), None),
         Some(AuthenticationKind::WithData { method, data }) => {
-            (utf8_from_wire(method), Some(binary_from_wire(data)))
+            (method.into_inner(), Some(binary_from_wire(data)))
         }
         None | Some(_) => (ByteString::new(), None),
     };
@@ -527,7 +517,7 @@ pub(crate) fn auth_packet_to_event(auth: WireAuth) -> Event {
         reason,
         method,
         data,
-        reason_string: auth.properties.reason_string.map(utf8_from_wire),
+        reason_string: auth.properties.reason_string.map(Utf8String::into_inner),
         user_properties: user_properties_from_wire(auth.properties.user_properties),
     }
 }

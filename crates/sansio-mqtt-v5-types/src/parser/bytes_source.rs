@@ -1,7 +1,8 @@
 /// Produces owned [`bytes::Bytes`] for a slice taken from this input.
 ///
-/// [`crate::Payload`], [`crate::BinaryData`] and [`crate::Utf8String`] all
-/// store [`bytes::Bytes`], so decoding them requires turning a borrowed slice
+/// [`crate::Payload`] and [`crate::BinaryData`] store [`bytes::Bytes`], and
+/// [`crate::Utf8String`] stores a [`bytestring::ByteString`] backed by the
+/// same allocation, so decoding them requires turning a borrowed slice
 /// of the input into an owned buffer. Doing that with
 /// [`bytes::Bytes::copy_from_slice`] costs one allocation and one
 /// `memcpy` per field, which for a large PUBLISH means copying the
