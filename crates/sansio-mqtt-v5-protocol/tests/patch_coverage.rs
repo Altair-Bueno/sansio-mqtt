@@ -56,7 +56,7 @@ fn packet_id(value: u16) -> NonZero<u16> {
 
 fn read(client: &mut Client<Duration>, packet: &ControlPacket) -> Result<(), Error> {
     client.handle_read(IncomingData {
-        bytes: encode_packet(packet),
+        bytes: &encode_packet(packet),
         received_at: Duration::ZERO,
     })
 }
@@ -134,7 +134,7 @@ fn packet_split_across_two_reads_is_reassembled() {
 
     assert_eq!(
         client.handle_read(IncomingData {
-            bytes: publish.slice(..split),
+            bytes: &publish.slice(..split),
             received_at: Duration::ZERO,
         }),
         Ok(())
@@ -146,7 +146,7 @@ fn packet_split_across_two_reads_is_reassembled() {
 
     assert_eq!(
         client.handle_read(IncomingData {
-            bytes: publish.slice(split..),
+            bytes: &publish.slice(split..),
             received_at: Duration::ZERO,
         }),
         Ok(())
@@ -175,7 +175,7 @@ fn trailing_partial_packet_is_retained_across_reads() {
 
     assert_eq!(
         client.handle_read(IncomingData {
-            bytes: Bytes::from(buffer),
+            bytes: &(buffer),
             received_at: Duration::ZERO,
         }),
         Ok(())
@@ -190,7 +190,7 @@ fn trailing_partial_packet_is_retained_across_reads() {
 
     assert_eq!(
         client.handle_read(IncomingData {
-            bytes: fourth.slice(2..),
+            bytes: &fourth.slice(2..),
             received_at: Duration::ZERO,
         }),
         Ok(())

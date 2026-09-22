@@ -1,0 +1,20 @@
+[package]
+name = "sansio-mqtt-tokio"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+bytes = { workspace = true }
+sansio-mqtt-protocol = { workspace = true }
+tokio = { workspace = true, features = ["io-util", "macros", "sync", "time", "rt"] }
+tracing = { workspace = true, features = ["attributes"] }
+
+[dev-dependencies]
+encode = { workspace = true }
+sansio-mqtt-v5-protocol = { workspace = true }
+sansio-mqtt-protocol = { workspace = true }
+sansio-mqtt-v5-types = { workspace = true }
+winnow = { workspace = true }
+tracing-subscriber = { workspace = true, features = ["env-filter", "fmt"] }
+tokio = { workspace = true, features = ["full"] }

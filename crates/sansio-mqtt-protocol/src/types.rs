@@ -11,8 +11,8 @@ pub trait Time: Ord + Add<Duration, Output = Self> + Copy {}
 impl<T> Time for T where T: Ord + Add<Duration, Output = T> + Copy {}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct IncomingData<Time> {
-    pub bytes: Bytes,
+pub struct IncomingData<'bytes, Time> {
+    pub bytes: &'bytes [u8],
     pub received_at: Time,
 }
 
@@ -101,6 +101,7 @@ pub struct Authentication {
 #[derive(Debug, Clone, PartialEq, Eq, bon::Builder)]
 #[non_exhaustive]
 pub struct ConnectOptions {
+    #[builder(default)]
     pub client_id: ByteString,
     #[builder(default)]
     pub clean_start: bool,
@@ -301,9 +302,9 @@ pub enum Error {
     EmptyUnsubscribe,
 }
 
-pub trait MqttProtocol<T: Time>:
+pub trait MqttProtocol<'bytes, T: Time>:
     sansio::Protocol<
-        IncomingData<T>,
+        IncomingData<'bytes, T>,
         Command,
         DriverEvent,
         Rout = Event,

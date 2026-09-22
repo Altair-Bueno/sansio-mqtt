@@ -219,7 +219,7 @@ where
     }
 }
 
-impl<T> Protocol<IncomingData<T>, Command, DriverEvent> for Client<T>
+impl<'bytes, T> Protocol<IncomingData<'bytes, T>, Command, DriverEvent> for Client<T>
 where
     T: Time,
 {
@@ -230,7 +230,7 @@ where
     type Time = T;
 
     #[tracing::instrument(skip_all)]
-    fn handle_read(&mut self, msg: IncomingData<T>) -> Result<(), Self::Error> {
+    fn handle_read(&mut self, msg: IncomingData<'bytes, T>) -> Result<(), Self::Error> {
         let received_at = msg.received_at;
 
         if self.scratchpad.read_buffer.is_empty() {
@@ -292,7 +292,7 @@ where
     }
 }
 
-impl<T> MqttProtocol<T> for Client<T>
+impl<'bytes, T> MqttProtocol<'bytes, T> for Client<T>
 where
     T: Time,
 {

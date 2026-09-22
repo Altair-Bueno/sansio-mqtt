@@ -90,7 +90,7 @@ fn settings_with_maximum_packet_size(value: Option<NonZero<u32>>) -> ClientSetti
 
 fn read(client: &mut Client<Duration>, packet: &ControlPacket) -> Result<(), Error> {
     client.handle_read(IncomingData {
-        bytes: encode_packet(packet),
+        bytes: &encode_packet(packet),
         received_at: Duration::ZERO,
     })
 }
@@ -159,7 +159,7 @@ fn absent_maximum_packet_size_caps_parser_at_default_one_mebibyte() {
     let oversized_publish_header = Bytes::from_static(&[0x30, 0x81, 0x80, 0x40]);
     assert_eq!(
         client.handle_read(IncomingData {
-            bytes: oversized_publish_header,
+            bytes: &oversized_publish_header,
             received_at: Duration::ZERO,
         }),
         Err(Error::MalformedPacket),

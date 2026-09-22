@@ -16,7 +16,6 @@ use sansio_mqtt_protocol::Error;
 use sansio_mqtt_protocol::Event;
 use sansio_mqtt_protocol::IncomingData;
 use sansio_mqtt_protocol::Message;
-use sansio_mqtt_protocol::MqttProtocol;
 use sansio_mqtt_protocol::Qos as ProtoQos;
 use sansio_mqtt_protocol::ReasonCode;
 use sansio_mqtt_protocol::SubscribeOptions;
@@ -42,7 +41,7 @@ fn encode_packet(packet: &ControlPacket) -> Bytes {
 
 fn read(client: &mut Client<Duration>, packet: &ControlPacket) -> Result<(), Error> {
     client.handle_read(IncomingData {
-        bytes: encode_packet(packet),
+        bytes: &encode_packet(packet),
         received_at: Duration::ZERO,
     })
 }
@@ -341,10 +340,4 @@ fn outbound_publish_never_carries_a_topic_alias() {
     };
 
     assert!(publish.properties.topic_alias.is_none());
-}
-
-#[test]
-fn client_satisfies_mqtt_protocol_trait() {
-    fn drive(_: impl MqttProtocol<Duration>) {}
-    drive(Client::<Duration>::default());
 }

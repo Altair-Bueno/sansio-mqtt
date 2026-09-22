@@ -72,7 +72,7 @@ fn wire_topic(name: &str) -> Topic {
 
 fn read(client: &mut Client<Duration>, packet: &ControlPacket) -> Result<(), Error> {
     client.handle_read(IncomingData {
-        bytes: encode_packet(packet),
+        bytes: &encode_packet(packet),
         received_at: Duration::ZERO,
     })
 }
@@ -83,7 +83,7 @@ fn read_at(
     received_at: Duration,
 ) -> Result<(), Error> {
     client.handle_read(IncomingData {
-        bytes: encode_packet(packet),
+        bytes: &encode_packet(packet),
         received_at,
     })
 }
@@ -454,7 +454,7 @@ fn fragmented_packet_is_buffered_until_complete() {
     let mut client = Client::<Duration>::default();
 
     let first_fragment = client.handle_read(IncomingData {
-        bytes: Bytes::from_static(&[0xD0]),
+        bytes: (&[0xD0]),
         received_at: Duration::ZERO,
     });
 
@@ -463,7 +463,7 @@ fn fragmented_packet_is_buffered_until_complete() {
     assert!(client.poll_event().is_none());
 
     let second_fragment = client.handle_read(IncomingData {
-        bytes: Bytes::from_static(&[0x00]),
+        bytes: (&[0x00]),
         received_at: Duration::ZERO,
     });
 
@@ -483,7 +483,7 @@ fn malformed_packet_triggers_close_action() {
     let mut client = Client::<Duration>::default();
 
     let result = client.handle_read(IncomingData {
-        bytes: Bytes::from_static(&[0xD0, 0x01, 0x00]),
+        bytes: (&[0xD0, 0x01, 0x00]),
         received_at: Duration::ZERO,
     });
 
@@ -503,7 +503,7 @@ fn protocol_error_emits_disconnect_bytes_before_close_action_polling() {
     let mut client = Client::<Duration>::default();
 
     let result = client.handle_read(IncomingData {
-        bytes: Bytes::from_static(&[0xD0, 0x00]),
+        bytes: (&[0xD0, 0x00]),
         received_at: Duration::ZERO,
     });
 
@@ -2661,7 +2661,7 @@ fn stale_read_buffer_is_cleared_on_socket_closed() {
 
     assert_eq!(
         client.handle_read(IncomingData {
-            bytes: Bytes::from_static(&[0x20]),
+            bytes: (&[0x20]),
             received_at: Duration::ZERO,
         }),
         Ok(())
@@ -2683,7 +2683,7 @@ fn stale_read_buffer_is_cleared_on_socket_error() {
 
     assert_eq!(
         client.handle_read(IncomingData {
-            bytes: Bytes::from_static(&[0x20]),
+            bytes: (&[0x20]),
             received_at: Duration::ZERO,
         }),
         Ok(())
@@ -2711,7 +2711,7 @@ fn stale_read_buffer_is_cleared_on_user_disconnect() {
 
     assert_eq!(
         client.handle_read(IncomingData {
-            bytes: Bytes::from_static(&[0x20]),
+            bytes: (&[0x20]),
             received_at: Duration::ZERO,
         }),
         Ok(())
@@ -2737,7 +2737,7 @@ fn stale_read_buffer_is_cleared_on_close() {
 
     assert_eq!(
         client.handle_read(IncomingData {
-            bytes: Bytes::from_static(&[0x20]),
+            bytes: (&[0x20]),
             received_at: Duration::ZERO,
         }),
         Ok(())
