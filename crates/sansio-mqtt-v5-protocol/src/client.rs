@@ -236,12 +236,12 @@ where
         if self.scratchpad.read_buffer.is_empty() {
             // Nothing pending: parse straight out of the driver's buffer so the
             // common case of whole packets per read copies nothing.
-            let consumed = self.consume_packets(&msg.bytes, received_at)?;
+            let consumed = self.consume_packets(msg.bytes, received_at)?;
             self.scratchpad
                 .read_buffer
                 .extend_from_slice(&msg.bytes[consumed..]);
         } else {
-            self.scratchpad.read_buffer.extend_from_slice(&msg.bytes);
+            self.scratchpad.read_buffer.extend_from_slice(msg.bytes);
             let mut buffer = core::mem::take(&mut self.scratchpad.read_buffer);
             let consumed = self.consume_packets(&buffer, received_at)?;
             // Drop the consumed prefix by moving the start pointer; the leading

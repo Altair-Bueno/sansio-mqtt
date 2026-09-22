@@ -1,3 +1,6 @@
+// TODO: Remove once this is solved upstream:
+// - https://github.com/elastio/bon/issues/367
+// - https://github.com/rust-lang/rust-clippy/issues/13238#issuecomment-2807794976
 #![allow(clippy::duplicated_attributes)]
 
 use alloc::vec::Vec;
