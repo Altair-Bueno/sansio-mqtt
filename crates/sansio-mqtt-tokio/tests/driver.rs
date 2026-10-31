@@ -38,12 +38,10 @@ use sansio_mqtt_v5_types::ControlPacket;
 use sansio_mqtt_v5_types::DisconnectReasonCode;
 use sansio_mqtt_v5_types::ParserSettings;
 use sansio_mqtt_v5_types::PingReq;
-use tokio::io::AsyncBufRead;
 use tokio::io::AsyncRead;
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWrite;
 use tokio::io::AsyncWriteExt;
-use tokio::io::BufReader;
 use tokio::io::DuplexStream;
 use tokio::io::ReadBuf;
 use tokio::io::duplex;
@@ -121,7 +119,7 @@ struct Faults {
 /// The client side of a connection, failing whichever operations its
 /// [`Faults`] select.
 struct Socket {
-    inner: BufReader<DuplexStream>,
+    inner: DuplexStream,
     faults: Arc<Faults>,
 }
 
@@ -135,21 +133,10 @@ impl AsyncRead for Socket {
         cx: &mut Context<'_>,
         buf: &mut ReadBuf<'_>,
     ) -> Poll<io::Result<()>> {
-        Pin::new(&mut self.inner).poll_read(cx, buf)
-    }
-}
-
-impl AsyncBufRead for Socket {
-    fn poll_fill_buf(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<&[u8]>> {
-        let this = self.get_mut();
-        if this.faults.read.load(Ordering::SeqCst) {
+        if self.faults.read.load(Ordering::SeqCst) {
             return Poll::Ready(Err(injected_fault()));
         }
-        Pin::new(&mut this.inner).poll_fill_buf(cx)
-    }
-
-    fn consume(mut self: Pin<&mut Self>, amt: usize) {
-        Pin::new(&mut self.inner).consume(amt);
+        Pin::new(&mut self.inner).poll_read(cx, buf)
     }
 }
 
@@ -221,7 +208,7 @@ impl Harness {
                     let (client_side, broker) = duplex(buffer);
                     let socket_faults = Arc::new(Faults::default());
                     attempts.push_back(Box::pin(std::future::ready(Ok(Socket {
-                        inner: BufReader::new(client_side),
+                        inner: client_side,
                         faults: Arc::clone(&socket_faults),
                     }))));
                     brokers.push_back(broker);
