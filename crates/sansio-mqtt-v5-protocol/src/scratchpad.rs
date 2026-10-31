@@ -11,8 +11,9 @@ use sansio_mqtt_v5_types::MaximumQoS;
 
 #[derive(Debug)]
 pub(crate) struct ClientScratchpad<T> {
-    /// The options from the most recent `Command::Connect`, retained for the
-    /// whole client lifetime so a reconnect can resend CONNECT unchanged.
+    /// The options from the most recent `Command::Connect`, consulted while
+    /// the connection it started is negotiated (Keep Alive, Clean Start,
+    /// Session Expiry, enhanced authentication).
     ///
     /// `None` until the application issues its first `Command::Connect`
     /// (`sansio_mqtt_protocol::ConnectOptions` has no meaningful default to

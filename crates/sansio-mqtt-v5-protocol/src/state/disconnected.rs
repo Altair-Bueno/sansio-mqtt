@@ -26,12 +26,12 @@ pub(crate) struct Disconnected;
 
 /// Handles a `Command::Connect`.
 ///
-/// Validates the options by building the CONNECT they describe; on failure the
-/// command is rejected and nothing changes. Otherwise stores them, recomputes
-/// effective limits, optionally clears session state for a clean start, marks
-/// the session persistence flag, enqueues `OpenSocket` and moves to
-/// [`Connecting`] awaiting the socket. CONNECT itself is only sent once the
-/// driver reports `SocketConnected`.
+/// Validates the options by building and encoding the CONNECT they describe;
+/// on failure the command is rejected and nothing changes. Otherwise stores
+/// them, recomputes effective limits, optionally clears session state for a
+/// clean start, marks the session persistence flag, enqueues `OpenSocket` and
+/// moves to [`Connecting`] awaiting the socket, which keeps the encoded CONNECT
+/// until the driver reports `SocketConnected`.
 ///
 /// [MQTT-3.1.2-4] Clean Start=1 starts a new Session.
 fn begin_connect<T>(
@@ -44,7 +44,7 @@ where
     T: Time,
 {
     let connect = convert::connect_options_to_wire(settings, &options)?;
-    let _ = queues::encode_control_packet(&ControlPacket::Connect(connect))?;
+    let connect = queues::encode_control_packet(&ControlPacket::Connect(connect))?;
 
     let clean_start = options.clean_start;
     let session_should_persist = options
@@ -60,7 +60,9 @@ where
     scratchpad.session_should_persist = session_should_persist;
     scratchpad.action_queue.push_back(DriverAction::OpenSocket);
 
-    Ok(ClientState::Connecting(Connecting::awaiting_socket()))
+    Ok(ClientState::Connecting(Connecting::awaiting_socket(
+        connect,
+    )))
 }
 
 impl<T> StateHandler<T> for Disconnected

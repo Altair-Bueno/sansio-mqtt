@@ -11,6 +11,7 @@ use crate::state::connected::Connected;
 use crate::state::disconnected::Disconnected;
 use crate::state::fail_with_protocol_error;
 use crate::state::on_socket_lost;
+use bytes::Bytes;
 use core::num::NonZero;
 use sansio_mqtt_protocol::Command;
 use sansio_mqtt_protocol::DriverEvent;
@@ -34,66 +35,60 @@ pub(crate) struct Connecting {
 }
 
 /// How far the connection attempt has progressed.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug)]
 enum ConnectingPhase {
     /// `OpenSocket` was queued; the driver has not reported the outcome yet.
-    AwaitingSocket,
+    AwaitingSocket {
+        /// The CONNECT packet, encoded when `Command::Connect` was validated
+        /// and sent as-is once the socket is connected: settings are immutable
+        /// and the options cannot change before then.
+        connect: Bytes,
+    },
     /// The socket is connected and CONNECT has been queued.
     AwaitingConnAck,
 }
 
 impl Connecting {
-    pub(crate) fn awaiting_socket() -> Self {
+    /// A connection attempt that sends the already encoded `connect` once
+    /// the requested socket is connected.
+    pub(crate) fn awaiting_socket(connect: Bytes) -> Self {
         Self {
-            phase: ConnectingPhase::AwaitingSocket,
+            phase: ConnectingPhase::AwaitingSocket { connect },
         }
     }
 
     pub(crate) fn has_open_socket(&self) -> bool {
-        self.phase == ConnectingPhase::AwaitingConnAck
+        matches!(self.phase, ConnectingPhase::AwaitingConnAck)
     }
 }
 
 /// Handles the `SocketConnected` that answers the `OpenSocket` queued by
 /// `Command::Connect`.
 ///
-/// Resets negotiated limits, enqueues the CONNECT packet and resets keepalive
-/// tracking. The options were validated when `Command::Connect` was accepted,
-/// so building CONNECT cannot fail in practice; if it does, the connection is
-/// closed and reported as `Event::Disconnected(None)`.
+/// Resets negotiated limits, enqueues the CONNECT packet encoded when
+/// `Command::Connect` was accepted, and resets keepalive tracking.
+///
+/// No Maximum Packet Size has been negotiated on the new socket yet, so the
+/// encoded CONNECT needs no further validation.
 fn on_socket_connected<T>(
     settings: &ClientSettings,
     session: &mut ClientSession,
     scratchpad: &mut ClientScratchpad<T>,
+    connect: Bytes,
 ) -> (ClientState, Result<(), Error>)
 where
     T: Time,
 {
     limits::reset_negotiated_limits(settings, session, scratchpad);
-
-    let enqueued = scratchpad
-        .pending_connect_options
-        .as_ref()
-        .ok_or(Error::InvalidStateTransition)
-        .and_then(|options| convert::connect_options_to_wire(settings, options))
-        .and_then(|connect| queues::enqueue_packet(scratchpad, &ControlPacket::Connect(connect)));
-
-    match enqueued {
-        Ok(()) => {
-            scratchpad.keep_alive_saw_network_activity = false;
-            scratchpad.keep_alive_ping_outstanding = false;
-            (
-                ClientState::Connecting(Connecting {
-                    phase: ConnectingPhase::AwaitingConnAck,
-                }),
-                Ok(()),
-            )
-        }
-        Err(_) => {
-            queues::close_without_disconnect(settings, session, scratchpad, None);
-            (ClientState::Disconnected(Disconnected), Ok(()))
-        }
-    }
+    scratchpad.write_queue.push_back(connect);
+    scratchpad.keep_alive_saw_network_activity = false;
+    scratchpad.keep_alive_ping_outstanding = false;
+    (
+        ClientState::Connecting(Connecting {
+            phase: ConnectingPhase::AwaitingConnAck,
+        }),
+        Ok(()),
+    )
 }
 
 /// Handles a CONNACK.
@@ -279,21 +274,21 @@ where
         evt: DriverEvent,
     ) -> (ClientState, Result<(), Error>) {
         match (self.phase, evt) {
-            (ConnectingPhase::AwaitingSocket, DriverEvent::SocketConnected) => {
-                on_socket_connected(settings, session, scratchpad)
+            (ConnectingPhase::AwaitingSocket { connect }, DriverEvent::SocketConnected) => {
+                on_socket_connected(settings, session, scratchpad, connect)
             }
             // The socket is already open: the protocol did not ask for
             // another one.
-            (ConnectingPhase::AwaitingConnAck, DriverEvent::SocketConnected) => (
-                ClientState::Connecting(self),
+            (phase @ ConnectingPhase::AwaitingConnAck, DriverEvent::SocketConnected) => (
+                ClientState::Connecting(Connecting { phase }),
                 Err(Error::InvalidStateTransition),
             ),
             // `OpenSocket` failed, or the open socket was lost before CONNACK.
             (_, DriverEvent::SocketClosed | DriverEvent::SocketError) => {
                 on_socket_lost(settings, session, scratchpad)
             }
-            _ => (
-                ClientState::Connecting(self),
+            (phase, _) => (
+                ClientState::Connecting(Connecting { phase }),
                 Err(Error::InvalidStateTransition),
             ),
         }
@@ -311,7 +306,7 @@ where
         // Server within a reasonable amount of time, the Client SHOULD close
         // the Network Connection" (MQTT v5.0 §3.1.4).
         match self.phase {
-            ConnectingPhase::AwaitingSocket => {
+            ConnectingPhase::AwaitingSocket { .. } => {
                 queues::abandon_socket_request(settings, session, scratchpad);
             }
             ConnectingPhase::AwaitingConnAck => {
@@ -329,7 +324,7 @@ where
     ) -> (ClientState, Result<(), Error>) {
         match self.phase {
             // Nothing has been sent, so there is nothing to DISCONNECT from.
-            ConnectingPhase::AwaitingSocket => {
+            ConnectingPhase::AwaitingSocket { .. } => {
                 queues::abandon_socket_request(settings, session, scratchpad);
             }
             ConnectingPhase::AwaitingConnAck => {
