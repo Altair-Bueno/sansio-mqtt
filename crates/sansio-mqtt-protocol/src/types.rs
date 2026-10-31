@@ -270,41 +270,154 @@ pub enum Event {
     },
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, strum::EnumDiscriminants)]
-#[strum_discriminants(derive(strum::Display))]
+/// A socket lifecycle notification from the driver to the protocol.
+///
+/// The driver reports only what the protocol did not ask for: the outcome of
+/// a [`DriverAction::OpenSocket`], and the unsolicited loss of an open socket.
+/// [`DriverAction::CloseSocket`] is never answered.
+///
+/// # Contract
+///
+/// - Report [`SocketConnected`](Self::SocketConnected) or
+///   [`SocketError`](Self::SocketError) exactly once per performed
+///   [`DriverAction::OpenSocket`], and never otherwise. An unrequested
+///   `SocketConnected` is rejected with [`Error::InvalidStateTransition`].
+/// - On peer EOF or an I/O error on an open socket, drop the socket first and
+///   then report [`SocketClosed`](Self::SocketClosed) or
+///   [`SocketError`](Self::SocketError). The protocol does not answer with
+///   [`DriverAction::CloseSocket`]: the socket is already gone.
+/// - Do not report anything after performing a [`DriverAction::CloseSocket`].
+///
+/// Reporting a loss is always accepted (`Ok(())`). If the application
+/// believed a connection or connection attempt existed, the protocol emits
+/// [`Event::Disconnected(None)`](Event::Disconnected) and discards any bytes
+/// still queued for the lost socket; otherwise the report is a no-op, so no
+/// duplicate `Disconnected` is ever emitted.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum DriverEvent {
+    /// The socket requested by [`DriverAction::OpenSocket`] is connected.
     SocketConnected,
+    /// The peer closed the open socket (EOF). The driver has already dropped
+    /// it.
     SocketClosed,
+    /// Opening the socket requested by [`DriverAction::OpenSocket`] failed, or
+    /// an I/O error occurred on the open socket. The driver has already
+    /// dropped it.
     SocketError,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, strum::EnumDiscriminants)]
+/// A request from the protocol for the driver to act on the socket.
+///
+/// # Contract
+///
+/// - **Write ordering.** Before performing any action, the driver MUST write
+///   every pending `poll_write` buffer to the current socket. Bytes queued
+///   before a [`CloseSocket`](Self::CloseSocket), such as the DISCONNECT that
+///   precedes it, belong to the socket being closed.
+/// - **No bytes without a socket.** After the protocol queues `CloseSocket`, or
+///   after the driver reports [`DriverEvent::SocketClosed`] or
+///   [`DriverEvent::SocketError`], `poll_write` yields no bytes until the next
+///   [`DriverEvent::SocketConnected`].
+/// - **One socket at a time.** The protocol never queues
+///   [`OpenSocket`](Self::OpenSocket) while a socket is open, i.e. between
+///   `SocketConnected` and the next `CloseSocket`, `SocketClosed` or
+///   `SocketError`. In the action queue, a `CloseSocket` always precedes the
+///   next `OpenSocket`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, strum::EnumDiscriminants)]
 #[strum_discriminants(derive(strum::Display))]
 #[non_exhaustive]
 pub enum DriverAction {
+    /// Open a socket to the server and answer with
+    /// [`DriverEvent::SocketConnected`] or [`DriverEvent::SocketError`].
     OpenSocket,
+    /// Close the current socket, or abandon an `OpenSocket` still in progress.
+    ///
+    /// Not answered: the protocol has already moved to a disconnected state
+    /// and emitted whatever [`Event`] the application needs. A `CloseSocket`
+    /// with no socket open is a no-op for the driver.
     CloseSocket,
+    /// Stop the driver.
     Quit,
 }
 
+/// A feature the server can disable in its CONNACK, and the client can
+/// disable through its own settings.
+///
+/// Reported by [`Error::CapabilityNotAvailable`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, strum::Display)]
+#[non_exhaustive]
+pub enum Capability {
+    /// Publishing at the requested QoS (Maximum QoS) [MQTT-3.2.2-11].
+    #[strum(to_string = "the requested QoS")]
+    MaximumQos,
+    /// Retained messages (Retain Available).
+    #[strum(to_string = "retained messages")]
+    Retain,
+    /// Wildcard topic filters (Wildcard Subscription Available)
+    /// [MQTT-3.2.2-12].
+    #[strum(to_string = "wildcard subscriptions")]
+    WildcardSubscriptions,
+    /// `$share/` topic filters (Shared Subscription Available)
+    /// [MQTT-3.2.2-13].
+    #[strum(to_string = "shared subscriptions")]
+    SharedSubscriptions,
+    /// Subscription Identifiers (Subscription Identifiers Available)
+    /// [MQTT-3.2.2-14].
+    #[strum(to_string = "subscription identifiers")]
+    SubscriptionIdentifiers,
+}
+
+/// An input the protocol rejected.
+///
+/// `Err` from any `sansio::Protocol` method means only "this input was
+/// rejected and nothing changed": the protocol state, its queues and the
+/// session are exactly as they were before the call, so the caller may log
+/// the error and carry on.
+///
+/// Connection-level failures that the protocol handles itself are not errors.
+/// A malformed or protocol-violating packet from the server, a rejected
+/// CONNACK, a socket error, a connect timeout or a keep-alive timeout returns
+/// `Ok(())`: the protocol queues any DISCONNECT and
+/// [`DriverAction::CloseSocket`] it needs and reports the failure as
+/// [`Event::Disconnected`] carrying the most fitting [`ReasonCode`] (for
+/// example [`ReasonCode::MalformedPacket`], [`ReasonCode::ProtocolError`] or
+/// [`ReasonCode::KeepAliveTimeout`]), or `None` when no reason code applies.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
 #[non_exhaustive]
 pub enum Error {
-    #[error("malformed MQTT control packet received from the peer")]
-    MalformedPacket,
-    #[error("protocol error: packet violated MQTT sequencing or state rules")]
-    ProtocolError,
+    /// The command needs a capability that is not available on this
+    /// connection, because the server's CONNACK or the client's own settings
+    /// disabled it.
+    #[error(
+        "{0} is not available on this connection (disabled by the server or the client settings)"
+    )]
+    CapabilityNotAvailable(Capability),
+    /// A SUBSCRIBE sets No Local on a Shared Subscription, which is a
+    /// Protocol Error [MQTT-3.8.3-4].
+    #[error("SUBSCRIBE sets No Local on a Shared Subscription [MQTT-3.8.3-4]")]
+    NoLocalOnSharedSubscription,
+    /// A duration (e.g. a Message Expiry or Will Delay Interval) does not fit
+    /// the Four Byte Integer number of seconds MQTT encodes it as.
+    #[error("a duration exceeds the MQTT interval limit of 4294967295 seconds")]
+    IntervalTooLong,
+    /// The command or driver event is not valid in the client's current
+    /// connection state, e.g. `Publish` while disconnected, `Connect` while a
+    /// connection exists, an unrequested `SocketConnected`, or inbound bytes
+    /// with no socket open.
     #[error("command or event is not valid in the client's current connection state")]
     InvalidStateTransition,
+    /// The encoded packet exceeds the Maximum Packet Size negotiated with the
+    /// server.
     #[error("encoded control packet exceeds the negotiated Maximum Packet Size")]
     PacketTooLarge,
+    /// Sending would exceed the server's Receive Maximum, or no Packet
+    /// Identifier is free.
     #[error("in-flight QoS 1/QoS 2 PUBLISH count would exceed the peer's Receive Maximum")]
     ReceiveMaximumExceeded,
+    /// The outbound packet could not be encoded.
     #[error("failed to encode an outbound MQTT control packet")]
     EncodeFailure,
-    #[error("CONNACK was not received before the connect timeout elapsed")]
-    ConnectTimeout,
     #[error("topic name is not valid for PUBLISH (contains a wildcard or is otherwise malformed)")]
     InvalidTopic,
     #[error("topic filter is not a valid MQTT UTF-8 string")]

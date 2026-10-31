@@ -5,6 +5,7 @@ use core::time::Duration;
 use encode::Encodable;
 use sansio::Protocol;
 use sansio_mqtt_protocol::Authentication;
+use sansio_mqtt_protocol::Capability;
 use sansio_mqtt_protocol::Command;
 use sansio_mqtt_protocol::ConnectOptions;
 use sansio_mqtt_protocol::DriverAction;
@@ -152,9 +153,9 @@ fn unsubscribe_one(filter: &str) -> Command {
     )
 }
 
-/// `ClientSettings` field overrides, mirroring `ClientSettings::default()`
-/// except for the three mandatory counters (always 32, as in the library
-/// default). `ClientSettings` is `#[non_exhaustive]`, so struct-update syntax
+/// `ClientSettings` field overrides, mirroring `ClientSettings::default()`;
+/// the inbound counters keep their defaults. `ClientSettings` is
+/// `#[non_exhaustive]`, so struct-update syntax
 /// is unavailable to this integration test crate; this struct plus [`settings`]
 /// stands in for it.
 struct SettingsOverrides {
@@ -202,9 +203,6 @@ fn settings(overrides: SettingsOverrides) -> ClientSettings {
         .allow_wildcard_subscriptions(overrides.allow_wildcard_subscriptions)
         .allow_shared_subscriptions(overrides.allow_shared_subscriptions)
         .allow_subscription_identifiers(overrides.allow_subscription_identifiers)
-        .max_user_properties(32)
-        .max_subscription_identifiers(32)
-        .max_subscriptions(32)
         .build()
 }
 
@@ -316,19 +314,16 @@ fn client_new_uses_default_state_and_blank_scratchpad() {
 fn error_variants_are_instantiable_and_matchable() {
     let classify = |error: Error| -> &'static str {
         match error {
-            Error::MalformedPacket => "malformed packet",
-            Error::ProtocolError => "protocol error",
+            Error::IntervalTooLong => "interval too long",
             Error::InvalidStateTransition => "invalid state transition",
             Error::PacketTooLarge => "packet too large",
             Error::ReceiveMaximumExceeded => "receive maximum exceeded",
             Error::EncodeFailure => "encode failure",
-            Error::ConnectTimeout => "connect timeout",
             _ => "other",
         }
     };
 
-    assert_eq!(classify(Error::MalformedPacket), "malformed packet");
-    assert_eq!(classify(Error::ProtocolError), "protocol error");
+    assert_eq!(classify(Error::IntervalTooLong), "interval too long");
     assert_eq!(
         classify(Error::InvalidStateTransition),
         "invalid state transition"
@@ -339,7 +334,20 @@ fn error_variants_are_instantiable_and_matchable() {
         "receive maximum exceeded"
     );
     assert_eq!(classify(Error::EncodeFailure), "encode failure");
-    assert_eq!(classify(Error::ConnectTimeout), "connect timeout");
+}
+
+/// `Default` and an empty builder are the same settings, so overriding one
+/// field through the builder never silently changes the others.
+#[test]
+fn client_settings_builder_defaults_match_default() {
+    assert_eq!(ClientSettings::builder().build(), ClientSettings::default());
+    assert!(
+        ClientSettings::builder()
+            .keep_alive(NonZero::new(30).unwrap())
+            .build()
+            .allow_retain,
+        "setting an unrelated field must not disable retained messages"
+    );
 }
 
 #[test]
@@ -347,7 +355,10 @@ fn client_settings_default_includes_permissive_negotiation_policy() {
     let settings = ClientSettings::default();
 
     assert!(settings.receive_maximum.is_none());
-    assert!(settings.maximum_packet_size.is_none());
+    assert_eq!(
+        settings.maximum_packet_size,
+        ClientSettings::DEFAULT_MAXIMUM_PACKET_SIZE
+    );
     assert!(settings.topic_alias_maximum.is_none());
     assert!(settings.max_outgoing_qos.is_none());
     assert!(settings.allow_retain);
@@ -414,13 +425,11 @@ fn parser_uses_effective_client_limits_after_connect_policy_applied() {
     }));
     let _ = open_connecting(&mut client, connect_options());
 
-    assert_eq!(
-        read(&mut client, &success_connack()),
-        Err(Error::MalformedPacket)
-    );
+    assert_eq!(read(&mut client, &success_connack()), Ok(()));
     assert_eq!(
         client.poll_write(),
-        Some(Bytes::from_static(&[0xE0, 0x02, 0x81, 0x00]))
+        Some(Bytes::from_static(&[0xE0, 0x02, 0x95, 0x00])),
+        "an oversized packet is answered with DISCONNECT 0x95 (Packet too large)"
     );
     assert!(matches!(
         client.poll_event(),
@@ -431,6 +440,7 @@ fn parser_uses_effective_client_limits_after_connect_policy_applied() {
 #[test]
 fn socket_closed_emits_disconnected_event() {
     let mut client = Client::<Duration>::default();
+    let _ = connect_default(&mut client);
 
     let result = client.handle_event(DriverEvent::SocketClosed);
 
@@ -452,6 +462,7 @@ fn socket_connected_in_connecting_state_returns_invalid_transition() {
 #[test]
 fn fragmented_packet_is_buffered_until_complete() {
     let mut client = Client::<Duration>::default();
+    let _ = open_connecting(&mut client, connect_options());
 
     let first_fragment = client.handle_read(IncomingData {
         bytes: (&[0xD0]),
@@ -467,7 +478,12 @@ fn fragmented_packet_is_buffered_until_complete() {
         received_at: Duration::ZERO,
     });
 
-    assert_eq!(second_fragment, Err(Error::ProtocolError));
+    // PINGRESP before CONNACK is a protocol error the client handles itself.
+    assert_eq!(second_fragment, Ok(()));
+    assert_eq!(
+        client.poll_read(),
+        Some(Event::Disconnected(Some(ReasonCode::ProtocolError)))
+    );
     assert_eq!(
         client.poll_write(),
         Some(Bytes::from_static(&[0xE0, 0x02, 0x82, 0x00]))
@@ -481,13 +497,18 @@ fn fragmented_packet_is_buffered_until_complete() {
 #[test]
 fn malformed_packet_triggers_close_action() {
     let mut client = Client::<Duration>::default();
+    let _ = open_connecting(&mut client, connect_options());
 
     let result = client.handle_read(IncomingData {
         bytes: (&[0xD0, 0x01, 0x00]),
         received_at: Duration::ZERO,
     });
 
-    assert_eq!(result, Err(Error::MalformedPacket));
+    assert_eq!(result, Ok(()));
+    assert_eq!(
+        client.poll_read(),
+        Some(Event::Disconnected(Some(ReasonCode::MalformedPacket)))
+    );
     assert_eq!(
         client.poll_write(),
         Some(Bytes::from_static(&[0xE0, 0x02, 0x81, 0x00]))
@@ -501,13 +522,18 @@ fn malformed_packet_triggers_close_action() {
 #[test]
 fn protocol_error_emits_disconnect_bytes_before_close_action_polling() {
     let mut client = Client::<Duration>::default();
+    let _ = open_connecting(&mut client, connect_options());
 
     let result = client.handle_read(IncomingData {
         bytes: (&[0xD0, 0x00]),
         received_at: Duration::ZERO,
     });
 
-    assert_eq!(result, Err(Error::ProtocolError));
+    assert_eq!(result, Ok(()));
+    assert_eq!(
+        client.poll_read(),
+        Some(Event::Disconnected(Some(ReasonCode::ProtocolError)))
+    );
     assert_eq!(
         client.poll_write(),
         Some(Bytes::from_static(&[0xE0, 0x02, 0x82, 0x00]))
@@ -555,8 +581,11 @@ fn connack_rejected_reason_closes_without_connected_event() {
             .build(),
     );
 
-    assert_eq!(read(&mut client, &connack), Err(Error::ProtocolError));
-    assert!(client.poll_read().is_none());
+    assert_eq!(read(&mut client, &connack), Ok(()));
+    assert_eq!(
+        client.poll_read(),
+        Some(Event::Disconnected(Some(ReasonCode::NotAuthorized)))
+    );
     assert!(matches!(
         client.poll_event(),
         Some(DriverAction::CloseSocket)
@@ -695,10 +724,7 @@ fn inbound_publish_alias_only_unknown_alias_is_protocol_error() {
             .build(),
     );
 
-    assert_eq!(
-        read(&mut client, &unknown_alias_publish),
-        Err(Error::ProtocolError)
-    );
+    assert_eq!(read(&mut client, &unknown_alias_publish), Ok(()));
     assert_eq!(
         client.poll_write(),
         Some(Bytes::from_static(&[0xE0, 0x02, 0x82, 0x00]))
@@ -707,7 +733,10 @@ fn inbound_publish_alias_only_unknown_alias_is_protocol_error() {
         client.poll_event(),
         Some(DriverAction::CloseSocket)
     ));
-    assert!(client.poll_read().is_none());
+    assert_eq!(
+        client.poll_read(),
+        Some(Event::Disconnected(Some(ReasonCode::ProtocolError)))
+    );
 }
 
 #[test]
@@ -723,15 +752,15 @@ fn inbound_publish_empty_topic_without_alias_is_protocol_error() {
             .build(),
     );
 
-    assert_eq!(
-        read(&mut client, &invalid_publish),
-        Err(Error::ProtocolError)
-    );
+    assert_eq!(read(&mut client, &invalid_publish), Ok(()));
     assert!(matches!(
         client.poll_event(),
         Some(DriverAction::CloseSocket)
     ));
-    assert!(client.poll_read().is_none());
+    assert_eq!(
+        client.poll_read(),
+        Some(Event::Disconnected(Some(ReasonCode::ProtocolError)))
+    );
 }
 
 /// [Behaviour change] `topic_alias_maximum` is settings-only: there is no
@@ -755,23 +784,25 @@ fn inbound_publish_alias_rejected_when_topic_alias_maximum_is_zero() {
             .build(),
     );
 
-    assert_eq!(
-        read(&mut client, &publish_with_alias),
-        Err(Error::ProtocolError)
-    );
+    assert_eq!(read(&mut client, &publish_with_alias), Ok(()));
     assert_eq!(
         client.poll_write(),
-        Some(Bytes::from_static(&[0xE0, 0x02, 0x82, 0x00]))
+        Some(Bytes::from_static(&[0xE0, 0x02, 0x94, 0x00]))
     );
     assert!(matches!(
         client.poll_event(),
         Some(DriverAction::CloseSocket)
     ));
-    assert!(client.poll_read().is_none());
+    assert_eq!(
+        client.poll_read(),
+        Some(Event::Disconnected(Some(ReasonCode::TopicAliasInvalid)))
+    );
 }
 
+/// MQTT v5.0 §3.3.4: a Topic Alias greater than the Topic Alias Maximum is a
+/// Protocol Error answered with DISCONNECT 0x94 (Topic Alias invalid).
 #[test]
-fn inbound_publish_alias_exceeding_topic_alias_maximum_is_protocol_error() {
+fn inbound_publish_alias_exceeding_topic_alias_maximum_is_topic_alias_invalid() {
     let mut client = Client::<Duration>::new(settings(SettingsOverrides {
         topic_alias_maximum: Some(1),
         ..Default::default()
@@ -791,19 +822,19 @@ fn inbound_publish_alias_exceeding_topic_alias_maximum_is_protocol_error() {
             .build(),
     );
 
-    assert_eq!(
-        read(&mut client, &alias_too_large_publish),
-        Err(Error::ProtocolError)
-    );
+    assert_eq!(read(&mut client, &alias_too_large_publish), Ok(()));
     assert_eq!(
         client.poll_write(),
-        Some(Bytes::from_static(&[0xE0, 0x02, 0x82, 0x00]))
+        Some(Bytes::from_static(&[0xE0, 0x02, 0x94, 0x00]))
     );
     assert!(matches!(
         client.poll_event(),
         Some(DriverAction::CloseSocket)
     ));
-    assert!(client.poll_read().is_none());
+    assert_eq!(
+        client.poll_read(),
+        Some(Event::Disconnected(Some(ReasonCode::TopicAliasInvalid)))
+    );
 }
 
 /// The boundary case: an alias exactly equal to `topic_alias_maximum` is
@@ -865,10 +896,7 @@ fn inbound_publish_alias_equal_to_topic_alias_maximum_is_accepted() {
             )
             .build(),
     );
-    assert_eq!(
-        read(&mut client, &alias_over_limit_publish),
-        Err(Error::ProtocolError)
-    );
+    assert_eq!(read(&mut client, &alias_over_limit_publish), Ok(()));
 }
 
 #[test]
@@ -1106,10 +1134,7 @@ fn inbound_packet_id_reuse_conflict_causes_protocol_error() {
             .build(),
     );
 
-    assert_eq!(
-        read(&mut client, &qos2_same_packet_id),
-        Err(Error::ProtocolError)
-    );
+    assert_eq!(read(&mut client, &qos2_same_packet_id), Ok(()));
     assert_eq!(
         client.poll_write(),
         Some(Bytes::from_static(&[0xE0, 0x02, 0x82, 0x00]))
@@ -1442,7 +1467,7 @@ fn unexpected_puback_without_matching_qos1_transaction_triggers_protocol_error_c
             .build(),
     );
 
-    assert_eq!(read(&mut client, &puback), Err(Error::ProtocolError));
+    assert_eq!(read(&mut client, &puback), Ok(()));
     assert_eq!(
         client.poll_write(),
         Some(Bytes::from_static(&[0xE0, 0x02, 0x82, 0x00]))
@@ -1476,12 +1501,15 @@ fn qos2_inflight_receiving_puback_triggers_protocol_error_close() {
             .build(),
     );
 
-    assert_eq!(read(&mut client, &puback), Err(Error::ProtocolError));
+    assert_eq!(read(&mut client, &puback), Ok(()));
     assert_eq!(
         client.poll_write(),
         Some(Bytes::from_static(&[0xE0, 0x02, 0x82, 0x00]))
     );
-    assert!(client.poll_read().is_none());
+    assert_eq!(
+        client.poll_read(),
+        Some(Event::Disconnected(Some(ReasonCode::ProtocolError)))
+    );
     assert!(matches!(
         client.poll_event(),
         Some(DriverAction::CloseSocket)
@@ -1511,12 +1539,15 @@ fn qos1_inflight_receiving_pubrec_triggers_protocol_error_close() {
             .build(),
     );
 
-    assert_eq!(read(&mut client, &pubrec), Err(Error::ProtocolError));
+    assert_eq!(read(&mut client, &pubrec), Ok(()));
     assert_eq!(
         client.poll_write(),
         Some(Bytes::from_static(&[0xE0, 0x02, 0x82, 0x00]))
     );
-    assert!(client.poll_read().is_none());
+    assert_eq!(
+        client.poll_read(),
+        Some(Event::Disconnected(Some(ReasonCode::ProtocolError)))
+    );
     assert!(matches!(
         client.poll_event(),
         Some(DriverAction::CloseSocket)
@@ -1650,7 +1681,7 @@ fn effective_limits_recompute_on_connect_socketconnected_connack_and_socketclose
             token: 1,
             message: qos1_message.clone(),
         }),
-        Err(Error::ProtocolError)
+        Err(Error::CapabilityNotAvailable(Capability::MaximumQos))
     );
     assert_eq!(client.poll_write(), None);
 
@@ -1676,7 +1707,7 @@ fn effective_limits_recompute_on_connect_socketconnected_connack_and_socketclose
             token: 2,
             message: qos1_message,
         }),
-        Err(Error::ProtocolError)
+        Err(Error::CapabilityNotAvailable(Capability::MaximumQos))
     );
     assert_eq!(client.poll_write(), None);
 }
@@ -1704,7 +1735,7 @@ fn effective_limits_recompute_on_connect_applies_pending_connect_options() {
             token: 1,
             message: qos2_message,
         }),
-        Err(Error::ProtocolError)
+        Err(Error::CapabilityNotAvailable(Capability::MaximumQos))
     );
 }
 
@@ -1768,7 +1799,7 @@ fn app_retain_policy_false_blocks_retain_publish_even_if_broker_allows() {
             token: 1,
             message: retained_message,
         }),
-        Err(Error::ProtocolError)
+        Err(Error::CapabilityNotAvailable(Capability::Retain))
     );
 }
 
@@ -1803,12 +1834,16 @@ fn app_subscription_policy_flags_override_broker_allowances() {
                 .identifier(NonZero::new(1u64).unwrap())
                 .build(),
         )),
-        Err(Error::ProtocolError)
+        Err(Error::CapabilityNotAvailable(
+            Capability::SubscriptionIdentifiers
+        ))
     );
 
     assert_eq!(
         client.handle_write(subscribe_one(app_subscription("$share/g/topic"))),
-        Err(Error::ProtocolError)
+        Err(Error::CapabilityNotAvailable(
+            Capability::SharedSubscriptions
+        ))
     );
 }
 
@@ -1896,7 +1931,7 @@ fn unexpected_pubcomp_before_pubrec_transition_triggers_protocol_error_close() {
             .build(),
     );
 
-    assert_eq!(read(&mut client, &pubcomp), Err(Error::ProtocolError));
+    assert_eq!(read(&mut client, &pubcomp), Ok(()));
     assert_eq!(
         client.poll_write(),
         Some(Bytes::from_static(&[0xE0, 0x02, 0x82, 0x00]))
@@ -2063,7 +2098,7 @@ fn qos2_pubrec_failure_reason_drops_inflight_without_pubrel() {
             .reason_code(PubCompReasonCode::Success)
             .build(),
     );
-    assert_eq!(read(&mut client, &pubcomp), Err(Error::ProtocolError));
+    assert_eq!(read(&mut client, &pubcomp), Ok(()));
     assert!(matches!(
         client.poll_event(),
         Some(DriverAction::CloseSocket)
@@ -2127,9 +2162,11 @@ fn repeated_connect_does_not_duplicate_open_socket_event() {
         client.handle_write(Command::Connect(connect_options())),
         Ok(())
     );
+    // A connection attempt is already in progress: the second Connect is
+    // rejected rather than requesting another socket.
     assert_eq!(
         client.handle_write(Command::Connect(connect_options())),
-        Ok(())
+        Err(Error::InvalidStateTransition)
     );
 
     assert!(matches!(
@@ -2161,12 +2198,12 @@ fn rejected_connect_does_not_mutate_pending_connect_options() {
         client.handle_write(Command::Connect(rejected_options)),
         Err(Error::InvalidStateTransition)
     );
-    assert_eq!(client.handle_event(DriverEvent::SocketClosed), Ok(()));
-
-    assert_eq!(client.handle_event(DriverEvent::SocketConnected), Ok(()));
-    let reconnect_bytes = client.poll_write().expect("connect bytes are queued");
-
-    assert_eq!(reconnect_bytes, first_connect_bytes);
+    // The rejected Connect neither requested a socket nor sent a CONNECT, and
+    // the original handshake carries on unaffected.
+    assert!(client.poll_event().is_none());
+    assert_eq!(client.poll_write(), None);
+    assert_eq!(read(&mut client, &success_connack()), Ok(()));
+    assert!(matches!(client.poll_read(), Some(Event::Connected)));
 }
 
 #[test]
@@ -2190,8 +2227,7 @@ fn reconnect_ignores_previous_connack_maximum_packet_size_for_connect() {
     assert_eq!(client.handle_event(DriverEvent::SocketClosed), Ok(()));
     assert!(matches!(client.poll_read(), Some(Event::Disconnected(_))));
 
-    assert_eq!(client.handle_event(DriverEvent::SocketConnected), Ok(()));
-    let reconnect_connect = client.poll_write().expect("connect bytes are queued");
+    let reconnect_connect = open_connecting(&mut client, connect_options());
 
     assert_eq!(reconnect_connect, first_connect);
 }
@@ -2205,15 +2241,15 @@ fn connack_resume_with_clean_start_is_protocol_error() {
         .build();
     let _ = open_connecting(&mut client, options);
 
-    assert_eq!(
-        read(&mut client, &resume_connack()),
-        Err(Error::ProtocolError)
-    );
+    assert_eq!(read(&mut client, &resume_connack()), Ok(()));
     assert!(matches!(
         client.poll_event(),
         Some(DriverAction::CloseSocket)
     ));
-    assert!(client.poll_read().is_none());
+    assert_eq!(
+        client.poll_read(),
+        Some(Event::Disconnected(Some(ReasonCode::ProtocolError)))
+    );
 }
 
 #[test]
@@ -2268,8 +2304,7 @@ fn resumed_session_replays_outbound_qos_publish_with_dup_set() {
     assert_eq!(client.handle_event(DriverEvent::SocketClosed), Ok(()));
     assert!(matches!(client.poll_read(), Some(Event::Disconnected(_))));
 
-    assert_eq!(client.handle_event(DriverEvent::SocketConnected), Ok(()));
-    assert!(client.poll_write().is_some());
+    let _ = open_connecting(&mut client, session_expiry_options(30));
     assert_eq!(read(&mut client, &resume_connack()), Ok(()));
     assert!(matches!(client.poll_read(), Some(Event::Connected)));
 
@@ -2335,8 +2370,7 @@ fn resumed_session_replay_failure_does_not_emit_connected_and_closes() {
     assert_eq!(client.handle_event(DriverEvent::SocketClosed), Ok(()));
     assert!(matches!(client.poll_read(), Some(Event::Disconnected(_))));
 
-    assert_eq!(client.handle_event(DriverEvent::SocketConnected), Ok(()));
-    assert!(client.poll_write().is_some());
+    let _ = open_connecting(&mut client, session_expiry_options(30));
 
     let resumed_connack = ControlPacket::ConnAck(
         ConnAck::builder()
@@ -2348,15 +2382,15 @@ fn resumed_session_replay_failure_does_not_emit_connected_and_closes() {
             )
             .build(),
     );
-    assert_eq!(
-        read(&mut client, &resumed_connack),
-        Err(Error::ProtocolError)
-    );
+    assert_eq!(read(&mut client, &resumed_connack), Ok(()));
     assert!(matches!(
         client.poll_event(),
         Some(DriverAction::CloseSocket)
     ));
-    assert!(client.poll_read().is_none());
+    assert_eq!(
+        client.poll_read(),
+        Some(Event::Disconnected(Some(ReasonCode::ProtocolError)))
+    );
 }
 
 #[test]
@@ -2409,8 +2443,7 @@ fn resumed_session_replays_unacknowledged_pubrel() {
     assert_eq!(client.handle_event(DriverEvent::SocketClosed), Ok(()));
     assert!(matches!(client.poll_read(), Some(Event::Disconnected(_))));
 
-    assert_eq!(client.handle_event(DriverEvent::SocketConnected), Ok(()));
-    assert!(client.poll_write().is_some());
+    let _ = open_connecting(&mut client, session_expiry_options(30));
     assert_eq!(read(&mut client, &resume_connack()), Ok(()));
     assert!(matches!(client.poll_read(), Some(Event::Connected)));
     assert_eq!(
@@ -2510,8 +2543,7 @@ fn non_resumed_session_drops_inflight_and_emits_publish_dropped_events() {
     assert_eq!(client.handle_event(DriverEvent::SocketClosed), Ok(()));
     assert!(matches!(client.poll_read(), Some(Event::Disconnected(_))));
 
-    assert_eq!(client.handle_event(DriverEvent::SocketConnected), Ok(()));
-    assert!(client.poll_write().is_some());
+    let _ = open_connecting(&mut client, session_expiry_options(30));
     assert_eq!(read(&mut client, &success_connack()), Ok(()));
     assert!(matches!(client.poll_read(), Some(Event::Connected)));
     assert_eq!(
@@ -2591,8 +2623,7 @@ fn non_resumed_connack_discards_all_local_session_state() {
     assert_eq!(client.handle_event(DriverEvent::SocketClosed), Ok(()));
     assert!(matches!(client.poll_read(), Some(Event::Disconnected(_))));
 
-    assert_eq!(client.handle_event(DriverEvent::SocketConnected), Ok(()));
-    assert!(client.poll_write().is_some());
+    let _ = open_connecting(&mut client, connect_options());
     assert_eq!(read(&mut client, &success_connack()), Ok(()));
     assert!(matches!(client.poll_read(), Some(Event::Connected)));
 
@@ -2619,7 +2650,7 @@ fn non_resumed_connack_discards_all_local_session_state() {
             .reason_codes(vec![SubAckReasonCode::SuccessQoS0])
             .build(),
     );
-    assert_eq!(read(&mut client, &stale_suback), Err(Error::ProtocolError));
+    assert_eq!(read(&mut client, &stale_suback), Ok(()));
     assert!(matches!(
         client.poll_event(),
         Some(DriverAction::CloseSocket)
@@ -2633,8 +2664,7 @@ fn non_resumed_connack_discards_all_local_session_state() {
 
     assert_eq!(client.handle_event(DriverEvent::SocketClosed), Ok(()));
     assert!(matches!(client.poll_read(), Some(Event::Disconnected(_))));
-    assert_eq!(client.handle_event(DriverEvent::SocketConnected), Ok(()));
-    assert!(client.poll_write().is_some());
+    let _ = open_connecting(&mut client, connect_options());
     assert_eq!(read(&mut client, &success_connack()), Ok(()));
     assert!(matches!(client.poll_read(), Some(Event::Connected)));
 
@@ -2644,10 +2674,7 @@ fn non_resumed_connack_discards_all_local_session_state() {
             .reason_codes(vec![UnsubAckReasonCode::Success])
             .build(),
     );
-    assert_eq!(
-        read(&mut client, &stale_unsuback),
-        Err(Error::ProtocolError)
-    );
+    assert_eq!(read(&mut client, &stale_unsuback), Ok(()));
     assert!(matches!(
         client.poll_event(),
         Some(DriverAction::CloseSocket)
@@ -2670,8 +2697,7 @@ fn stale_read_buffer_is_cleared_on_socket_closed() {
     assert_eq!(client.handle_event(DriverEvent::SocketClosed), Ok(()));
     assert!(matches!(client.poll_read(), Some(Event::Disconnected(_))));
 
-    assert_eq!(client.handle_event(DriverEvent::SocketConnected), Ok(()));
-    assert!(client.poll_write().is_some());
+    let _ = open_connecting(&mut client, connect_options());
     assert_eq!(read(&mut client, &success_connack()), Ok(()));
     assert!(matches!(client.poll_read(), Some(Event::Connected)));
 }
@@ -2689,17 +2715,15 @@ fn stale_read_buffer_is_cleared_on_socket_error() {
         Ok(())
     );
 
-    assert_eq!(
-        client.handle_event(DriverEvent::SocketError),
-        Err(Error::ProtocolError)
-    );
+    // The driver already dropped the socket: no CloseSocket is requested.
+    assert_eq!(client.handle_event(DriverEvent::SocketError), Ok(()));
+    assert!(client.poll_event().is_none());
     assert!(matches!(
-        client.poll_event(),
-        Some(DriverAction::CloseSocket)
+        client.poll_read(),
+        Some(Event::Disconnected(None))
     ));
 
-    assert_eq!(client.handle_event(DriverEvent::SocketConnected), Ok(()));
-    assert!(client.poll_write().is_some());
+    let _ = open_connecting(&mut client, connect_options());
     assert_eq!(read(&mut client, &success_connack()), Ok(()));
     assert!(matches!(client.poll_read(), Some(Event::Connected)));
 }
@@ -2724,8 +2748,7 @@ fn stale_read_buffer_is_cleared_on_user_disconnect() {
         Some(DriverAction::CloseSocket)
     ));
 
-    assert_eq!(client.handle_event(DriverEvent::SocketConnected), Ok(()));
-    assert!(client.poll_write().is_some());
+    let _ = open_connecting(&mut client, connect_options());
     assert_eq!(read(&mut client, &success_connack()), Ok(()));
     assert!(matches!(client.poll_read(), Some(Event::Connected)));
 }
@@ -2750,8 +2773,7 @@ fn stale_read_buffer_is_cleared_on_close() {
         Some(DriverAction::CloseSocket)
     ));
 
-    assert_eq!(client.handle_event(DriverEvent::SocketConnected), Ok(()));
-    assert!(client.poll_write().is_some());
+    let _ = open_connecting(&mut client, connect_options());
     assert_eq!(read(&mut client, &success_connack()), Ok(()));
     assert!(matches!(client.poll_read(), Some(Event::Connected)));
 }
@@ -2960,7 +2982,7 @@ fn connecting_auth_without_configured_authentication_is_protocol_error() {
             &mut client,
             &scram_auth_packet(AuthReasonCode::ContinueAuthentication)
         ),
-        Err(Error::ProtocolError)
+        Ok(())
     );
     assert!(matches!(
         client.poll_event(),
@@ -2975,7 +2997,7 @@ fn connecting_auth_with_reason_other_than_continue_is_protocol_error() {
 
     assert_eq!(
         read(&mut client, &scram_auth_packet(AuthReasonCode::Success)),
-        Err(Error::ProtocolError)
+        Ok(())
     );
     assert!(matches!(
         client.poll_event(),
@@ -3005,7 +3027,7 @@ fn publish_qos_above_server_maximum_qos_is_rejected() {
             token: 1,
             message: message("qos/guard", ProtoQos::AtLeastOnce, b"payload"),
         }),
-        Err(Error::ProtocolError)
+        Err(Error::CapabilityNotAvailable(Capability::MaximumQos))
     );
     assert_eq!(client.poll_write(), None);
 }
@@ -3030,7 +3052,7 @@ fn publish_retain_when_server_retain_not_available_is_rejected() {
             token: 1,
             message: retained_message,
         }),
-        Err(Error::ProtocolError)
+        Err(Error::CapabilityNotAvailable(Capability::Retain))
     );
     assert_eq!(client.poll_write(), None);
 }
@@ -3044,7 +3066,7 @@ fn subscribe_shared_with_no_local_is_rejected() {
     shared.no_local = true;
     assert_eq!(
         client.handle_write(subscribe_one(shared)),
-        Err(Error::ProtocolError)
+        Err(Error::NoLocalOnSharedSubscription)
     );
     assert_eq!(client.poll_write(), None);
 }
@@ -3068,7 +3090,9 @@ fn subscribe_wildcard_when_server_disallows_is_rejected() {
 
     assert_eq!(
         client.handle_write(subscribe_one(app_subscription("topic/#"))),
-        Err(Error::ProtocolError)
+        Err(Error::CapabilityNotAvailable(
+            Capability::WildcardSubscriptions
+        ))
     );
     assert_eq!(client.poll_write(), None);
 }
@@ -3092,7 +3116,9 @@ fn subscribe_shared_when_server_disallows_is_rejected() {
 
     assert_eq!(
         client.handle_write(subscribe_one(app_subscription("$share/g/topic"))),
-        Err(Error::ProtocolError)
+        Err(Error::CapabilityNotAvailable(
+            Capability::SharedSubscriptions
+        ))
     );
     assert_eq!(client.poll_write(), None);
 }
@@ -3121,7 +3147,9 @@ fn subscribe_identifier_when_server_disallows_is_rejected() {
                 .identifier(NonZero::new(1u64).unwrap())
                 .build(),
         )),
-        Err(Error::ProtocolError)
+        Err(Error::CapabilityNotAvailable(
+            Capability::SubscriptionIdentifiers
+        ))
     );
     assert_eq!(client.poll_write(), None);
 }
@@ -3211,10 +3239,7 @@ fn keepalive_timeout_without_pingresp_closes_connection() {
     assert_eq!(client.handle_timeout(Duration::from_secs(1)), Ok(()));
     assert_eq!(client.poll_write(), Some(Bytes::from_static(&[0xC0, 0x00])));
 
-    assert_eq!(
-        client.handle_timeout(Duration::from_secs(2)),
-        Err(Error::ProtocolError)
-    );
+    assert_eq!(client.handle_timeout(Duration::from_secs(2)), Ok(()));
     assert_eq!(
         client.poll_write(),
         Some(Bytes::from_static(&[0xE0, 0x02, 0x8D, 0x00]))
@@ -3227,21 +3252,16 @@ fn keepalive_timeout_without_pingresp_closes_connection() {
 
 /// [MQTT-3.1.4-5] If a Client does not receive a CONNACK packet from the
 /// Server within a reasonable amount of time, the Client SHOULD close the
-/// Network Connection. When `handle_timeout` fires in the Start state (before
-/// CONNECT is sent), it should treat the timeout as a connection-establishment
-/// timeout and close the socket.
+/// Network Connection. In the Start state no connection attempt exists, so a
+/// timeout has nothing to abandon.
 #[test]
-fn timeout_in_start_state_closes_connection_with_connect_timeout_error() {
+fn timeout_in_start_state_is_a_no_op() {
     let mut client = Client::<Duration>::default();
 
-    assert_eq!(
-        client.handle_timeout(Duration::from_secs(100)),
-        Err(Error::ConnectTimeout),
-        "timeout in Start state must return ConnectTimeout"
-    );
+    assert_eq!(client.handle_timeout(Duration::from_secs(100)), Ok(()));
     assert!(
-        matches!(client.poll_event(), Some(DriverAction::CloseSocket)),
-        "CloseSocket must be emitted on Start timeout"
+        client.poll_event().is_none(),
+        "no connection attempt exists, so there is no socket to close"
     );
     assert!(client.poll_read().is_none());
 }
@@ -3249,20 +3269,20 @@ fn timeout_in_start_state_closes_connection_with_connect_timeout_error() {
 /// [MQTT-3.1.4-5] Same as above, but the timeout fires in the Connecting state
 /// (after CONNECT, before CONNACK).
 #[test]
-fn timeout_in_connecting_state_closes_connection_with_connect_timeout_error() {
+fn timeout_in_connecting_state_closes_connection_and_reports_disconnected() {
     let mut client = Client::<Duration>::default();
     let _ = open_connecting(&mut client, connect_options());
 
     assert_eq!(
         client.handle_timeout(Duration::from_secs(100)),
-        Err(Error::ConnectTimeout),
-        "timeout in Connecting state must return ConnectTimeout"
+        Ok(()),
+        "a connect timeout is handled, not a rejected input"
     );
     assert!(
         matches!(client.poll_event(), Some(DriverAction::CloseSocket)),
         "CloseSocket must be emitted on Connecting timeout"
     );
-    assert!(client.poll_read().is_none());
+    assert_eq!(client.poll_read(), Some(Event::Disconnected(None)));
 }
 
 /// [MQTT-3.1.2-4] The server may override the session expiry interval in
@@ -3277,7 +3297,7 @@ fn connack_session_expiry_zero_overrides_client_session_should_persist() {
         .clean_start(false)
         .session_expiry(Duration::from_secs(60))
         .build();
-    let _ = open_connecting(&mut client, options);
+    let _ = open_connecting(&mut client, options.clone());
 
     let connack_no_persist = connack_with_properties(
         ConnAckProperties::builder()
@@ -3300,10 +3320,7 @@ fn connack_session_expiry_zero_overrides_client_session_should_persist() {
     assert!(matches!(client.poll_read(), Some(Event::Disconnected(_))));
     assert!(client.poll_read().is_none(), "no drop event at disconnect");
 
-    assert_eq!(client.handle_event(DriverEvent::SocketConnected), Ok(()));
-    let _ = client
-        .poll_write()
-        .expect("reconnect CONNECT frame expected");
+    let _ = open_connecting(&mut client, options);
     assert_eq!(read(&mut client, &connack_no_persist), Ok(()));
     let first = client.poll_read();
     assert!(
@@ -3328,7 +3345,7 @@ fn connack_session_expiry_nonzero_sets_session_should_persist() {
         .clean_start(false)
         .session_expiry(Duration::ZERO)
         .build();
-    let _ = open_connecting(&mut client, options);
+    let _ = open_connecting(&mut client, options.clone());
 
     let connack_persist = connack_with_properties(
         ConnAckProperties::builder()
@@ -3351,10 +3368,7 @@ fn connack_session_expiry_nonzero_sets_session_should_persist() {
     assert!(matches!(client.poll_read(), Some(Event::Disconnected(_))));
     assert!(client.poll_read().is_none(), "no extra events");
 
-    assert_eq!(client.handle_event(DriverEvent::SocketConnected), Ok(()));
-    let _ = client
-        .poll_write()
-        .expect("reconnect CONNECT frame expected");
+    let _ = open_connecting(&mut client, options);
     assert_eq!(read(&mut client, &connack_persist), Ok(()));
 
     let first = client.poll_read();
@@ -3409,15 +3423,15 @@ fn clean_start_true_clears_local_session_before_connect() {
         .build();
     let _ = open_connecting(&mut client, clean_start_options);
 
-    assert_eq!(
-        read(&mut client, &resume_connack()),
-        Err(Error::ProtocolError)
-    );
+    assert_eq!(read(&mut client, &resume_connack()), Ok(()));
     assert!(matches!(
         client.poll_event(),
         Some(DriverAction::CloseSocket)
     ));
-    assert!(client.poll_read().is_none());
+    assert_eq!(
+        client.poll_read(),
+        Some(Event::Disconnected(Some(ReasonCode::ProtocolError)))
+    );
 }
 
 #[test]
@@ -3442,8 +3456,7 @@ fn session_with_expiry_keeps_inflight_across_graceful_disconnect() {
     ));
     assert!(matches!(client.poll_read(), Some(Event::Disconnected(_))));
 
-    assert_eq!(client.handle_event(DriverEvent::SocketConnected), Ok(()));
-    assert!(client.poll_write().is_some());
+    let _ = open_connecting(&mut client, session_expiry_options(30));
     assert_eq!(read(&mut client, &resume_connack()), Ok(()));
     assert!(matches!(client.poll_read(), Some(Event::Connected)));
 
@@ -3475,8 +3488,7 @@ fn zero_session_expiry_clears_inflight_on_disconnect() {
     ));
     assert!(matches!(client.poll_read(), Some(Event::Disconnected(_))));
 
-    assert_eq!(client.handle_event(DriverEvent::SocketConnected), Ok(()));
-    assert!(client.poll_write().is_some());
+    let _ = open_connecting(&mut client, session_expiry_options(0));
     assert_eq!(read(&mut client, &resume_connack()), Ok(()));
     assert!(matches!(client.poll_read(), Some(Event::Connected)));
     assert_eq!(client.poll_write(), None);
@@ -3500,8 +3512,7 @@ fn zero_session_expiry_clears_inflight_on_socket_closed() {
     assert_eq!(client.handle_event(DriverEvent::SocketClosed), Ok(()));
     assert!(matches!(client.poll_read(), Some(Event::Disconnected(_))));
 
-    assert_eq!(client.handle_event(DriverEvent::SocketConnected), Ok(()));
-    assert!(client.poll_write().is_some());
+    let _ = open_connecting(&mut client, session_expiry_options(0));
     assert_eq!(read(&mut client, &resume_connack()), Ok(()));
     assert!(matches!(client.poll_read(), Some(Event::Connected)));
 
@@ -3518,7 +3529,7 @@ fn keepalive_timeout_with_session_expiry_preserves_inflight_for_resume() {
         .keep_alive(NonZero::new(10).unwrap())
         .session_expiry(Duration::from_secs(30))
         .build();
-    let _ = connect_client(&mut client, options);
+    let _ = connect_client(&mut client, options.clone());
 
     assert_eq!(
         client.handle_write(Command::Publish {
@@ -3535,10 +3546,7 @@ fn keepalive_timeout_with_session_expiry_preserves_inflight_for_resume() {
     assert_eq!(client.handle_timeout(Duration::from_secs(2)), Ok(()));
     assert_eq!(client.poll_write(), Some(Bytes::from_static(&[0xC0, 0x00])));
 
-    assert_eq!(
-        client.handle_timeout(Duration::from_secs(3)),
-        Err(Error::ProtocolError)
-    );
+    assert_eq!(client.handle_timeout(Duration::from_secs(3)), Ok(()));
     assert_eq!(
         client.poll_write(),
         Some(Bytes::from_static(&[0xE0, 0x02, 0x8D, 0x00]))
@@ -3548,8 +3556,11 @@ fn keepalive_timeout_with_session_expiry_preserves_inflight_for_resume() {
         Some(DriverAction::CloseSocket)
     ));
 
-    assert_eq!(client.handle_event(DriverEvent::SocketConnected), Ok(()));
-    assert!(client.poll_write().is_some());
+    assert_eq!(
+        client.poll_read(),
+        Some(Event::Disconnected(Some(ReasonCode::KeepAliveTimeout)))
+    );
+    let _ = open_connecting(&mut client, options);
     assert_eq!(read(&mut client, &resume_connack()), Ok(()));
     assert!(matches!(client.poll_read(), Some(Event::Connected)));
 
@@ -3627,7 +3638,7 @@ fn unknown_suback_or_unsuback_is_protocol_error() {
             .reason_codes(vec![SubAckReasonCode::SuccessQoS0])
             .build(),
     );
-    assert_eq!(read(&mut client, &suback), Err(Error::ProtocolError));
+    assert_eq!(read(&mut client, &suback), Ok(()));
     assert!(matches!(
         client.poll_event(),
         Some(DriverAction::CloseSocket)
@@ -3642,7 +3653,7 @@ fn unknown_suback_or_unsuback_is_protocol_error() {
             .reason_codes(vec![UnsubAckReasonCode::Success])
             .build(),
     );
-    assert_eq!(read(&mut client, &unsuback), Err(Error::ProtocolError));
+    assert_eq!(read(&mut client, &unsuback), Ok(()));
     assert!(matches!(
         client.poll_event(),
         Some(DriverAction::CloseSocket)
@@ -3849,7 +3860,7 @@ fn handle_timeout_sends_pingreq_and_reschedules_at_half_interval_per_mqtt_3_1_2_
 
     assert_eq!(
         client.handle_timeout(Duration::from_secs(15)),
-        Err(Error::ProtocolError),
+        Ok(()),
         "connection must be closed after 1.5× keep-alive interval without PINGRESP"
     );
 }

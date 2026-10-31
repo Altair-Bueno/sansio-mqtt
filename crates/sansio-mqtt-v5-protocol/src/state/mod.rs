@@ -19,26 +19,45 @@ use sansio_mqtt_protocol::DriverEvent;
 use sansio_mqtt_protocol::Error;
 use sansio_mqtt_protocol::Time;
 
-/// Tears the connection down with a protocol-error DISCONNECT and moves to
-/// [`ClientState::Disconnected`].
+/// Tears the connection down with a protocol-error DISCONNECT, reports it to
+/// the application, and moves to [`ClientState::Disconnected`].
 ///
 /// [MQTT-4.13.1-1] A Protocol Error requires the client to send DISCONNECT with
-/// the corresponding Reason Code and close the Network Connection.
+/// the corresponding Reason Code and close the Network Connection. The failure
+/// is handled, so the input that triggered it is not rejected: `Ok(())`.
 pub(crate) fn fail_with_protocol_error<T>(
     settings: &ClientSettings,
     session: &mut ClientSession,
     scratchpad: &mut ClientScratchpad<T>,
 ) -> (ClientState, Result<(), Error>) {
-    queues::disconnect_and_reset(
+    fail_with(
         settings,
         session,
         scratchpad,
         DisconnectReasonCode::ProtocolError,
-    );
-    (
-        ClientState::Disconnected(Disconnected),
-        Err(Error::ProtocolError),
     )
+}
+
+/// Like [`fail_with_protocol_error`], closing with a specific `reason`.
+pub(crate) fn fail_with<T>(
+    settings: &ClientSettings,
+    session: &mut ClientSession,
+    scratchpad: &mut ClientScratchpad<T>,
+    reason: DisconnectReasonCode,
+) -> (ClientState, Result<(), Error>) {
+    let _ = queues::fail_connection(settings, session, scratchpad, reason);
+    (ClientState::Disconnected(Disconnected), Ok(()))
+}
+
+/// Handles the driver reporting an unsolicited socket loss while a socket was
+/// requested or open.
+pub(crate) fn on_socket_lost<T>(
+    settings: &ClientSettings,
+    session: &mut ClientSession,
+    scratchpad: &mut ClientScratchpad<T>,
+) -> (ClientState, Result<(), Error>) {
+    queues::on_socket_lost(settings, session, scratchpad);
+    (ClientState::Disconnected(Disconnected), Ok(()))
 }
 
 /// The MQTT client lifecycle as a type-state FSM.
@@ -54,6 +73,21 @@ pub(crate) enum ClientState {
     Disconnected(Disconnected),
     Connecting(Connecting),
     Connected(Connected),
+}
+
+impl ClientState {
+    /// Whether the driver has reported a connected socket that the protocol
+    /// has neither closed nor seen lost, i.e. whether inbound bytes can be
+    /// legitimate.
+    pub(crate) fn has_open_socket(&self) -> bool {
+        match self {
+            ClientState::Connecting(connecting) => connecting.has_open_socket(),
+            ClientState::Connected(_) => true,
+            ClientState::Transitioning | ClientState::Start(_) | ClientState::Disconnected(_) => {
+                false
+            }
+        }
+    }
 }
 
 pub(crate) trait StateHandler<T>: Sized {

@@ -7,11 +7,8 @@
 //! handshake is still in flight, which is exactly when CONNACK and AUTH
 //! arrive.
 //!
-//! [Behaviour change] `maximum_packet_size` is now `ClientSettings`-only:
-//! `Command::Connect` no longer carries a per-connect override, so the two
-//! tests that used to exercise "caller-supplied value overrides/competes with
-//! the local policy" were deleted (see the migration report) rather than
-//! rewritten.
+//! The limit is always advertised: there is no "unlimited" setting the parser
+//! could silently contradict.
 
 use bytes::Bytes;
 use bytestring::ByteString;
@@ -26,15 +23,21 @@ use sansio_mqtt_protocol::DriverEvent;
 use sansio_mqtt_protocol::Error;
 use sansio_mqtt_protocol::Event;
 use sansio_mqtt_protocol::IncomingData;
+use sansio_mqtt_protocol::ReasonCode;
 use sansio_mqtt_v5_protocol::Client;
 use sansio_mqtt_v5_protocol::ClientSettings;
 use sansio_mqtt_v5_types::ConnAck;
 use sansio_mqtt_v5_types::ConnAckKind;
 use sansio_mqtt_v5_types::ConnAckProperties;
 use sansio_mqtt_v5_types::ConnackReasonCode;
+use sansio_mqtt_v5_types::Connect;
 use sansio_mqtt_v5_types::ControlPacket;
+use sansio_mqtt_v5_types::Disconnect;
+use sansio_mqtt_v5_types::DisconnectReasonCode;
 use sansio_mqtt_v5_types::ParserSettings;
 use sansio_mqtt_v5_types::Utf8String;
+use winnow::Parser;
+use winnow::error::ContextError;
 
 fn encode_packet(packet: &ControlPacket) -> Bytes {
     let mut out = Vec::new();
@@ -75,17 +78,9 @@ fn connect_options() -> ConnectOptions {
         .build()
 }
 
-/// `ClientSettings` builder helper: `maximum_packet_size` is the only field
-/// this file varies; the three mandatory counters are set to the library's
-/// own defaults (`ClientSettings` is `#[non_exhaustive]`, so struct-update
-/// syntax is unavailable here).
-fn settings_with_maximum_packet_size(value: Option<NonZero<u32>>) -> ClientSettings {
-    ClientSettings::builder()
-        .maybe_maximum_packet_size(value)
-        .max_user_properties(32)
-        .max_subscription_identifiers(32)
-        .max_subscriptions(32)
-        .build()
+/// Default settings with only `maximum_packet_size` changed.
+fn settings_with_maximum_packet_size(value: NonZero<u32>) -> ClientSettings {
+    ClientSettings::builder().maximum_packet_size(value).build()
 }
 
 fn read(client: &mut Client<Duration>, packet: &ControlPacket) -> Result<(), Error> {
@@ -95,10 +90,34 @@ fn read(client: &mut Client<Duration>, packet: &ControlPacket) -> Result<(), Err
     })
 }
 
+/// Asserts the client answered an oversized packet with DISCONNECT 0x95
+/// (Packet too large) and reported it to the application.
+///
+/// MQTT v5.0 §3.1.2.11.4: if a Client receives a packet whose size exceeds
+/// its Maximum Packet Size, this is a Protocol Error and the Client uses
+/// DISCONNECT with Reason Code 0x95 (Packet too large).
+fn assert_disconnected_packet_too_large(client: &mut Client<Duration>) {
+    let expected = encode_packet(&ControlPacket::Disconnect(
+        Disconnect::builder()
+            .reason_code(DisconnectReasonCode::PacketTooLarge)
+            .build(),
+    ));
+    assert_eq!(client.poll_write(), Some(expected));
+    assert_eq!(client.poll_event(), Some(DriverAction::CloseSocket));
+    assert_eq!(
+        client.poll_read(),
+        Some(Event::Disconnected(Some(ReasonCode::PacketTooLarge)))
+    );
+}
+
 /// Drives a client up to the point where it is awaiting CONNACK.
-fn connecting_client(maximum_packet_size: Option<NonZero<u32>>) -> Client<Duration> {
-    let mut client =
-        Client::<Duration>::new(settings_with_maximum_packet_size(maximum_packet_size));
+fn connecting_client(maximum_packet_size: NonZero<u32>) -> Client<Duration> {
+    connecting_client_with(settings_with_maximum_packet_size(maximum_packet_size)).0
+}
+
+/// Like [`connecting_client`], also returning the CONNECT the client sent.
+fn connecting_client_with(settings: ClientSettings) -> (Client<Duration>, Connect) {
+    let mut client = Client::<Duration>::new(settings);
 
     assert_eq!(
         client.handle_write(Command::Connect(connect_options())),
@@ -109,60 +128,88 @@ fn connecting_client(maximum_packet_size: Option<NonZero<u32>>) -> Client<Durati
         Some(DriverAction::OpenSocket)
     ));
     assert_eq!(client.handle_event(DriverEvent::SocketConnected), Ok(()));
-    assert!(client.poll_write().is_some(), "CONNECT should be queued");
+    let connect = client.poll_write().expect("CONNECT should be queued");
+    let connect =
+        match ControlPacket::parser::<_, ContextError, ContextError>(&ParserSettings::default())
+            .parse(connect.as_ref())
+            .expect("CONNECT should decode")
+        {
+            ControlPacket::Connect(connect) => connect,
+            other => panic!("expected CONNECT, got {other:?}"),
+        };
 
-    client
+    (client, connect)
 }
 
 /// `ClientSettings::maximum_packet_size` bounds the parser.
 #[test]
 fn maximum_packet_size_from_settings_bounds_the_parser() {
-    let mut client = connecting_client(Some(NonZero::new(32).expect("non-zero")));
+    let mut client = connecting_client(NonZero::new(32).expect("non-zero"));
 
     assert_eq!(
         read(&mut client, &oversized_connack()),
-        Err(Error::MalformedPacket),
+        Ok(()),
         "a CONNACK larger than the advertised Maximum Packet Size must be rejected"
     );
+    assert_disconnected_packet_too_large(&mut client);
 }
 
-/// The clamp must not reject packets that are actually within the limit.
+/// Maximum Packet Size counts the whole packet, fixed header included, so a
+/// packet exactly at the limit is accepted.
 #[test]
-fn connack_within_maximum_packet_size_is_accepted() {
-    let mut client = connecting_client(Some(NonZero::new(32).expect("non-zero")));
+fn packet_exactly_at_maximum_packet_size_is_accepted() {
+    let size = u32::try_from(encode_packet(&small_connack()).len()).expect("fits");
+    let mut client = connecting_client(NonZero::new(size).expect("non-zero"));
 
     assert_eq!(read(&mut client, &small_connack()), Ok(()));
     assert!(matches!(client.poll_read(), Some(Event::Connected)));
 }
 
-/// When `maximum_packet_size` is `None`, the parser still caps Remaining
-/// Length at the `sansio-mqtt-v5-types` default (1 MiB) rather than being
-/// truly unbounded.
+/// One byte over the limit is rejected, even though its Remaining Length
+/// alone would fit.
 #[test]
-fn absent_maximum_packet_size_caps_parser_at_default_one_mebibyte() {
-    assert_eq!(
-        ParserSettings::default().max_remaining_bytes,
-        1024 * 1024,
-        "the v5-types default Remaining Length cap must be 1 MiB"
-    );
+fn packet_one_byte_over_maximum_packet_size_is_rejected() {
+    let size = u32::try_from(encode_packet(&small_connack()).len()).expect("fits");
+    let mut client = connecting_client(NonZero::new(size - 1).expect("non-zero"));
 
-    let mut client = connecting_client(None);
+    assert_eq!(read(&mut client, &small_connack()), Ok(()));
+    assert_disconnected_packet_too_large(&mut client);
+}
 
-    // A small CONNACK is comfortably under the default cap.
-    assert_eq!(read(&mut client, &oversized_connack()), Ok(()));
+/// The clamp must not reject packets that are actually within the limit.
+#[test]
+fn connack_within_maximum_packet_size_is_accepted() {
+    let mut client = connecting_client(NonZero::new(32).expect("non-zero"));
+
+    assert_eq!(read(&mut client, &small_connack()), Ok(()));
+    assert!(matches!(client.poll_read(), Some(Event::Connected)));
+}
+
+/// The client always advertises the Maximum Packet Size its parser enforces,
+/// so a compliant server never sends it a packet it cannot process
+/// [MQTT-3.1.2-24]; by default that is 1 MiB.
+#[test]
+fn default_maximum_packet_size_is_advertised_and_enforced() {
+    let default = ClientSettings::DEFAULT_MAXIMUM_PACKET_SIZE;
+    assert_eq!(default.get(), 1024 * 1024);
+    assert_eq!(ClientSettings::default().maximum_packet_size, default);
+
+    let (mut client, connect) = connecting_client_with(ClientSettings::default());
+    assert_eq!(connect.properties.maximum_packet_size, Some(default));
+
+    assert_eq!(read(&mut client, &small_connack()), Ok(()));
     assert!(matches!(client.poll_read(), Some(Event::Connected)));
 
-    // Prove the cap itself: a PUBLISH fixed header whose Remaining Length
-    // variable byte integer (`0x81 0x80 0x40`) decodes to 1 MiB + 1
-    // (1_048_577), one byte over the default cap. The parser must reject it
-    // from the fixed header alone, before any packet body is needed.
+    // A PUBLISH fixed header whose Remaining Length (`0x81 0x80 0x40`,
+    // 1_048_577) alone exceeds the limit is rejected from the header, before
+    // any packet body is needed.
     let oversized_publish_header = Bytes::from_static(&[0x30, 0x81, 0x80, 0x40]);
     assert_eq!(
         client.handle_read(IncomingData {
             bytes: &oversized_publish_header,
             received_at: Duration::ZERO,
         }),
-        Err(Error::MalformedPacket),
-        "Remaining Length over the default 1 MiB cap must be rejected"
+        Ok(())
     );
+    assert_disconnected_packet_too_large(&mut client);
 }

@@ -31,6 +31,7 @@ use sansio_mqtt_v5_types::Auth as WireAuth;
 use sansio_mqtt_v5_types::AuthReasonCode;
 use sansio_mqtt_v5_types::AuthenticationKind;
 use sansio_mqtt_v5_types::BinaryData;
+use sansio_mqtt_v5_types::ConnackReasonCode;
 use sansio_mqtt_v5_types::Connect as WireConnect;
 use sansio_mqtt_v5_types::ConnectProperties;
 use sansio_mqtt_v5_types::DisconnectReasonCode;
@@ -159,9 +160,9 @@ fn payload_format_from_wire(value: FormatIndicator) -> ProtocolPayloadFormat {
 }
 
 /// Converts a [`core::time::Duration`] into the whole-seconds `u32` MQTT
-/// properties use, failing with [`Error::ProtocolError`] on overflow.
+/// properties use, failing with [`Error::IntervalTooLong`] on overflow.
 pub(crate) fn duration_to_secs_u32(value: Duration) -> Result<u32, Error> {
-    u32::try_from(value.as_secs()).map_err(|_| Error::ProtocolError)
+    u32::try_from(value.as_secs()).map_err(|_| Error::IntervalTooLong)
 }
 
 fn authentication_to_wire(auth: Authentication) -> Result<AuthenticationKind, Error> {
@@ -249,7 +250,7 @@ pub(crate) fn connect_options_to_wire(
             ConnectProperties::builder()
                 .maybe_session_expiry_interval(session_expiry_interval)
                 .maybe_receive_maximum(settings.receive_maximum)
-                .maybe_maximum_packet_size(settings.maximum_packet_size)
+                .maximum_packet_size(settings.maximum_packet_size)
                 .maybe_topic_alias_maximum(settings.topic_alias_maximum)
                 .maybe_request_response_information(settings.request_response_information)
                 .maybe_request_problem_information(settings.request_problem_information)
@@ -436,6 +437,34 @@ pub(crate) fn pubcomp_reason_to_protocol(code: PubCompReasonCode) -> ReasonCode 
     match code {
         PubCompReasonCode::Success => ReasonCode::Success,
         PubCompReasonCode::PacketIdentifierNotFound => ReasonCode::PacketIdentifierNotFound,
+        _ => ReasonCode::UnspecifiedError,
+    }
+}
+
+pub(crate) fn connack_reason_to_protocol(code: ConnackReasonCode) -> ReasonCode {
+    match code {
+        ConnackReasonCode::Success => ReasonCode::Success,
+        ConnackReasonCode::UnspecifiedError => ReasonCode::UnspecifiedError,
+        ConnackReasonCode::MalformedPacket => ReasonCode::MalformedPacket,
+        ConnackReasonCode::ProtocolError => ReasonCode::ProtocolError,
+        ConnackReasonCode::ImplementationSpecificError => ReasonCode::ImplementationSpecificError,
+        ConnackReasonCode::UnsupportedProtocolVersion => ReasonCode::UnsupportedProtocolVersion,
+        ConnackReasonCode::ClientIdentifierNotValid => ReasonCode::ClientIdentifierNotValid,
+        ConnackReasonCode::BadUserNameOrPassword => ReasonCode::BadUserNameOrPassword,
+        ConnackReasonCode::NotAuthorized => ReasonCode::NotAuthorized,
+        ConnackReasonCode::ServerUnavailable => ReasonCode::ServerUnavailable,
+        ConnackReasonCode::ServerBusy => ReasonCode::ServerBusy,
+        ConnackReasonCode::Banned => ReasonCode::Banned,
+        ConnackReasonCode::BadAuthenticationMethod => ReasonCode::BadAuthenticationMethod,
+        ConnackReasonCode::TopicNameInvalid => ReasonCode::TopicNameInvalid,
+        ConnackReasonCode::PacketTooLarge => ReasonCode::PacketTooLarge,
+        ConnackReasonCode::QuotaExceeded => ReasonCode::QuotaExceeded,
+        ConnackReasonCode::PayloadFormatInvalid => ReasonCode::PayloadFormatInvalid,
+        ConnackReasonCode::RetainNotSupported => ReasonCode::RetainNotSupported,
+        ConnackReasonCode::QoSNotSupported => ReasonCode::QoSNotSupported,
+        ConnackReasonCode::UseAnotherServer => ReasonCode::UseAnotherServer,
+        ConnackReasonCode::ServerMoved => ReasonCode::ServerMoved,
+        ConnackReasonCode::ConnectionRateExceeded => ReasonCode::ConnectionRateExceeded,
         _ => ReasonCode::UnspecifiedError,
     }
 }

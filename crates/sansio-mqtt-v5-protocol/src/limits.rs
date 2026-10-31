@@ -3,13 +3,14 @@ use crate::convert;
 use crate::scratchpad::ClientScratchpad;
 use crate::session::ClientSession;
 use core::num::NonZero;
+use sansio_mqtt_protocol::Capability;
 use sansio_mqtt_protocol::Error;
 use sansio_mqtt_protocol::Message;
 use sansio_mqtt_protocol::Qos as ProtocolQos;
 use sansio_mqtt_protocol::SubscribeOptions;
 use sansio_mqtt_protocol::Subscription;
+use sansio_mqtt_v5_types::DisconnectReasonCode;
 use sansio_mqtt_v5_types::MaximumQoS;
-use sansio_mqtt_v5_types::ParserSettings;
 use sansio_mqtt_v5_types::Publish;
 use sansio_mqtt_v5_types::Qos as WireQos;
 
@@ -33,13 +34,6 @@ pub(crate) fn recompute_effective_limits<T>(
     settings: &ClientSettings,
     scratchpad: &mut ClientScratchpad<T>,
 ) {
-    scratchpad.effective_client_maximum_packet_size = settings.maximum_packet_size;
-    // [MQTT-3.1.2-24] Bound the parser by the advertised Maximum Packet Size,
-    // so the client refuses what it told the server it would not process.
-    scratchpad.effective_client_max_remaining_bytes = settings.maximum_packet_size.map_or(
-        ParserSettings::default().max_remaining_bytes,
-        |packet_size| u64::from(packet_size.get()),
-    );
     scratchpad.effective_client_topic_alias_maximum = settings.topic_alias_maximum.unwrap_or(0);
 
     scratchpad.effective_broker_maximum_qos = [
@@ -116,11 +110,11 @@ pub(crate) fn validate_outbound_publish_capabilities<T>(
     if let Some(maximum_qos) = scratchpad.effective_broker_maximum_qos
         && convert::qos_to_wire(msg.qos) > WireQos::from(maximum_qos)
     {
-        return Err(Error::ProtocolError);
+        return Err(Error::CapabilityNotAvailable(Capability::MaximumQos));
     }
 
     if msg.retain && !scratchpad.effective_retain_available {
-        return Err(Error::ProtocolError);
+        return Err(Error::CapabilityNotAvailable(Capability::Retain));
     }
 
     Ok(())
@@ -137,19 +131,23 @@ fn validate_outbound_subscription<T>(
     // [MQTT-3.2.2-12] Wildcard Subscription Available=0 forbids wildcard
     // filters.
     if has_wildcard && !scratchpad.effective_wildcard_subscription_available {
-        return Err(Error::ProtocolError);
+        return Err(Error::CapabilityNotAvailable(
+            Capability::WildcardSubscriptions,
+        ));
     }
 
     if is_shared {
         // [MQTT-3.2.2-13] Shared Subscription Available=0 forbids `$share/`
         // filters.
         if !scratchpad.effective_shared_subscription_available {
-            return Err(Error::ProtocolError);
+            return Err(Error::CapabilityNotAvailable(
+                Capability::SharedSubscriptions,
+            ));
         }
 
         // [MQTT-3.8.3-4] A Shared Subscription cannot be used with No Local.
         if subscription.no_local {
-            return Err(Error::ProtocolError);
+            return Err(Error::NoLocalOnSharedSubscription);
         }
     }
 
@@ -164,7 +162,9 @@ pub(crate) fn validate_outbound_subscribe<T>(
     // [MQTT-3.2.2-14] Subscription Identifiers Available=0 forbids the
     // property.
     if options.identifier.is_some() && !scratchpad.effective_subscription_identifiers_available {
-        return Err(Error::ProtocolError);
+        return Err(Error::CapabilityNotAvailable(
+            Capability::SubscriptionIdentifiers,
+        ));
     }
 
     options
@@ -173,31 +173,39 @@ pub(crate) fn validate_outbound_subscribe<T>(
         .try_for_each(|subscription| validate_outbound_subscription(scratchpad, subscription))
 }
 
+/// Resolves or registers the Topic Alias of an inbound PUBLISH.
+///
+/// On failure returns the DISCONNECT reason the client must close with.
 pub(crate) fn apply_inbound_publish_topic_alias<T>(
     session: &mut ClientSession,
     scratchpad: &ClientScratchpad<T>,
     publish: &mut Publish,
-) -> Result<(), Error> {
+) -> Result<(), DisconnectReasonCode> {
     let topic: &str = publish.topic.as_ref().as_ref();
-    if topic.is_empty() && publish.properties.topic_alias.is_none() {
-        return Err(Error::ProtocolError);
-    }
-
     let Some(topic_alias) = publish.properties.topic_alias else {
-        return Ok(());
+        // MQTT v5.0 §3.3.2.1: a zero length Topic Name without a Topic Alias
+        // is a Protocol Error.
+        return if topic.is_empty() {
+            Err(DisconnectReasonCode::ProtocolError)
+        } else {
+            Ok(())
+        };
     };
 
-    let topic_alias_maximum = scratchpad.effective_client_topic_alias_maximum;
-    if topic_alias.get() > topic_alias_maximum {
-        return Err(Error::ProtocolError);
+    // MQTT v5.0 §3.3.4: a Topic Alias greater than the Topic Alias Maximum is
+    // answered with DISCONNECT 0x94 (Topic Alias invalid) [MQTT-3.1.2-26].
+    if topic_alias.get() > scratchpad.effective_client_topic_alias_maximum {
+        return Err(DisconnectReasonCode::TopicAliasInvalid);
     }
 
     if topic.is_empty() {
+        // MQTT v5.0 §3.3.4: an alias with no existing mapping and a zero
+        // length Topic Name is a Protocol Error (0x82).
         publish.topic = session
             .inbound_topic_aliases
             .get(&topic_alias)
             .cloned()
-            .ok_or(Error::ProtocolError)?;
+            .ok_or(DisconnectReasonCode::ProtocolError)?;
     } else {
         session
             .inbound_topic_aliases

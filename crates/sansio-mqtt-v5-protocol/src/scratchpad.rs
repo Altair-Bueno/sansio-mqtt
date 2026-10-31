@@ -8,7 +8,6 @@ use sansio_mqtt_protocol::DriverAction;
 use sansio_mqtt_protocol::Event;
 use sansio_mqtt_protocol::Time;
 use sansio_mqtt_v5_types::MaximumQoS;
-use sansio_mqtt_v5_types::ParserSettings;
 
 #[derive(Debug)]
 pub(crate) struct ClientScratchpad<T> {
@@ -20,8 +19,6 @@ pub(crate) struct ClientScratchpad<T> {
     /// synthesize instead).
     pub(crate) pending_connect_options: Option<ConnectOptions>,
     pub(crate) session_should_persist: bool,
-    pub(crate) effective_client_max_remaining_bytes: u64,
-    pub(crate) effective_client_maximum_packet_size: Option<NonZero<u32>>,
     pub(crate) effective_client_topic_alias_maximum: u16,
     pub(crate) effective_broker_maximum_qos: Option<MaximumQoS>,
     pub(crate) effective_retain_available: bool,
@@ -65,8 +62,6 @@ impl<T> Default for ClientScratchpad<T> {
         Self {
             pending_connect_options: None,
             session_should_persist: false,
-            effective_client_max_remaining_bytes: ParserSettings::default().max_remaining_bytes,
-            effective_client_maximum_packet_size: None,
             effective_client_topic_alias_maximum: u16::MAX,
             effective_broker_maximum_qos: None,
             effective_retain_available: true,
