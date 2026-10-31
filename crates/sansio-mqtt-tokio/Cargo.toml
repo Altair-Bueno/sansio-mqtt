@@ -7,7 +7,7 @@ rust-version.workspace = true
 [dependencies]
 bytes = { workspace = true }
 sansio-mqtt-protocol = { workspace = true }
-tokio = { workspace = true, features = ["io-util", "macros", "time"] }
+tokio = { workspace = true, features = ["io-util", "macros", "net", "time"] }
 tracing = { workspace = true, features = ["attributes"] }
 
 [dev-dependencies]

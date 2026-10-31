@@ -1,3 +1,4 @@
+use crate::Connector;
 use bytes::Bytes;
 use sansio_mqtt_protocol::Command;
 use sansio_mqtt_protocol::CommandDiscriminants;
@@ -13,8 +14,8 @@ use std::io;
 use std::pin::Pin;
 use tokio::io::AsyncBufRead;
 use tokio::io::AsyncBufReadExt;
-use tokio::io::AsyncWrite;
 use tokio::io::AsyncWriteExt;
+use tokio::io::BufReader;
 use tokio::time::Instant;
 use tokio::time::sleep_until;
 
@@ -33,10 +34,13 @@ use tokio::time::sleep_until;
 /// opening the socket or waiting for CONNACK when the protocol's connect
 /// timeout elapses is abandoned and reported as
 /// [`Event::Disconnected(None)`](Event::Disconnected).
-pub struct Driver<Protocol, Socket, MakeSocket, MakeSocketFuture> {
+pub struct Driver<Protocol, C>
+where
+    C: Connector,
+{
     client: Protocol,
-    connect: MakeSocket,
-    connection: Connection<Socket, MakeSocketFuture>,
+    connector: C,
+    connection: Connection<BufReader<C::Connection>, C::Future>,
     /// Bytes handed out by the client that are not yet written to the socket.
     outgoing: Bytes,
     needs_flush: bool,
@@ -44,9 +48,9 @@ pub struct Driver<Protocol, Socket, MakeSocket, MakeSocketFuture> {
 
 /// The socket as seen by the driver. Every in-flight operation lives here so
 /// that cancelling [`Driver::next`] never loses progress.
-enum Connection<Socket, MakeSocketFuture> {
+enum Connection<Socket, ConnectFuture> {
     Closed,
-    Opening(Pin<Box<MakeSocketFuture>>),
+    Opening(Pin<Box<ConnectFuture>>),
     Open(Socket),
     Closing(Socket),
 }
@@ -60,10 +64,10 @@ enum Drained {
 }
 
 /// What woke the driver up while it was idle.
-enum Input<Socket> {
+enum Input<Socket, Error> {
     Timeout,
     Read(io::Result<ReadOutcome>),
-    Connected(io::Result<Socket>),
+    Connected(Result<Socket, Error>),
 }
 
 /// What happened to the socket while the driver was waiting on it.
@@ -75,20 +79,17 @@ enum ReadOutcome {
     Read,
 }
 
-impl<Protocol, Socket, MakeSocket, MakeSocketFuture>
-    Driver<Protocol, Socket, MakeSocket, MakeSocketFuture>
+impl<Protocol, C> Driver<Protocol, C>
 where
     Protocol: for<'bytes> MqttProtocol<'bytes, Instant>,
-    Socket: AsyncBufRead + AsyncWrite + Unpin,
-    MakeSocket: FnMut() -> MakeSocketFuture,
-    MakeSocketFuture: Future<Output = io::Result<Socket>>,
+    C: Connector,
 {
-    /// Creates a driver for `client`. `connect` is called every time the
-    /// client asks for a new connection.
-    pub fn new(client: Protocol, connect: MakeSocket) -> Self {
+    /// Creates a driver for `client` that opens every socket with
+    /// `connector`.
+    pub fn new(client: Protocol, connector: C) -> Self {
         Self {
             client,
-            connect,
+            connector,
             connection: Connection::Closed,
             outgoing: Bytes::new(),
             needs_flush: false,
@@ -268,7 +269,7 @@ where
                     matches!(self.connection, Connection::Closed),
                     "client requested a socket while one is open"
                 );
-                self.connection = Connection::Opening(Box::pin((self.connect)()));
+                self.connection = Connection::Opening(Box::pin(self.connector.connect()));
             }
             DriverAction::CloseSocket => {
                 if let Connection::Open(socket) =
@@ -281,7 +282,7 @@ where
         }
     }
 
-    async fn wait_for_input(&mut self) -> Input<Socket> {
+    async fn wait_for_input(&mut self) -> Input<C::Connection, C::Error> {
         let deadline = self.client.poll_timeout();
         match &mut self.connection {
             Connection::Open(socket) => tokio::select! {
@@ -299,7 +300,7 @@ where
         }
     }
 
-    fn handle_input(&mut self, input: Input<Socket>) {
+    fn handle_input(&mut self, input: Input<C::Connection, C::Error>) {
         match input {
             Input::Timeout => {
                 log_client_error(self.client.handle_timeout(Instant::now()), "timeout");
@@ -315,6 +316,7 @@ where
             }
             Input::Connected(Ok(socket)) => {
                 tracing::debug!("socket connected");
+                let socket = BufReader::new(socket);
                 match self.client.handle_event(Timestamped {
                     value: DriverEvent::SocketConnected,
                     at: Instant::now(),
@@ -349,10 +351,10 @@ where
     }
 }
 
-impl<Protocol, Socket, MakeSocket, MakeSocketFuture> std::fmt::Debug
-    for Driver<Protocol, Socket, MakeSocket, MakeSocketFuture>
+impl<Protocol, C> std::fmt::Debug for Driver<Protocol, C>
 where
     Protocol: std::fmt::Debug,
+    C: Connector,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let connection = match self.connection {

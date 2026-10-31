@@ -5,9 +5,8 @@ use sansio_mqtt_protocol::Message;
 use sansio_mqtt_protocol::SubscribeOptions;
 use sansio_mqtt_protocol::Subscription;
 use sansio_mqtt_tokio::Driver;
+use sansio_mqtt_tokio::TcpConnector;
 use sansio_mqtt_v5_protocol::Client;
-use tokio::io::BufStream;
-use tokio::net::TcpStream;
 use tracing::level_filters::LevelFilter;
 use tracing_subscriber::EnvFilter;
 
@@ -23,14 +22,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     tracing::info!("initializing client");
     let broker =
         std::env::var("MQTT_BROKER").unwrap_or_else(|_| "test.mosquitto.org:1883".to_owned());
-    let mut driver = Driver::new(Client::default(), move || {
-        let broker = broker.clone();
-        async move {
-            let stream = TcpStream::connect(broker).await?;
-            stream.set_nodelay(true)?;
-            Ok(BufStream::new(stream))
-        }
-    });
+    let mut driver = Driver::new(Client::default(), TcpConnector::new(broker));
 
     tracing::info!("connecting to broker");
     driver.submit(Command::Connect(ConnectOptions::builder().build()))?;

@@ -18,7 +18,6 @@ use sansio_mqtt_protocol::MqttProtocol;
 use sansio_mqtt_protocol::Timestamped;
 use sansio_mqtt_tokio::Driver;
 use tokio::io::AsyncReadExt;
-use tokio::io::BufReader;
 use tokio::io::duplex;
 use tokio::time::Instant;
 use tokio::time::timeout;
@@ -95,9 +94,12 @@ impl MqttProtocol<'_, Instant> for RejectsSocketConnected {
 #[tokio::test]
 async fn rejected_socket_connected_closes_the_socket() {
     let (client_side, mut broker) = duplex(1024);
-    let mut socket = Some(BufReader::new(client_side));
-    let connector =
-        move || std::future::ready(Ok(socket.take().expect("driver connected more than once")));
+    let mut socket = Some(client_side);
+    let connector = move || {
+        std::future::ready(Ok::<_, std::io::Error>(
+            socket.take().expect("driver connected more than once"),
+        ))
+    };
     let mut driver = Driver::new(RejectsSocketConnected::default(), connector);
     driver
         .submit(Command::Connect(
@@ -197,10 +199,9 @@ async fn protocol_timers_fire_without_a_socket_even_after_a_rejected_timeout() {
         rejections_left: 1,
         events: VecDeque::new(),
     };
-    let connector =
-        || -> std::future::Ready<std::io::Result<BufReader<tokio::io::DuplexStream>>> {
-            panic!("the protocol never asked for a socket")
-        };
+    let connector = || -> std::future::Ready<std::io::Result<tokio::io::DuplexStream>> {
+        panic!("the protocol never asked for a socket")
+    };
     let mut driver = Driver::new(protocol, connector);
 
     let event = timeout(Duration::from_secs(60), driver.next())
