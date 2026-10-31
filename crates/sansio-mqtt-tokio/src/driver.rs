@@ -44,6 +44,14 @@ enum Connection<Socket, MakeSocketFuture> {
     Closing(Socket),
 }
 
+/// How [`Driver::drain_before`] finished.
+enum Drained {
+    /// No shutdown or write is pending any more.
+    Done,
+    /// The protocol deadline elapsed while a shutdown or write was pending.
+    DeadlineElapsed,
+}
+
 /// What woke the driver up while it was idle.
 enum Input<Socket> {
     Timeout,
@@ -103,26 +111,89 @@ where
     /// timer this waits until a submitted command (e.g. [`Command::Connect`])
     /// gives it something to do, so await it alongside the command source.
     ///
+    /// # Write ordering and stalled peers
+    ///
+    /// Every byte the client queued is written before the next
+    /// [`DriverAction`] is performed, so a DISCONNECT reaches the socket that
+    /// the following [`DriverAction::CloseSocket`] closes. Nothing is read
+    /// while a write is pending.
+    ///
+    /// Writes, flushes and shutdowns are raced against the client's
+    /// `poll_timeout` deadline, so timers (e.g. keep-alive) still fire when the
+    /// peer stops reading. If the client asks to close the socket from such
+    /// a timeout, the stalled bytes can never be delivered: the driver
+    /// drops the socket at once, together with every byte still queued for
+    /// it, instead of waiting for the write. A stalled write is otherwise
+    /// resumed, so a [`Command::Disconnect`] submitted while the peer is
+    /// not reading waits for the peer.
+    ///
     /// # Cancel safety
     ///
     /// This method is cancel safe: every in-flight write, connection attempt
     /// and shutdown is kept in the driver and resumed by the next call.
     pub async fn next(&mut self) -> Event {
         loop {
-            self.finish_closing().await;
-            self.write_outgoing().await;
+            let deadline = self.client.poll_timeout();
+            let stalled = match self.drain_before(deadline).await {
+                Drained::Done => false,
+                Drained::DeadlineElapsed => {
+                    log_client_error(self.client.handle_timeout(Instant::now()), "timeout");
+                    true
+                }
+            };
 
             if let Some(action) = self.client.poll_event() {
-                self.perform_action(action);
+                if stalled && action == DriverAction::CloseSocket {
+                    self.abandon_socket();
+                } else {
+                    self.perform_action(action);
+                }
                 continue;
             }
             if let Some(event) = self.client.poll_read() {
                 return event;
             }
+            if stalled {
+                // Resume the pending write; nothing is read meanwhile.
+                continue;
+            }
 
             let input = self.wait_for_input().await;
             self.handle_input(input);
         }
+    }
+
+    /// Finishes a pending shutdown and writes everything the client has
+    /// queued, unless `deadline` elapses first.
+    ///
+    /// Cancel safe, like everything awaited here: progress lives in the
+    /// driver's connection, outgoing buffer and flush flag.
+    async fn drain_before(&mut self, deadline: Option<Instant>) -> Drained {
+        tokio::select! {
+            // Drain first, so a deadline that has already passed only wins
+            // when the socket is actually stuck.
+            biased;
+            () = async {
+                self.finish_closing().await;
+                self.write_outgoing().await;
+            } => Drained::Done,
+            () = maybe_wait(deadline) => Drained::DeadlineElapsed,
+        }
+    }
+
+    /// Performs a [`DriverAction::CloseSocket`] requested while a write is
+    /// stalled: drops the socket without shutting it down, along with the
+    /// bytes still queued for it.
+    ///
+    /// Every byte queued in the client precedes the `CloseSocket` (the client
+    /// queues none after it until the next socket is connected), so all of
+    /// them belonged to this socket.
+    fn abandon_socket(&mut self) {
+        tracing::warn!("socket stalled while the client closed it, dropping it");
+        self.connection = Connection::Closed;
+        self.outgoing.clear();
+        self.needs_flush = false;
+        while self.client.poll_write().is_some() {}
     }
 
     async fn finish_closing(&mut self) {

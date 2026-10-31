@@ -7,6 +7,7 @@
 
 use std::collections::VecDeque;
 use std::io;
+use std::num::NonZero;
 use std::time::Duration;
 
 use bytes::Bytes;
@@ -174,7 +175,11 @@ impl Harness {
     }
 
     async fn event(&mut self) -> Event {
-        timeout(STEP, self.events.recv())
+        self.event_within(STEP).await
+    }
+
+    async fn event_within(&mut self, limit: Duration) -> Event {
+        timeout(limit, self.events.recv())
             .await
             .expect("no event from the driver")
             .expect("driver task stopped")
@@ -232,6 +237,15 @@ fn connect_command() -> Command {
     Command::Connect(
         ConnectOptions::builder()
             .client_id(ByteString::from_static("driver-test"))
+            .build(),
+    )
+}
+
+fn connect_command_with_keep_alive(seconds: u16) -> Command {
+    Command::Connect(
+        ConnectOptions::builder()
+            .client_id(ByteString::from_static("driver-test"))
+            .keep_alive(NonZero::new(seconds).unwrap())
             .build(),
     )
 }
@@ -405,4 +419,32 @@ async fn failed_write_discards_the_rest_of_the_closing_socket_bytes() {
 
     assert_eq!(harness.event().await, Event::Disconnected(None));
     harness.connect().await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn keep_alive_timeout_closes_a_connection_whose_peer_stopped_reading() {
+    let mut harness = Harness::spawn_with_buffer(&[Dial::Accept], 64);
+    harness
+        .submit(connect_command_with_keep_alive(1))
+        .await
+        .unwrap();
+    harness.accept_connect().await;
+
+    // The broker stops reading, so this PUBLISH never fits in the socket
+    // buffer and its write stalls.
+    harness
+        .submit(publish_command(1, Bytes::from(vec![0xAB; 4096])))
+        .await
+        .unwrap();
+
+    assert_eq!(
+        harness.event_within(Duration::from_secs(60)).await,
+        Event::Disconnected(Some(ReasonCode::KeepAliveTimeout))
+    );
+    // The driver gave up on the stalled socket and dropped it.
+    let mut rest = Vec::new();
+    timeout(STEP, harness.broker().read_to_end(&mut rest))
+        .await
+        .expect("client did not close the socket")
+        .unwrap();
 }
