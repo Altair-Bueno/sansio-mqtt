@@ -1,11 +1,9 @@
 pub(crate) mod connected;
 pub(crate) mod connecting;
 pub(crate) mod disconnected;
-pub(crate) mod start;
 pub(crate) use connected::Connected;
 pub(crate) use connecting::Connecting;
 pub(crate) use disconnected::Disconnected;
-pub(crate) use start::Start;
 
 use sansio_mqtt_v5_types::ControlPacket;
 use sansio_mqtt_v5_types::DisconnectReasonCode;
@@ -69,7 +67,6 @@ pub(crate) fn on_socket_lost<T>(
 pub(crate) enum ClientState {
     #[default]
     Transitioning,
-    Start(Start),
     Disconnected(Disconnected),
     Connecting(Connecting),
     Connected(Connected),
@@ -83,9 +80,7 @@ impl ClientState {
         match self {
             ClientState::Connecting(connecting) => connecting.has_open_socket(),
             ClientState::Connected(_) => true,
-            ClientState::Transitioning | ClientState::Start(_) | ClientState::Disconnected(_) => {
-                false
-            }
+            ClientState::Transitioning | ClientState::Disconnected(_) => false,
         }
     }
 }
@@ -134,13 +129,12 @@ pub(crate) trait StateHandler<T>: Sized {
 
 /// Forwards a [`StateHandler`] method to whichever concrete state is live.
 ///
-/// Every method delegates identically, so spelling the five arms out once here
+/// Every method delegates identically, so spelling the arms out once here
 /// keeps the states in lockstep and makes adding a state a one-line change.
 macro_rules! forward_to_state {
     ($state:expr, $method:ident($($arg:expr),* $(,)?)) => {
         match $state {
             ClientState::Transitioning => unreachable!("FSM observed mid-transition"),
-            ClientState::Start(x) => x.$method($($arg),*),
             ClientState::Disconnected(x) => x.$method($($arg),*),
             ClientState::Connecting(x) => x.$method($($arg),*),
             ClientState::Connected(x) => x.$method($($arg),*),

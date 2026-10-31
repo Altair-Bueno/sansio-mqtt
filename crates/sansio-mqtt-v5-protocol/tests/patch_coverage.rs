@@ -439,9 +439,9 @@ fn socket_error_while_connected_resets_and_reports_disconnected() {
     ));
 }
 
-/// `close` in the Start state resets without emitting anything.
+/// `close` before the first Connect does nothing and emits nothing.
 #[test]
-fn close_in_start_state_resets_quietly() {
+fn close_before_first_connect_is_a_quiet_no_op() {
     let mut client = Client::<Duration>::default();
 
     assert_eq!(client.close(), Ok(()));

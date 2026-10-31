@@ -3252,10 +3252,10 @@ fn keepalive_timeout_without_pingresp_closes_connection() {
 
 /// [MQTT-3.1.4-5] If a Client does not receive a CONNACK packet from the
 /// Server within a reasonable amount of time, the Client SHOULD close the
-/// Network Connection. In the Start state no connection attempt exists, so a
-/// timeout has nothing to abandon.
+/// Network Connection. Before the first Connect no connection attempt exists,
+/// so a timeout has nothing to abandon.
 #[test]
-fn timeout_in_start_state_is_a_no_op() {
+fn timeout_before_first_connect_is_a_no_op() {
     let mut client = Client::<Duration>::default();
 
     assert_eq!(client.handle_timeout(Duration::from_secs(100)), Ok(()));
