@@ -11,3 +11,4 @@ bytestring = { workspace = true }
 sansio = { workspace = true }
 semver = { workspace = true }
 thiserror = { workspace = true }
+strum = { workspace = true, features = ["derive"] }
