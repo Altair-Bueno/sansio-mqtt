@@ -13,6 +13,7 @@ use crate::queues;
 use crate::scratchpad::ClientScratchpad;
 use crate::session::ClientSession;
 use sansio_mqtt_protocol::Command;
+use sansio_mqtt_protocol::DriverAction;
 use sansio_mqtt_protocol::DriverEvent;
 use sansio_mqtt_protocol::Error;
 use sansio_mqtt_protocol::Time;
@@ -177,6 +178,19 @@ where
         scratchpad: &mut ClientScratchpad<T>,
         evt: DriverEvent,
     ) -> (ClientState, Result<(), Error>) {
+        if matches!(evt, DriverEvent::SocketClosed | DriverEvent::SocketError) {
+            // Unsent bytes belonged to the lost socket and must never reach
+            // the next one.
+            scratchpad.write_queue.clear();
+            if scratchpad.action_queue.contains(&DriverAction::CloseSocket) {
+                // The protocol already closed the socket the driver lost: the
+                // loss was reported before the driver got to `CloseSocket`
+                // (e.g. writing the DISCONNECT that precedes it failed).
+                // Teardown is done and any new attempt queued behind
+                // `CloseSocket` has not started, so nothing changes.
+                return (self, Ok(()));
+            }
+        }
         forward_to_state!(self, handle_event(settings, session, scratchpad, evt))
     }
 

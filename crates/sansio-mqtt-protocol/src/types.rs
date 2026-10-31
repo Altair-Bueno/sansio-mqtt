@@ -288,11 +288,20 @@ pub enum Event {
 ///   [`DriverAction::CloseSocket`]: the socket is already gone.
 /// - Do not report anything after performing a [`DriverAction::CloseSocket`].
 ///
-/// Reporting a loss is always accepted (`Ok(())`). If the application
-/// believed a connection or connection attempt existed, the protocol emits
-/// [`Event::Disconnected(None)`](Event::Disconnected) and discards any bytes
-/// still queued for the lost socket; otherwise the report is a no-op, so no
-/// duplicate `Disconnected` is ever emitted.
+/// Reporting a loss is always accepted (`Ok(())`) and always discards the
+/// bytes still queued in `poll_write`: they belonged to the lost socket.
+///
+/// - If a [`DriverAction::CloseSocket`] is still pending in the action queue,
+///   the loss necessarily concerns the socket that action closes (e.g. writing
+///   the DISCONNECT queued before it failed). The protocol has already torn
+///   that connection down, so it emits nothing and leaves any connection
+///   attempt queued behind the `CloseSocket` untouched. The driver still
+///   performs the pending `CloseSocket`, which then has no socket to close.
+/// - Otherwise, if the application believed a connection or connection attempt
+///   existed, the protocol emits
+///   [`Event::Disconnected(None)`](Event::Disconnected).
+/// - Otherwise the report is a no-op, so no duplicate `Disconnected` is ever
+///   emitted.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum DriverEvent {
@@ -318,7 +327,9 @@ pub enum DriverEvent {
 /// - **No bytes without a socket.** After the protocol queues `CloseSocket`, or
 ///   after the driver reports [`DriverEvent::SocketClosed`] or
 ///   [`DriverEvent::SocketError`], `poll_write` yields no bytes until the next
-///   [`DriverEvent::SocketConnected`].
+///   [`DriverEvent::SocketConnected`]. Reporting a loss discards the bytes
+///   still queued for the lost socket, even those queued before a pending
+///   `CloseSocket`.
 /// - **One socket at a time.** The protocol never queues
 ///   [`OpenSocket`](Self::OpenSocket) while a socket is open, i.e. between
 ///   `SocketConnected` and the next `CloseSocket`, `SocketClosed` or
