@@ -21,10 +21,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         )
         .init();
     tracing::info!("initializing client");
-    let mut driver = Driver::new(Client::default(), || async {
-        let stream = TcpStream::connect("test.mosquitto.org:1883").await?;
-        stream.set_nodelay(true)?;
-        Ok(BufStream::new(stream))
+    let broker =
+        std::env::var("MQTT_BROKER").unwrap_or_else(|_| "test.mosquitto.org:1883".to_owned());
+    let mut driver = Driver::new(Client::default(), move || {
+        let broker = broker.clone();
+        async move {
+            let stream = TcpStream::connect(broker).await?;
+            stream.set_nodelay(true)?;
+            Ok(BufStream::new(stream))
+        }
     });
 
     tracing::info!("connecting to broker");
