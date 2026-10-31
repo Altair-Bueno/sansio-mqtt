@@ -125,7 +125,7 @@ impl<T> Client<T> {
             settings,
             session: ClientSession::default(),
             scratchpad: ClientScratchpad::default(),
-            state: ClientState::Start(crate::state::Start),
+            state: ClientState::Disconnected(crate::state::Disconnected),
         };
         limits::recompute_effective_limits(&client.settings, &mut client.scratchpad);
         client
