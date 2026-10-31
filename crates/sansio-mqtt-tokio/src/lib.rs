@@ -2,30 +2,3 @@
 mod driver;
 
 pub use driver::Driver;
-use sansio_mqtt_protocol::Command;
-use sansio_mqtt_protocol::Error;
-use sansio_mqtt_protocol::Event;
-use sansio_mqtt_protocol::MqttProtocol;
-use tokio::io::AsyncBufRead;
-use tokio::io::AsyncWrite;
-use tokio::sync::mpsc;
-use tokio::task::JoinHandle;
-use tokio::time::Instant;
-
-pub async fn spawn<Protocol, Socket, MakeSocket, MakeSocketFuture>(
-    client: Protocol,
-    connect: MakeSocket,
-) -> Result<(JoinHandle<()>, mpsc::Sender<Command>, mpsc::Receiver<Event>), Error>
-where
-    Protocol: for<'bytes> MqttProtocol<'bytes, Instant> + Send + 'static,
-    Socket: AsyncBufRead + AsyncWrite + Unpin + Send + 'static,
-    MakeSocket: FnMut() -> MakeSocketFuture + Send + 'static,
-    MakeSocketFuture: Future<Output = std::io::Result<Socket>> + Send + 'static,
-{
-    let (commands_in, commands_out) = mpsc::channel(1);
-    let (events_in, events_out) = mpsc::channel(1);
-
-    let mut driver = Driver::new(client, connect, commands_out, events_in);
-    let handle = tokio::spawn(async move { driver.run().await });
-    Ok((handle, commands_in, events_out))
-}

@@ -1,279 +1,302 @@
+use bytes::Bytes;
 use sansio_mqtt_protocol::Command;
 use sansio_mqtt_protocol::CommandDiscriminants;
 use sansio_mqtt_protocol::DriverAction;
-use sansio_mqtt_protocol::DriverActionDiscriminants;
 use sansio_mqtt_protocol::DriverEvent;
 use sansio_mqtt_protocol::Error;
 use sansio_mqtt_protocol::Event;
-use sansio_mqtt_protocol::EventDiscriminants;
 use sansio_mqtt_protocol::IncomingData;
 use sansio_mqtt_protocol::MqttProtocol;
 use std::future::pending;
 use std::io;
-use std::ops::ControlFlow;
+use std::pin::Pin;
 use tokio::io::AsyncBufRead;
 use tokio::io::AsyncBufReadExt;
 use tokio::io::AsyncWrite;
 use tokio::io::AsyncWriteExt;
-use tokio::sync::mpsc;
 use tokio::time::Instant;
 use tokio::time::sleep_until;
 
-#[derive(Debug)]
-pub struct Driver<Protocol, Socket, MakeSocket> {
+/// Runs an MQTT protocol state machine over a tokio socket.
+///
+/// The application owns the loop: it hands commands over with
+/// [`submit`](Self::submit) and drives the connection by awaiting
+/// [`next`](Self::next), typically both from the same `tokio::select!`.
+///
+/// Socket I/O, keep-alive and every other timer only make progress while
+/// [`next`](Self::next) is being awaited, so the application must keep
+/// polling it for the connection to stay alive.
+pub struct Driver<Protocol, Socket, MakeSocket, MakeSocketFuture> {
     client: Protocol,
-    maybe_socket: Option<Socket>,
     connect: MakeSocket,
-    commands: mpsc::Receiver<Command>,
-    commands_closed: bool,
-    events: mpsc::Sender<Event>,
+    connection: Connection<Socket, MakeSocketFuture>,
+    /// Bytes handed out by the client that are not yet written to the socket.
+    outgoing: Bytes,
+    needs_flush: bool,
 }
 
-impl<Protocol, Socket, MakeSocket> Driver<Protocol, Socket, MakeSocket> {
-    pub fn new(
-        client: Protocol,
-        connect: MakeSocket,
-        commands: mpsc::Receiver<Command>,
-        events: mpsc::Sender<Event>,
-    ) -> Self {
-        Self {
-            client,
-            connect,
-            commands,
-            events,
-            commands_closed: false,
-            maybe_socket: None,
-        }
-    }
+/// The socket as seen by the driver. Every in-flight operation lives here so
+/// that cancelling [`Driver::next`] never loses progress.
+enum Connection<Socket, MakeSocketFuture> {
+    Closed,
+    Opening(Pin<Box<MakeSocketFuture>>),
+    Open(Socket),
+    Closing(Socket),
+}
+
+/// What woke the driver up while it was idle.
+enum Input<Socket> {
+    Timeout,
+    Read(io::Result<ReadOutcome>),
+    Connected(io::Result<Socket>),
 }
 
 /// What happened to the socket while the driver was waiting on it.
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ReadOutcome {
     /// The peer closed the connection (zero-length read).
     Closed,
     /// Bytes were handed to the client and consumed from the socket.
-    Read(Result<(), Error>),
+    Read,
 }
 
-impl<Protocol, Socket, MakeSocket, MakeSocketFuture> Driver<Protocol, Socket, MakeSocket>
+impl<Protocol, Socket, MakeSocket, MakeSocketFuture>
+    Driver<Protocol, Socket, MakeSocket, MakeSocketFuture>
 where
     Protocol: for<'bytes> MqttProtocol<'bytes, Instant>,
     Socket: AsyncBufRead + AsyncWrite + Unpin,
     MakeSocket: FnMut() -> MakeSocketFuture,
     MakeSocketFuture: Future<Output = io::Result<Socket>>,
 {
-    /// Runs the driver until the protocol requests [`DriverAction::Quit`], or
-    /// until the command channel is closed and the socket has been released.
+    /// Creates a driver for `client`. `connect` is called every time the
+    /// client asks for a new connection.
+    pub fn new(client: Protocol, connect: MakeSocket) -> Self {
+        Self {
+            client,
+            connect,
+            connection: Connection::Closed,
+            outgoing: Bytes::new(),
+            needs_flush: false,
+        }
+    }
+
+    /// Hands `command` to the client.
     ///
-    /// Errors returned by the protocol are logged and do not stop the driver:
-    /// the protocol queues its own recovery (e.g. DISCONNECT and
-    /// [`DriverAction::CloseSocket`]) which the driver keeps performing.
-    #[tracing::instrument(level = "trace", skip_all)]
-    pub async fn run(&mut self) {
-        while self.process().await.is_continue() {}
+    /// This performs no I/O: an accepted command only takes effect on the
+    /// wire once [`next`](Self::next) is awaited, and its outcome (e.g.
+    /// [`Event::PublishAcknowledged`]) is reported as an [`Event`].
+    ///
+    /// # Errors
+    ///
+    /// Returns the client's [`Error`] when it rejects the command, in which
+    /// case the client state is unchanged.
+    pub fn submit(&mut self, command: Command) -> Result<(), Error> {
+        let kind = CommandDiscriminants::from(&command);
+        tracing::debug!(command = %kind, "submitting command");
+        self.client.handle_write(command)
     }
 
-    #[tracing::instrument(level = "trace", skip_all, ret)]
-    async fn process(&mut self) -> ControlFlow<(), ()> {
-        let maybe_deadline = self.client.poll_timeout();
+    /// Drives socket I/O and timers until the client produces the next
+    /// [`Event`].
+    ///
+    /// The driver never stops on its own: with no connection and no pending
+    /// timer this waits until a submitted command (e.g. [`Command::Connect`])
+    /// gives it something to do, so await it alongside the command source.
+    ///
+    /// # Cancel safety
+    ///
+    /// This method is cancel safe: every in-flight write, connection attempt
+    /// and shutdown is kept in the driver and resumed by the next call.
+    pub async fn next(&mut self) -> Event {
+        loop {
+            self.finish_closing().await;
+            self.write_outgoing().await;
 
-        tokio::select! {
-            () = maybe_wait(maybe_deadline) => self.handle_timeout(),
-            read_result = read_into(&mut self.client, self.maybe_socket.as_mut()) => self.handle_read_result(read_result),
-            maybe_command = self.commands.recv(), if !self.commands_closed => self.handle_maybe_command(maybe_command),
-        }
-
-        self.pump().await?;
-
-        if self.commands_closed && self.maybe_socket.is_none() {
-            tracing::debug!("command channel closed and socket released, stopping driver");
-            return ControlFlow::Break(());
-        }
-        ControlFlow::Continue(())
-    }
-
-    #[tracing::instrument(level = "trace", skip_all)]
-    fn handle_timeout(&mut self) {
-        log_client_error(self.client.handle_timeout(Instant::now()), "timeout");
-    }
-
-    #[tracing::instrument(level = "trace", skip_all)]
-    fn handle_read_result(&mut self, result: io::Result<ReadOutcome>) {
-        match result {
-            Err(error) => {
-                tracing::warn!(%error, "failed to read bytes from the connection");
-                self.report_socket_error();
+            if let Some(action) = self.client.poll_event() {
+                self.perform_action(action);
+                continue;
             }
-            Ok(ReadOutcome::Closed) => {
-                tracing::debug!("connection was closed by the peer");
-                // The protocol does not answer `SocketClosed` with
-                // `CloseSocket`, so release the socket here; otherwise every
-                // later read would return EOF again.
-                self.maybe_socket = None;
-                log_client_error(
-                    self.client.handle_event(DriverEvent::SocketClosed),
-                    "socket closed",
-                );
+            if let Some(event) = self.client.poll_read() {
+                return event;
             }
-            Ok(ReadOutcome::Read(result)) => log_client_error(result, "incoming bytes"),
+
+            let input = self.wait_for_input().await;
+            self.handle_input(input);
         }
     }
 
-    #[tracing::instrument(level = "trace", skip_all)]
-    fn handle_maybe_command(&mut self, maybe_command: Option<Command>) {
-        match maybe_command {
-            Some(command) => {
-                let kind = CommandDiscriminants::from(&command);
-                tracing::debug!(command = %kind, "received command from the application");
-                if let Err(error) = self.client.handle_write(command) {
-                    tracing::warn!(%error, command = %kind, "client rejected a command");
+    async fn finish_closing(&mut self) {
+        let Connection::Closing(socket) = &mut self.connection else {
+            return;
+        };
+        if let Err(error) = socket.shutdown().await {
+            tracing::warn!(%error, "failed to shut down socket cleanly");
+        }
+        self.connection = Connection::Closed;
+        tracing::debug!("socket closed");
+    }
+
+    /// Writes everything the client has queued, then flushes once.
+    async fn write_outgoing(&mut self) {
+        loop {
+            if self.outgoing.is_empty() {
+                match self.client.poll_write() {
+                    Some(bytes) => self.outgoing = bytes,
+                    None => break,
                 }
             }
-            None => {
-                tracing::debug!("command channel closed, closing the client");
-                self.commands_closed = true;
-                // `close` is defined for every protocol state, so it stays
-                // correct when the application already sent an explicit
-                // `Command::Disconnect` before dropping the sender.
-                log_client_error(self.client.close(), "close");
+
+            let Connection::Open(socket) = &mut self.connection else {
+                debug_assert!(false, "client produced bytes while no socket is open");
+                tracing::error!("client produced bytes while no socket is open, dropping them");
+                self.outgoing.clear();
+                continue;
+            };
+
+            let result = match socket.write_buf(&mut self.outgoing).await {
+                Ok(0) => Err(io::ErrorKind::WriteZero.into()),
+                Ok(_) => Ok(()),
+                Err(error) => Err(error),
+            };
+            match result {
+                Ok(()) => self.needs_flush = true,
+                Err(error) => {
+                    tracing::warn!(%error, "failed to write to the socket");
+                    self.lose_socket(DriverEvent::SocketError);
+                }
+            }
+        }
+
+        if !self.needs_flush {
+            return;
+        }
+        let Connection::Open(socket) = &mut self.connection else {
+            self.needs_flush = false;
+            return;
+        };
+        let result = socket.flush().await;
+        self.needs_flush = false;
+        if let Err(error) = result {
+            tracing::warn!(%error, "failed to flush the socket");
+            self.lose_socket(DriverEvent::SocketError);
+        }
+    }
+
+    fn perform_action(&mut self, action: DriverAction) {
+        tracing::debug!(?action, "performing driver action");
+        match action {
+            DriverAction::OpenSocket => {
+                debug_assert!(
+                    matches!(self.connection, Connection::Closed),
+                    "client requested a socket while one is open"
+                );
+                self.connection = Connection::Opening(Box::pin((self.connect)()));
+            }
+            DriverAction::CloseSocket => {
+                if let Connection::Open(socket) =
+                    std::mem::replace(&mut self.connection, Connection::Closed)
+                {
+                    self.connection = Connection::Closing(socket);
+                }
+            }
+            action => tracing::warn!(?action, "ignoring unsupported driver action"),
+        }
+    }
+
+    async fn wait_for_input(&mut self) -> Input<Socket> {
+        let deadline = self.client.poll_timeout();
+        match &mut self.connection {
+            Connection::Open(socket) => tokio::select! {
+                () = maybe_wait(deadline) => Input::Timeout,
+                outcome = read_into(&mut self.client, socket) => Input::Read(outcome),
+            },
+            Connection::Opening(connecting) => tokio::select! {
+                () = maybe_wait(deadline) => Input::Timeout,
+                result = connecting.as_mut() => Input::Connected(result),
+            },
+            Connection::Closed | Connection::Closing(_) => {
+                maybe_wait(deadline).await;
+                Input::Timeout
             }
         }
     }
 
-    fn report_socket_error(&mut self) {
-        log_client_error(
-            self.client.handle_event(DriverEvent::SocketError),
-            "socket error",
-        );
-    }
-
-    #[tracing::instrument(level = "trace", skip_all, fields(bytes_len = bytes.len()))]
-    async fn send_bytes(&mut self, bytes: &[u8]) {
-        let Some(socket) = self.maybe_socket.as_mut() else {
-            tracing::error!("client produced bytes while no socket is open, dropping them");
-            return;
-        };
-
-        let result = match socket.write_all(bytes).await {
-            Ok(()) => socket.flush().await,
-            Err(error) => Err(error),
-        };
-        if let Err(error) = result {
-            tracing::warn!(%error, "failed to send bytes");
-            self.report_socket_error();
-        }
-    }
-
-    #[tracing::instrument(level = "trace", skip_all)]
-    async fn submit_event(&mut self, event: Event) {
-        let kind = EventDiscriminants::from(&event);
-        if let Err(error) = self.events.send(event).await {
-            tracing::warn!(%error, event = %kind, "failed to relay incoming event");
-        }
-    }
-
-    #[tracing::instrument(level = "trace", skip_all)]
-    async fn perform_open_socket(&mut self) {
-        if self.maybe_socket.is_some() {
-            tracing::error!("client requested a socket while one is already open, ignoring");
-            return;
-        }
-
-        match (self.connect)().await {
-            Ok(socket) => {
+    fn handle_input(&mut self, input: Input<Socket>) {
+        match input {
+            Input::Timeout => {
+                log_client_error(self.client.handle_timeout(Instant::now()), "timeout");
+            }
+            Input::Read(Ok(ReadOutcome::Read)) => {}
+            Input::Read(Ok(ReadOutcome::Closed)) => {
+                tracing::debug!("connection was closed by the peer");
+                self.lose_socket(DriverEvent::SocketClosed);
+            }
+            Input::Read(Err(error)) => {
+                tracing::warn!(%error, "failed to read from the socket");
+                self.lose_socket(DriverEvent::SocketError);
+            }
+            Input::Connected(Ok(socket)) => {
                 tracing::debug!("socket connected");
-                self.maybe_socket = Some(socket);
+                self.connection = Connection::Open(socket);
                 log_client_error(
                     self.client.handle_event(DriverEvent::SocketConnected),
                     "socket connected",
                 );
             }
-            Err(error) => {
+            Input::Connected(Err(error)) => {
                 tracing::warn!(%error, "failed to open socket");
-                self.report_socket_error();
+                self.lose_socket(DriverEvent::SocketError);
             }
         }
     }
 
-    #[tracing::instrument(level = "trace", skip_all)]
-    async fn perform_close_socket(&mut self) {
-        let Some(mut socket) = self.maybe_socket.take() else {
-            tracing::debug!("client requested to close an already closed socket, ignoring");
-            return;
+    /// Drops the socket and any unsent bytes, then tells the client why.
+    fn lose_socket(&mut self, event: DriverEvent) {
+        self.connection = Connection::Closed;
+        self.outgoing.clear();
+        self.needs_flush = false;
+        log_client_error(self.client.handle_event(event), "socket lost");
+    }
+}
+
+impl<Protocol, Socket, MakeSocket, MakeSocketFuture> std::fmt::Debug
+    for Driver<Protocol, Socket, MakeSocket, MakeSocketFuture>
+where
+    Protocol: std::fmt::Debug,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let connection = match self.connection {
+            Connection::Closed => "closed",
+            Connection::Opening(_) => "opening",
+            Connection::Open(_) => "open",
+            Connection::Closing(_) => "closing",
         };
-
-        if let Err(error) = socket.shutdown().await {
-            tracing::warn!(%error, "failed to shut down socket cleanly");
-        }
-        drop(socket);
-        tracing::debug!("socket closed");
-
-        log_client_error(
-            self.client.handle_event(DriverEvent::SocketClosed),
-            "socket closed",
-        );
-    }
-
-    #[tracing::instrument(level = "trace", skip_all, ret)]
-    async fn perform_action(&mut self, action: DriverAction) -> ControlFlow<(), ()> {
-        match action {
-            DriverAction::OpenSocket => self.perform_open_socket().await,
-            DriverAction::CloseSocket => self.perform_close_socket().await,
-            DriverAction::Quit => {
-                tracing::debug!("client requested shutdown");
-                return ControlFlow::Break(());
-            }
-            action => {
-                tracing::warn!(
-                    action = %DriverActionDiscriminants::from(action),
-                    "received an unsupported action to perform, ignoring"
-                );
-            }
-        }
-        ControlFlow::Continue(())
-    }
-
-    /// Drains everything the client has queued until it is idle.
-    #[tracing::instrument(level = "trace", skip_all, ret)]
-    async fn pump(&mut self) -> ControlFlow<(), ()> {
-        loop {
-            if let Some(bytes) = self.client.poll_write() {
-                self.send_bytes(&bytes).await;
-            } else if let Some(event) = self.client.poll_read() {
-                self.submit_event(event).await;
-            } else if let Some(action) = self.client.poll_event() {
-                self.perform_action(action).await?;
-            } else {
-                return ControlFlow::Continue(());
-            }
-        }
+        f.debug_struct("Driver")
+            .field("client", &self.client)
+            .field("connection", &connection)
+            .field("outgoing_len", &self.outgoing.len())
+            .finish_non_exhaustive()
     }
 }
 
 fn log_client_error(result: Result<(), Error>, operation: &'static str) {
     if let Err(error) = result {
-        tracing::warn!(%error, operation, "client reported an error");
+        tracing::warn!(%error, operation, "client rejected driver input");
     }
 }
 
-/// Waits for bytes on the socket (forever if there is none), hands them to the
-/// client and consumes them.
+/// Waits for bytes on the socket, hands them to the client and consumes them.
 ///
 /// Cancel safe: the only await point is `fill_buf`, which is itself cancel
 /// safe; feeding and consuming happen synchronously afterwards.
 async fn read_into<Protocol, Socket>(
     client: &mut Protocol,
-    maybe_socket: Option<&mut Socket>,
+    socket: &mut Socket,
 ) -> io::Result<ReadOutcome>
 where
     Protocol: for<'bytes> MqttProtocol<'bytes, Instant>,
     Socket: AsyncBufRead + Unpin,
 {
-    let Some(socket) = maybe_socket else {
-        return pending().await;
-    };
-
     let bytes = socket.fill_buf().await?;
     if bytes.is_empty() {
         return Ok(ReadOutcome::Closed);
@@ -281,13 +304,14 @@ where
 
     let received_at = Instant::now();
     let consumed = bytes.len();
-    tracing::trace!(bytes_len = consumed, ?received_at, "read bytes from socket");
+    tracing::trace!(bytes_len = consumed, "read bytes from socket");
     // The client buffers any partial packet itself, so the whole read is
     // always consumed.
     let result = client.handle_read(IncomingData { bytes, received_at });
     socket.consume(consumed);
+    log_client_error(result, "incoming bytes");
 
-    Ok(ReadOutcome::Read(result))
+    Ok(ReadOutcome::Read)
 }
 
 async fn maybe_wait(deadline: Option<Instant>) {
