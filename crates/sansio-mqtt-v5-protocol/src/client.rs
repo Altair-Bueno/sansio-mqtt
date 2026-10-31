@@ -1,5 +1,4 @@
 use crate::limits;
-use crate::queues;
 use crate::scratchpad::ClientScratchpad;
 use crate::session::ClientSession;
 use crate::state::ClientState;
@@ -249,13 +248,7 @@ where
     }
 
     fn fail_connection(&mut self, reason: DisconnectReasonCode) -> Result<(), Error> {
-        self.dispatch(|_s, set, ses, sp| {
-            let _ = queues::fail_connection(set, ses, sp, reason);
-            (
-                ClientState::Disconnected(crate::state::Disconnected),
-                Ok(()),
-            )
-        })
+        self.dispatch(|_s, set, ses, sp| crate::state::fail_with(set, ses, sp, reason))
     }
 }
 
