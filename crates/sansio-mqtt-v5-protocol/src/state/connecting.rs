@@ -10,9 +10,9 @@ use crate::state::StateHandler;
 use crate::state::connected::Connected;
 use crate::state::disconnected::Disconnected;
 use crate::state::fail_with_protocol_error;
+use crate::state::on_socket_lost;
 use core::num::NonZero;
 use sansio_mqtt_protocol::Command;
-use sansio_mqtt_protocol::DriverAction;
 use sansio_mqtt_protocol::DriverEvent;
 use sansio_mqtt_protocol::Error;
 use sansio_mqtt_protocol::Event;
@@ -23,23 +23,45 @@ use sansio_mqtt_v5_types::ConnAckKind;
 use sansio_mqtt_v5_types::ConnackReasonCode;
 use sansio_mqtt_v5_types::ControlPacket;
 
-/// Awaiting CONNACK.
+/// A connection attempt is in progress: `OpenSocket` has been requested and
+/// CONNACK has not arrived yet.
 ///
 /// The connect options live in `scratchpad.pending_connect_options` for the
 /// whole client lifetime, so this state carries none of its own.
 #[derive(Debug)]
 pub(crate) struct Connecting {
-    /// Set to `true` after the CONNECT packet has been sent (i.e., after
-    /// SocketConnected fires and the CONNECT is enqueued). Used to reject a
-    /// second SocketConnected in Connecting state.
-    pub(crate) connect_sent: bool,
+    phase: ConnectingPhase,
 }
 
-/// Handles a `SocketConnected` event while in the Connecting state.
+/// How far the connection attempt has progressed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ConnectingPhase {
+    /// `OpenSocket` was queued; the driver has not reported the outcome yet.
+    AwaitingSocket,
+    /// The socket is connected and CONNECT has been queued.
+    AwaitingConnAck,
+}
+
+impl Connecting {
+    pub(crate) fn awaiting_socket() -> Self {
+        Self {
+            phase: ConnectingPhase::AwaitingSocket,
+        }
+    }
+
+    pub(crate) fn has_open_socket(&self) -> bool {
+        self.phase == ConnectingPhase::AwaitingConnAck
+    }
+}
+
+/// Handles the `SocketConnected` that answers the `OpenSocket` queued by
+/// `Command::Connect`.
 ///
-/// Resets negotiated limits, builds and enqueues the CONNECT packet, and
-/// resets keepalive tracking flags. On error, stays in Connecting.
-pub(crate) fn on_socket_connected<T>(
+/// Resets negotiated limits, enqueues the CONNECT packet and resets keepalive
+/// tracking. The options were validated when `Command::Connect` was accepted,
+/// so building CONNECT cannot fail in practice; if it does, the connection is
+/// closed and reported as `Event::Disconnected(None)`.
+fn on_socket_connected<T>(
     settings: &ClientSettings,
     session: &mut ClientSession,
     scratchpad: &mut ClientScratchpad<T>,
@@ -49,71 +71,28 @@ where
 {
     limits::reset_negotiated_limits(settings, session, scratchpad);
 
-    let Some(options) = scratchpad.pending_connect_options.clone() else {
-        // No `Command::Connect` has ever been issued: there is nothing to
-        // build a CONNECT from.
-        return (
-            ClientState::Connecting(Connecting {
-                connect_sent: false,
-            }),
-            Err(Error::InvalidStateTransition),
-        );
-    };
+    let enqueued = scratchpad
+        .pending_connect_options
+        .as_ref()
+        .ok_or(Error::InvalidStateTransition)
+        .and_then(|options| convert::connect_options_to_wire(settings, options))
+        .and_then(|connect| queues::enqueue_packet(scratchpad, &ControlPacket::Connect(connect)));
 
-    let connect = match convert::connect_options_to_wire(settings, &options) {
-        Ok(packet) => packet,
-        Err(e) => {
-            return (
-                ClientState::Connecting(Connecting {
-                    connect_sent: false,
-                }),
-                Err(e),
-            );
-        }
-    };
-    match queues::enqueue_packet(scratchpad, &ControlPacket::Connect(connect)) {
+    match enqueued {
         Ok(()) => {
             scratchpad.keep_alive_saw_network_activity = false;
             scratchpad.keep_alive_ping_outstanding = false;
             (
-                ClientState::Connecting(Connecting { connect_sent: true }),
+                ClientState::Connecting(Connecting {
+                    phase: ConnectingPhase::AwaitingConnAck,
+                }),
                 Ok(()),
             )
         }
-        Err(e) => (
-            ClientState::Connecting(Connecting {
-                connect_sent: false,
-            }),
-            Err(e),
-        ),
-    }
-}
-
-/// Handles `SocketClosed` or `SocketError` events while in the Connecting
-/// state.
-///
-/// Resets all connection state, then emits `Disconnected`. On error, instead
-/// enqueues `CloseSocket` and returns `ProtocolError`.
-pub(crate) fn on_socket_closed_or_error<T>(
-    settings: &ClientSettings,
-    session: &mut ClientSession,
-    scratchpad: &mut ClientScratchpad<T>,
-    is_error: bool,
-) -> (ClientState, Result<(), Error>)
-where
-    T: Time,
-{
-    queues::reset_connection_state(settings, session, scratchpad);
-    if is_error {
-        // Socket error does not emit Disconnected; only enqueues CloseSocket.
-        scratchpad.action_queue.push_back(DriverAction::CloseSocket);
-        (
-            ClientState::Disconnected(Disconnected),
-            Err(Error::ProtocolError),
-        )
-    } else {
-        scratchpad.read_queue.push_back(Event::Disconnected(None));
-        (ClientState::Disconnected(Disconnected), Ok(()))
+        Err(_) => {
+            queues::close_without_disconnect(settings, session, scratchpad, None);
+            (ClientState::Disconnected(Disconnected), Ok(()))
+        }
     }
 }
 
@@ -141,13 +120,14 @@ where
         } => false,
         // [MQTT-3.2.2-7] A CONNACK with a non-Success Reason Code means the
         // server has closed the Network Connection.
-        ConnAckKind::Other { .. } => {
-            limits::reset_negotiated_limits(settings, session, scratchpad);
-            scratchpad.action_queue.push_back(DriverAction::CloseSocket);
-            return (
-                ClientState::Disconnected(Disconnected),
-                Err(Error::ProtocolError),
+        ConnAckKind::Other { reason_code } => {
+            queues::close_without_disconnect(
+                settings,
+                session,
+                scratchpad,
+                Some(convert::connack_reason_to_protocol(reason_code)),
             );
+            return (ClientState::Disconnected(Disconnected), Ok(()));
         }
     };
 
@@ -248,6 +228,13 @@ where
         packet: ControlPacket,
         received_at: T,
     ) -> (ClientState, Result<(), Error>) {
+        if !self.has_open_socket() {
+            // No socket yet, so no packet can legitimately have arrived.
+            return (
+                ClientState::Connecting(self),
+                Err(Error::InvalidStateTransition),
+            );
+        }
         match packet {
             ControlPacket::ConnAck(connack) => {
                 on_connack(settings, session, scratchpad, connack, received_at)
@@ -291,27 +278,19 @@ where
         scratchpad: &mut ClientScratchpad<T>,
         evt: DriverEvent,
     ) -> (ClientState, Result<(), Error>) {
-        match evt {
-            DriverEvent::SocketConnected => {
-                if self.connect_sent {
-                    // CONNECT was already sent; a second SocketConnected is
-                    // invalid.
-                    (
-                        ClientState::Connecting(self),
-                        Err(Error::InvalidStateTransition),
-                    )
-                } else {
-                    // CONNECT not yet sent (transition came from
-                    // handle_write(Connect)); send CONNECT
-                    // now.
-                    on_socket_connected(settings, session, scratchpad)
-                }
+        match (self.phase, evt) {
+            (ConnectingPhase::AwaitingSocket, DriverEvent::SocketConnected) => {
+                on_socket_connected(settings, session, scratchpad)
             }
-            DriverEvent::SocketClosed => {
-                on_socket_closed_or_error(settings, session, scratchpad, false)
-            }
-            DriverEvent::SocketError => {
-                on_socket_closed_or_error(settings, session, scratchpad, true)
+            // The socket is already open: the protocol did not ask for
+            // another one.
+            (ConnectingPhase::AwaitingConnAck, DriverEvent::SocketConnected) => (
+                ClientState::Connecting(self),
+                Err(Error::InvalidStateTransition),
+            ),
+            // `OpenSocket` failed, or the open socket was lost before CONNACK.
+            (_, DriverEvent::SocketClosed | DriverEvent::SocketError) => {
+                on_socket_lost(settings, session, scratchpad)
             }
             _ => (
                 ClientState::Connecting(self),
@@ -322,19 +301,24 @@ where
 
     fn handle_timeout(
         self,
-        _settings: &ClientSettings,
-        _session: &mut ClientSession,
+        settings: &ClientSettings,
+        session: &mut ClientSession,
         scratchpad: &mut ClientScratchpad<T>,
         _now: T,
     ) -> (ClientState, Result<(), Error>) {
-        // [MQTT-3.1.4-5] A timeout in the Connecting state means the server did
-        // not respond with CONNACK within the caller-imposed deadline.
-        // Close the socket and signal the error.
-        scratchpad.action_queue.push_back(DriverAction::CloseSocket);
-        (
-            ClientState::Disconnected(Disconnected),
-            Err(Error::ConnectTimeout),
-        )
+        // The connection attempt did not complete within the caller-imposed
+        // deadline. "If the Client does not receive a CONNACK packet from the
+        // Server within a reasonable amount of time, the Client SHOULD close
+        // the Network Connection" (MQTT v5.0 §3.1.4).
+        match self.phase {
+            ConnectingPhase::AwaitingSocket => {
+                queues::abandon_socket_request(settings, session, scratchpad);
+            }
+            ConnectingPhase::AwaitingConnAck => {
+                queues::close_without_disconnect(settings, session, scratchpad, None);
+            }
+        }
+        (ClientState::Disconnected(Disconnected), Ok(()))
     }
 
     fn close(
@@ -343,7 +327,15 @@ where
         session: &mut ClientSession,
         scratchpad: &mut ClientScratchpad<T>,
     ) -> (ClientState, Result<(), Error>) {
-        queues::graceful_disconnect(settings, session, scratchpad);
+        match self.phase {
+            // Nothing has been sent, so there is nothing to DISCONNECT from.
+            ConnectingPhase::AwaitingSocket => {
+                queues::abandon_socket_request(settings, session, scratchpad);
+            }
+            ConnectingPhase::AwaitingConnAck => {
+                queues::graceful_disconnect(settings, session, scratchpad);
+            }
+        }
         (ClientState::Disconnected(Disconnected), Ok(()))
     }
 }

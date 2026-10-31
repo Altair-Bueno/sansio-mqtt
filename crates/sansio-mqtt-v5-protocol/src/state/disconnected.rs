@@ -3,14 +3,17 @@ use crate::scratchpad::ClientScratchpad;
 use crate::session::ClientSession;
 use crate::state::ClientState;
 use crate::state::StateHandler;
+use crate::state::start::idle;
 use sansio_mqtt_protocol::Command;
-use sansio_mqtt_protocol::DriverAction;
 use sansio_mqtt_protocol::DriverEvent;
 use sansio_mqtt_protocol::Error;
 use sansio_mqtt_protocol::Time;
 use sansio_mqtt_v5_types::ControlPacket;
 
 /// No live connection; a `Connect` write can start a new one.
+///
+/// Reached after every teardown. A `CloseSocket` queued on the way here may
+/// still be pending in the action queue.
 #[derive(Debug)]
 pub(crate) struct Disconnected;
 
@@ -26,7 +29,11 @@ where
         _packet: ControlPacket,
         _received_at: T,
     ) -> (ClientState, Result<(), Error>) {
-        (ClientState::Disconnected(self), Err(Error::ProtocolError))
+        // No socket is open, so no packet can legitimately have arrived.
+        (
+            ClientState::Disconnected(self),
+            Err(Error::InvalidStateTransition),
+        )
     }
 
     fn handle_write(
@@ -36,48 +43,23 @@ where
         scratchpad: &mut ClientScratchpad<T>,
         msg: Command,
     ) -> (ClientState, Result<(), Error>) {
-        match msg {
-            Command::Connect(options) => {
-                crate::state::start::store_connect_options_and_enqueue_open_socket(
-                    settings, session, scratchpad, options,
-                );
-                (ClientState::Disconnected(self), Ok(()))
-            }
-            _ => (
-                ClientState::Disconnected(self),
-                Err(Error::InvalidStateTransition),
-            ),
-        }
+        idle::handle_write(
+            ClientState::Disconnected(self),
+            settings,
+            session,
+            scratchpad,
+            msg,
+        )
     }
 
     fn handle_event(
         self,
-        settings: &ClientSettings,
-        session: &mut ClientSession,
-        scratchpad: &mut ClientScratchpad<T>,
+        _settings: &ClientSettings,
+        _session: &mut ClientSession,
+        _scratchpad: &mut ClientScratchpad<T>,
         evt: DriverEvent,
     ) -> (ClientState, Result<(), Error>) {
-        match evt {
-            DriverEvent::SocketConnected => {
-                // Reconnect with the options stored before the disconnection.
-                crate::state::connecting::on_socket_connected(settings, session, scratchpad)
-            }
-            DriverEvent::SocketClosed => {
-                // Socket closed while already disconnected; no duplicate
-                // Disconnected event.
-                (ClientState::Disconnected(self), Ok(()))
-            }
-            DriverEvent::SocketError => {
-                // Socket error while already disconnected; enqueue CloseSocket
-                // only.
-                scratchpad.action_queue.push_back(DriverAction::CloseSocket);
-                (ClientState::Disconnected(self), Err(Error::ProtocolError))
-            }
-            _ => (
-                ClientState::Disconnected(self),
-                Err(Error::InvalidStateTransition),
-            ),
-        }
+        idle::handle_event(ClientState::Disconnected(self), evt)
     }
 
     fn handle_timeout(

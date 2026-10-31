@@ -19,6 +19,7 @@ use sansio_mqtt_protocol::Time;
 use sansio_mqtt_v5_types::ControlPacket;
 use sansio_mqtt_v5_types::DisconnectReasonCode;
 use sansio_mqtt_v5_types::ParserSettings;
+use sansio_mqtt_v5_types::variable_byte_integer;
 use winnow::Parser;
 use winnow::error::ErrMode;
 use winnow::stream::Partial;
@@ -35,9 +36,16 @@ pub struct ClientSettings {
     /// Receive Maximum advertised in CONNECT
     /// ([MQTT-3.1.2-23]).
     pub receive_maximum: Option<NonZero<u16>>,
-    /// Maximum Packet Size advertised in CONNECT
-    /// ([MQTT-3.1.2-25]); also bounds the inbound parser's Remaining Length.
-    pub maximum_packet_size: Option<NonZero<u32>>,
+    /// Maximum Packet Size, counting the whole packet, that the client
+    /// accepts from the server.
+    ///
+    /// Always advertised in CONNECT and enforced on every inbound packet, so
+    /// a compliant server never sends a packet the client cannot process
+    /// [MQTT-3.1.2-24]. A larger packet is answered with DISCONNECT 0x95
+    /// (Packet too large). Defaults to
+    /// [`DEFAULT_MAXIMUM_PACKET_SIZE`](Self::DEFAULT_MAXIMUM_PACKET_SIZE).
+    #[builder(default = ClientSettings::DEFAULT_MAXIMUM_PACKET_SIZE)]
+    pub maximum_packet_size: NonZero<u32>,
     /// Topic Alias Maximum advertised in CONNECT, bounding the Topic Aliases
     /// the client will accept from the server.
     pub topic_alias_maximum: Option<u16>,
@@ -54,46 +62,39 @@ pub struct ClientSettings {
     /// server-advertised Maximum QoS is still enforced regardless.
     pub max_outgoing_qos: Option<Qos>,
     /// Whether outbound PUBLISH may set the RETAIN flag.
-    #[builder(default)]
+    #[builder(default = true)]
     pub allow_retain: bool,
     /// Whether outbound SUBSCRIBE may use wildcard Topic Filters.
-    #[builder(default)]
+    #[builder(default = true)]
     pub allow_wildcard_subscriptions: bool,
     /// Whether outbound SUBSCRIBE may use `$share/` Topic Filters.
-    #[builder(default)]
+    #[builder(default = true)]
     pub allow_shared_subscriptions: bool,
     /// Whether outbound SUBSCRIBE may carry a Subscription Identifier.
-    #[builder(default)]
+    #[builder(default = true)]
     pub allow_subscription_identifiers: bool,
     /// Maximum number of User Property entries accepted in any inbound
     /// property section.
+    #[builder(default = 32)]
     pub max_user_properties: usize,
     /// Maximum number of Subscription Identifiers accepted in a single
     /// inbound PUBLISH.
+    #[builder(default = 32)]
     pub max_subscription_identifiers: usize,
     /// Maximum number of Topic Filters accepted in a single inbound
     /// SUBSCRIBE.
+    #[builder(default = 32)]
     pub max_subscriptions: u32,
+}
+
+impl ClientSettings {
+    /// Default [`maximum_packet_size`](Self::maximum_packet_size): 1 MiB.
+    pub const DEFAULT_MAXIMUM_PACKET_SIZE: NonZero<u32> = NonZero::new(1024 * 1024).unwrap();
 }
 
 impl Default for ClientSettings {
     fn default() -> Self {
-        Self {
-            receive_maximum: None,
-            maximum_packet_size: None,
-            topic_alias_maximum: None,
-            request_response_information: None,
-            request_problem_information: None,
-            keep_alive: None,
-            max_outgoing_qos: None,
-            allow_retain: true,
-            allow_wildcard_subscriptions: true,
-            allow_shared_subscriptions: true,
-            allow_subscription_identifiers: true,
-            max_user_properties: 32,
-            max_subscription_identifiers: 32,
-            max_subscriptions: 32,
-        }
+        Self::builder().build()
     }
 }
 
@@ -141,7 +142,9 @@ impl<T> Client<T> {
         ParserSettings::builder()
             .max_bytes_string(u16::MAX)
             .max_bytes_binary_data(u16::MAX)
-            .max_remaining_bytes(self.scratchpad.effective_client_max_remaining_bytes)
+            // Remaining Length never exceeds the whole packet size; the exact
+            // check is `exceeds_maximum_packet_size`.
+            .max_remaining_bytes(u64::from(self.settings.maximum_packet_size.get()))
             .max_subscriptions_len(self.settings.max_subscriptions)
             .max_user_properties_len(self.settings.max_user_properties)
             .max_subscription_identifiers_len(self.settings.max_subscription_identifiers)
@@ -178,11 +181,26 @@ where
     /// how many bytes were consumed.
     ///
     /// A trailing partial packet is left unconsumed for the caller to retain.
+    /// Parsing stops as soon as a packet tears the connection down: whatever
+    /// follows belonged to the closed connection.
     fn consume_packets(&mut self, bytes: &[u8], received_at: T) -> Result<usize, Error> {
         let parser_settings = self.parser_settings();
         let mut slice: &[u8] = bytes;
 
-        while !slice.is_empty() {
+        while !slice.is_empty() && self.state.has_open_socket() {
+            match self.exceeds_maximum_packet_size(slice) {
+                None => break,
+                Some(true) => {
+                    // MQTT v5.0 §3.1.2.11.4: a packet over the Client's
+                    // Maximum Packet Size is a Protocol Error answered with
+                    // DISCONNECT 0x95. Rejected from the fixed header alone,
+                    // before the body is buffered.
+                    self.fail_connection(DisconnectReasonCode::PacketTooLarge)?;
+                    break;
+                }
+                Some(false) => {}
+            }
+
             let mut input = Partial::new(slice);
 
             match ControlPacket::parser::<_, ErrMode<()>, ErrMode<()>>(&parser_settings)
@@ -196,26 +214,48 @@ where
                 }
                 Err(ErrMode::Incomplete(_)) => break,
                 Err(ErrMode::Backtrack(_) | ErrMode::Cut(_)) => {
-                    // [MQTT-4.13.1-1] Malformed Control Packet is a protocol
-                    // error and requires disconnect.
-                    let _ = self.dispatch(|_s, set, ses, sp| {
-                        queues::disconnect_and_reset(
-                            set,
-                            ses,
-                            sp,
-                            DisconnectReasonCode::MalformedPacket,
-                        );
-                        (
-                            ClientState::Disconnected(crate::state::Disconnected),
-                            Err(Error::MalformedPacket),
-                        )
-                    });
-                    return Err(Error::MalformedPacket);
+                    // [MQTT-4.13.1-1] Malformed Control Packet requires
+                    // DISCONNECT with Reason Code 0x81 and closing the Network
+                    // Connection.
+                    self.fail_connection(DisconnectReasonCode::MalformedPacket)?;
+                    break;
                 }
             }
         }
 
         Ok(bytes.len() - slice.len())
+    }
+
+    /// Checks the fixed header at the start of `bytes` against the Maximum
+    /// Packet Size, which counts the whole packet, fixed header included.
+    ///
+    /// Returns `None` while the fixed header is incomplete. A malformed
+    /// Remaining Length is reported as `Some(false)` and left to the packet
+    /// parser to reject.
+    fn exceeds_maximum_packet_size(&self, bytes: &[u8]) -> Option<bool> {
+        let mut input = Partial::new(bytes.get(1..)?);
+        let before = input.len();
+        let remaining_length = match variable_byte_integer::<_, ErrMode<()>>(&mut input) {
+            Ok(remaining_length) => remaining_length,
+            Err(ErrMode::Incomplete(_)) => return None,
+            Err(ErrMode::Backtrack(()) | ErrMode::Cut(())) => return Some(false),
+        };
+        let fixed_header_len = 1 + (before - input.len()) as u64;
+
+        Some(
+            fixed_header_len + remaining_length
+                > u64::from(self.settings.maximum_packet_size.get()),
+        )
+    }
+
+    fn fail_connection(&mut self, reason: DisconnectReasonCode) -> Result<(), Error> {
+        self.dispatch(|_s, set, ses, sp| {
+            let _ = queues::fail_connection(set, ses, sp, reason);
+            (
+                ClientState::Disconnected(crate::state::Disconnected),
+                Ok(()),
+            )
+        })
     }
 }
 
@@ -231,23 +271,34 @@ where
 
     #[tracing::instrument(skip_all)]
     fn handle_read(&mut self, msg: IncomingData<'bytes, T>) -> Result<(), Self::Error> {
+        // Bytes can only come from a socket the driver reported connected and
+        // the protocol has not closed since.
+        if !self.state.has_open_socket() {
+            return Err(Error::InvalidStateTransition);
+        }
+
         let received_at = msg.received_at;
 
         if self.scratchpad.read_buffer.is_empty() {
             // Nothing pending: parse straight out of the driver's buffer so the
             // common case of whole packets per read copies nothing.
             let consumed = self.consume_packets(msg.bytes, received_at)?;
-            self.scratchpad
-                .read_buffer
-                .extend_from_slice(&msg.bytes[consumed..]);
+            if self.state.has_open_socket() {
+                self.scratchpad
+                    .read_buffer
+                    .extend_from_slice(&msg.bytes[consumed..]);
+            }
         } else {
             self.scratchpad.read_buffer.extend_from_slice(msg.bytes);
             let mut buffer = core::mem::take(&mut self.scratchpad.read_buffer);
             let consumed = self.consume_packets(&buffer, received_at)?;
-            // Drop the consumed prefix by moving the start pointer; the leading
-            // capacity is reclaimed by the next `extend_from_slice`.
-            buffer.advance(consumed);
-            self.scratchpad.read_buffer = buffer;
+            if self.state.has_open_socket() {
+                // Drop the consumed prefix by moving the start pointer; the
+                // leading capacity is reclaimed by the next
+                // `extend_from_slice`.
+                buffer.advance(consumed);
+                self.scratchpad.read_buffer = buffer;
+            }
         }
 
         Ok(())

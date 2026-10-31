@@ -2,6 +2,7 @@ use crate::client::ClientSettings;
 use crate::convert;
 use crate::limits;
 use crate::queues;
+use crate::queues::ConnectionFailed;
 use crate::scratchpad::ClientScratchpad;
 use crate::session::ClientSession;
 use crate::session::InboundInflightState;
@@ -10,7 +11,9 @@ use crate::session_ops;
 use crate::state::ClientState;
 use crate::state::StateHandler;
 use crate::state::disconnected::Disconnected;
+use crate::state::fail_with;
 use crate::state::fail_with_protocol_error;
+use crate::state::on_socket_lost;
 use core::num::NonZero;
 use sansio_mqtt_protocol::Command;
 use sansio_mqtt_protocol::DriverAction;
@@ -37,16 +40,32 @@ use sansio_mqtt_v5_types::Unsubscribe;
 #[derive(Debug)]
 pub(crate) struct Connected;
 
-/// Applies the uniform `Connected` transition rule to a fallible operation.
+/// Applies the uniform `Connected` transition rule to an operation that may
+/// fail the connection.
 ///
-/// Every failure path in this state has already torn the connection down via
-/// [`queues::disconnect_and_reset`], so an error always means the FSM has moved
-/// to `Disconnected`.
-fn stay_or_disconnect(result: Result<(), Error>) -> (ClientState, Result<(), Error>) {
+/// A [`ConnectionFailed`] means the connection has already been torn down and
+/// reported via [`queues::fail_connection`], so the FSM moves to
+/// `Disconnected`. The failure is handled, not a rejected input: `Ok(())`.
+fn stay_or_disconnect(result: Result<(), ConnectionFailed>) -> (ClientState, Result<(), Error>) {
     match result {
         Ok(()) => (ClientState::Connected(Connected), Ok(())),
-        Err(err) => (ClientState::Disconnected(Disconnected), Err(err)),
+        Err(ConnectionFailed) => (ClientState::Disconnected(Disconnected), Ok(())),
     }
+}
+
+/// Runs `op`, restoring the Packet Identifier counter if it fails, so a
+/// rejected command leaves the session exactly as it found it.
+fn without_side_effects_on_error<T>(
+    session: &mut ClientSession,
+    scratchpad: &mut ClientScratchpad<T>,
+    op: impl FnOnce(&mut ClientSession, &mut ClientScratchpad<T>) -> Result<(), Error>,
+) -> Result<(), Error> {
+    let next_packet_id = session.next_packet_id;
+    let result = op(session, scratchpad);
+    if result.is_err() {
+        session.next_packet_id = next_packet_id;
+    }
+    result
 }
 
 /// Which outbound QoS2 stage `packet_id` is in, plus the correlation token
@@ -82,7 +101,7 @@ fn handle_inbound_qos1_publish<T>(
     scratchpad: &mut ClientScratchpad<T>,
     packet_id: NonZero<u16>,
     publish: Publish,
-) -> Result<(), Error> {
+) -> Result<(), ConnectionFailed> {
     match session.on_flight_received.get(&packet_id).copied() {
         None => {
             scratchpad
@@ -101,15 +120,12 @@ fn handle_inbound_qos1_publish<T>(
             InboundInflightState::Qos2AwaitAppDecision
             | InboundInflightState::Qos2AwaitPubRel
             | InboundInflightState::Qos2Rejected(_),
-        ) => {
-            queues::disconnect_and_reset(
-                settings,
-                session,
-                scratchpad,
-                DisconnectReasonCode::ProtocolError,
-            );
-            Err(Error::ProtocolError)
-        }
+        ) => Err(queues::fail_connection(
+            settings,
+            session,
+            scratchpad,
+            DisconnectReasonCode::ProtocolError,
+        )),
     }
 }
 
@@ -119,7 +135,7 @@ fn handle_inbound_qos2_publish<T>(
     scratchpad: &mut ClientScratchpad<T>,
     packet_id: NonZero<u16>,
     publish: Publish,
-) -> Result<(), Error> {
+) -> Result<(), ConnectionFailed> {
     match session.on_flight_received.get(&packet_id).copied() {
         Some(InboundInflightState::Qos2AwaitPubRel) => queues::enqueue_ack_or_fail_protocol(
             settings,
@@ -136,15 +152,12 @@ fn handle_inbound_qos2_publish<T>(
                 &queues::pubrec(packet_id, reason_code),
             )
         }
-        Some(InboundInflightState::Qos1AwaitAppDecision) => {
-            queues::disconnect_and_reset(
-                settings,
-                session,
-                scratchpad,
-                DisconnectReasonCode::ProtocolError,
-            );
-            Err(Error::ProtocolError)
-        }
+        Some(InboundInflightState::Qos1AwaitAppDecision) => Err(queues::fail_connection(
+            settings,
+            session,
+            scratchpad,
+            DisconnectReasonCode::ProtocolError,
+        )),
         None => {
             scratchpad
                 .read_queue
@@ -290,10 +303,10 @@ where
     ) -> (ClientState, Result<(), Error>) {
         match packet {
             ControlPacket::Publish(mut publish) => {
-                if limits::apply_inbound_publish_topic_alias(session, scratchpad, &mut publish)
-                    .is_err()
+                if let Err(reason) =
+                    limits::apply_inbound_publish_topic_alias(session, scratchpad, &mut publish)
                 {
-                    return fail_with_protocol_error(settings, session, scratchpad);
+                    return fail_with(settings, session, scratchpad, reason);
                 }
 
                 match publish.kind {
@@ -508,40 +521,26 @@ where
                 Err(Error::InvalidStateTransition),
             ),
             Command::Publish { token, message } => {
-                if let Err(e) = limits::validate_outbound_publish_capabilities(scratchpad, &message)
-                {
-                    return (ClientState::Connected(self), Err(e));
-                }
-
-                if matches!(
-                    message.qos,
-                    ProtocolQos::AtLeastOnce | ProtocolQos::ExactlyOnce
-                ) {
-                    // [MQTT-4.9.0-1] Apply peer Receive Maximum before sending
-                    // QoS1/QoS2 PUBLISH.
-                    if let Err(e) =
-                        limits::ensure_outbound_receive_maximum_capacity(session, scratchpad)
-                    {
-                        return (ClientState::Connected(self), Err(e));
-                    }
-                }
-
-                let (publish, inflight_state) =
-                    match build_outbound_publish(token, message, session) {
-                        Ok(v) => v,
-                        Err(e) => return (ClientState::Connected(self), Err(e)),
-                    };
-
-                if let Err(e) = queues::enqueue_packet(scratchpad, &ControlPacket::Publish(publish))
-                {
-                    return (ClientState::Connected(self), Err(e));
-                }
-
-                if let Some((packet_id, inflight_state)) = inflight_state {
-                    session.on_flight_sent.insert(packet_id, inflight_state);
-                }
-
-                (ClientState::Connected(self), Ok(()))
+                let result =
+                    without_side_effects_on_error(session, scratchpad, |session, scratchpad| {
+                        limits::validate_outbound_publish_capabilities(scratchpad, &message)?;
+                        if matches!(
+                            message.qos,
+                            ProtocolQos::AtLeastOnce | ProtocolQos::ExactlyOnce
+                        ) {
+                            // [MQTT-4.9.0-1] Apply peer Receive Maximum before
+                            // sending QoS1/QoS2 PUBLISH.
+                            limits::ensure_outbound_receive_maximum_capacity(session, scratchpad)?;
+                        }
+                        let (publish, inflight_state) =
+                            build_outbound_publish(token, message, session)?;
+                        queues::enqueue_packet(scratchpad, &ControlPacket::Publish(publish))?;
+                        if let Some((packet_id, inflight_state)) = inflight_state {
+                            session.on_flight_sent.insert(packet_id, inflight_state);
+                        }
+                        Ok(())
+                    });
+                (ClientState::Connected(self), result)
             }
             Command::Acknowledge(message_id) => respond_to_inbound_publish(
                 settings,
@@ -565,68 +564,49 @@ where
                 )
             }
             Command::Subscribe(options) => {
-                if let Err(e) = limits::validate_outbound_subscribe(scratchpad, &options) {
-                    return (ClientState::Connected(self), Err(e));
-                }
-
-                let (subscription, extra_subscriptions, properties) =
-                    match convert::subscribe_options_to_wire(options) {
-                        Ok(v) => v,
-                        Err(e) => return (ClientState::Connected(self), Err(e)),
-                    };
-
-                let packet_id = match session_ops::next_packet_id_checked(session) {
-                    Ok(id) => id,
-                    Err(e) => return (ClientState::Connected(self), Err(e)),
-                };
-
-                match queues::enqueue_packet(
-                    scratchpad,
-                    &ControlPacket::Subscribe(
-                        Subscribe::builder()
-                            .packet_id(packet_id)
-                            .subscription(subscription)
-                            .extra_subscriptions(extra_subscriptions)
-                            .properties(properties)
-                            .build(),
-                    ),
-                ) {
-                    Ok(()) => {
+                let result =
+                    without_side_effects_on_error(session, scratchpad, |session, scratchpad| {
+                        limits::validate_outbound_subscribe(scratchpad, &options)?;
+                        let (subscription, extra_subscriptions, properties) =
+                            convert::subscribe_options_to_wire(options)?;
+                        let packet_id = session_ops::next_packet_id_checked(session)?;
+                        queues::enqueue_packet(
+                            scratchpad,
+                            &ControlPacket::Subscribe(
+                                Subscribe::builder()
+                                    .packet_id(packet_id)
+                                    .subscription(subscription)
+                                    .extra_subscriptions(extra_subscriptions)
+                                    .properties(properties)
+                                    .build(),
+                            ),
+                        )?;
                         session.pending_subscribe.insert(packet_id);
-                        (ClientState::Connected(self), Ok(()))
-                    }
-                    Err(e) => (ClientState::Connected(self), Err(e)),
-                }
+                        Ok(())
+                    });
+                (ClientState::Connected(self), result)
             }
             Command::Unsubscribe(options) => {
-                let (filter, extra_filters, properties) =
-                    match convert::unsubscribe_options_to_wire(options) {
-                        Ok(v) => v,
-                        Err(e) => return (ClientState::Connected(self), Err(e)),
-                    };
-
-                let packet_id = match session_ops::next_packet_id_checked(session) {
-                    Ok(id) => id,
-                    Err(e) => return (ClientState::Connected(self), Err(e)),
-                };
-
-                match queues::enqueue_packet(
-                    scratchpad,
-                    &ControlPacket::Unsubscribe(
-                        Unsubscribe::builder()
-                            .packet_id(packet_id)
-                            .properties(properties)
-                            .filter(filter)
-                            .extra_filters(extra_filters)
-                            .build(),
-                    ),
-                ) {
-                    Ok(()) => {
+                let result =
+                    without_side_effects_on_error(session, scratchpad, |session, scratchpad| {
+                        let (filter, extra_filters, properties) =
+                            convert::unsubscribe_options_to_wire(options)?;
+                        let packet_id = session_ops::next_packet_id_checked(session)?;
+                        queues::enqueue_packet(
+                            scratchpad,
+                            &ControlPacket::Unsubscribe(
+                                Unsubscribe::builder()
+                                    .packet_id(packet_id)
+                                    .properties(properties)
+                                    .filter(filter)
+                                    .extra_filters(extra_filters)
+                                    .build(),
+                            ),
+                        )?;
                         session.pending_unsubscribe.insert(packet_id);
-                        (ClientState::Connected(self), Ok(()))
-                    }
-                    Err(e) => (ClientState::Connected(self), Err(e)),
-                }
+                        Ok(())
+                    });
+                (ClientState::Connected(self), result)
             }
             // A user-requested disconnect is the same teardown as `close`.
             Command::Disconnect => self.close(settings, session, scratchpad),
@@ -649,18 +629,10 @@ where
                 ClientState::Connected(self),
                 Err(Error::InvalidStateTransition),
             ),
-            DriverEvent::SocketClosed => {
-                queues::reset_connection_state(settings, session, scratchpad);
-                scratchpad.read_queue.push_back(Event::Disconnected(None));
-                (ClientState::Disconnected(Disconnected), Ok(()))
-            }
-            DriverEvent::SocketError => {
-                queues::reset_connection_state(settings, session, scratchpad);
-                scratchpad.action_queue.push_back(DriverAction::CloseSocket);
-                (
-                    ClientState::Disconnected(Disconnected),
-                    Err(Error::ProtocolError),
-                )
+            // The driver already dropped the socket: report the loss, but do
+            // not ask it to close the socket again.
+            DriverEvent::SocketClosed | DriverEvent::SocketError => {
+                on_socket_lost(settings, session, scratchpad)
             }
             _ => (
                 ClientState::Connected(self),
@@ -687,16 +659,13 @@ where
             // after sending PINGREQ, so we have now waited a total
             // of 1.5× the keep-alive interval since the last packet
             // was received.
-            queues::disconnect_and_reset(
+            let _ = queues::fail_connection(
                 settings,
                 session,
                 scratchpad,
                 DisconnectReasonCode::KeepAliveTimeout,
             );
-            return (
-                ClientState::Disconnected(Disconnected),
-                Err(Error::ProtocolError),
-            );
+            return (ClientState::Disconnected(Disconnected), Ok(()));
         }
 
         if scratchpad.keep_alive_saw_network_activity {
@@ -725,7 +694,10 @@ where
                 scratchpad.arm_keep_alive_deadline(now, u64::from(half_interval));
                 (ClientState::Connected(self), Ok(()))
             }
-            Err(e) => (ClientState::Connected(self), Err(e)),
+            // A 2-byte PINGREQ only fails to fit if the server advertised a
+            // Maximum Packet Size too small for any MQTT packet. Keep-alive
+            // can then never be honoured, so the connection cannot continue.
+            Err(_) => fail_with_protocol_error(settings, session, scratchpad),
         }
     }
 

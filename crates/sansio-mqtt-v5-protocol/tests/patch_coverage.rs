@@ -226,7 +226,7 @@ fn acknowledgement_exceeding_broker_maximum_packet_size_fails_the_connection() {
 
     assert_eq!(
         client.handle_write(Command::Acknowledge(id)),
-        Err(Error::ProtocolError),
+        Ok(()),
         "an unsendable PUBACK leaves the QoS1 exchange unresolvable"
     );
     assert!(matches!(
@@ -348,7 +348,7 @@ fn qos1_publish_reusing_a_qos2_packet_id_is_a_protocol_error() {
             &mut client,
             &inbound_publish(packet_id(1), GuaranteedQoS::AtLeastOnce),
         ),
-        Err(Error::ProtocolError)
+        Ok(())
     );
 }
 
@@ -371,7 +371,7 @@ fn qos2_publish_reusing_a_qos1_packet_id_is_a_protocol_error() {
             &mut client,
             &inbound_publish(packet_id(1), GuaranteedQoS::ExactlyOnce),
         ),
-        Err(Error::ProtocolError)
+        Ok(())
     );
 }
 
@@ -396,7 +396,7 @@ fn pubrel_before_the_application_decides_is_a_protocol_error() {
             .reason_code(PubRelReasonCode::Success)
             .build(),
     );
-    assert_eq!(read(&mut client, &pubrel), Err(Error::ProtocolError));
+    assert_eq!(read(&mut client, &pubrel), Ok(()));
 }
 
 /// A packet the client must never receive from a server is a protocol error.
@@ -406,7 +406,7 @@ fn server_bound_packet_received_while_connected_is_a_protocol_error() {
 
     assert_eq!(
         read(&mut client, &ControlPacket::PingReq(PingReq {})),
-        Err(Error::ProtocolError)
+        Ok(())
     );
 }
 
@@ -425,18 +425,17 @@ fn socket_connected_while_already_connected_is_an_invalid_state_transition() {
     );
 }
 
-/// A socket error while Connected resets state and asks the driver to close.
+/// A socket error while Connected resets state and reports the loss; the
+/// driver already dropped the socket, so no `CloseSocket` is requested.
 #[test]
-fn socket_error_while_connected_resets_and_closes() {
+fn socket_error_while_connected_resets_and_reports_disconnected() {
     let mut client = connected_client(ConnAckProperties::default());
 
-    assert_eq!(
-        client.handle_event(DriverEvent::SocketError),
-        Err(Error::ProtocolError)
-    );
+    assert_eq!(client.handle_event(DriverEvent::SocketError), Ok(()));
+    assert!(client.poll_event().is_none());
     assert!(matches!(
-        client.poll_event(),
-        Some(DriverAction::CloseSocket)
+        client.poll_read(),
+        Some(Event::Disconnected(None))
     ));
 }
 
@@ -471,6 +470,14 @@ fn resumed_session_replays_qos2_publish_awaiting_pubrec() {
         Some(Event::Disconnected(None))
     ));
 
+    assert_eq!(
+        client.handle_write(Command::Connect(connect_options())),
+        Ok(())
+    );
+    assert!(matches!(
+        client.poll_event(),
+        Some(DriverAction::OpenSocket)
+    ));
     assert_eq!(client.handle_event(DriverEvent::SocketConnected), Ok(()));
     assert!(client.poll_write().is_some(), "CONNECT should be queued");
     assert_eq!(
@@ -558,14 +565,14 @@ fn shared_subscription_with_no_local_is_rejected() {
         client.handle_write(Command::Subscribe(
             SubscribeOptions::builder().subscriptions(vec![sub]).build(),
         )),
-        Err(Error::ProtocolError)
+        Err(Error::NoLocalOnSharedSubscription)
     );
 }
 
-/// A Will whose message expiry cannot fit in the wire format fails CONNECT
-/// construction and leaves the client in Connecting, able to retry.
+/// A Will whose message expiry cannot fit in the wire format is rejected at
+/// `Command::Connect`: no socket is requested and a valid retry still works.
 #[test]
-fn unencodable_will_fails_connect_and_allows_a_retry() {
+fn unencodable_will_rejects_connect_and_allows_a_retry() {
     let mut client = Client::<Duration>::new(ClientSettings::default());
 
     let will = ProtoWill::builder()
@@ -578,23 +585,23 @@ fn unencodable_will_fails_connect_and_allows_a_retry() {
         .will(will)
         .build();
 
-    assert_eq!(client.handle_write(Command::Connect(options)), Ok(()));
+    assert_eq!(
+        client.handle_write(Command::Connect(options)),
+        Err(Error::IntervalTooLong),
+        "a Will that cannot be encoded must reject the Connect"
+    );
+    assert!(
+        client.poll_event().is_none(),
+        "no socket should be requested"
+    );
+    assert!(client.poll_write().is_none(), "no CONNECT should be queued");
+
+    assert_eq!(
+        client.handle_write(Command::Connect(connect_options())),
+        Ok(())
+    );
     assert!(matches!(
         client.poll_event(),
         Some(DriverAction::OpenSocket)
     ));
-
-    assert_eq!(
-        client.handle_event(DriverEvent::SocketConnected),
-        Err(Error::ProtocolError),
-        "a Will that cannot be encoded must fail the CONNECT"
-    );
-    assert!(client.poll_write().is_none(), "no CONNECT should be queued");
-
-    // Still Connecting with connect_sent = false, so a retry re-attempts
-    // CONNECT.
-    assert_eq!(
-        client.handle_event(DriverEvent::SocketConnected),
-        Err(Error::ProtocolError)
-    );
 }
