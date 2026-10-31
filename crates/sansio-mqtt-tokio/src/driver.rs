@@ -237,11 +237,16 @@ where
             }
             Input::Connected(Ok(socket)) => {
                 tracing::debug!("socket connected");
-                self.connection = Connection::Open(socket);
-                log_client_error(
-                    self.client.handle_event(DriverEvent::SocketConnected),
-                    "socket connected",
-                );
+                match self.client.handle_event(DriverEvent::SocketConnected) {
+                    Ok(()) => self.connection = Connection::Open(socket),
+                    Err(error) => {
+                        // The client did not want this socket, so it will
+                        // never ask to close it: shut it down here, and do
+                        // not report its closing, which nobody asked for.
+                        tracing::warn!(%error, "client rejected the connected socket, closing it");
+                        self.connection = Connection::Closing(socket);
+                    }
+                }
             }
             Input::Connected(Err(error)) => {
                 tracing::warn!(%error, "failed to open socket");
