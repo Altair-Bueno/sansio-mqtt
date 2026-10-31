@@ -853,10 +853,9 @@ fn publish_parser_rejects_subscription_identifiers_exceeding_bound() {
         11, 1, // SubscriptionIdentifier = 1
         116, 101, 115, 116, // Payload ("test")
     ];
-    let settings = ParserSettings {
-        max_subscription_identifiers_len: 2,
-        ..ParserSettings::default()
-    };
+    let settings = ParserSettings::builder()
+        .max_subscription_identifiers_len(2)
+        .build();
     ControlPacket::parser::<_, ContextError, ContextError>(&settings)
         .parse(&bytes[..])
         .unwrap_err();

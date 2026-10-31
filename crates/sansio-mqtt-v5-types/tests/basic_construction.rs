@@ -144,3 +144,23 @@ fn topic_boundary_lengths() {
     assert_eq!(topic_inner.as_bytes().len(), u16::MAX as usize);
     assert!(Topic::try_new(max_plus_one).is_err());
 }
+
+/// `Default` and an empty builder are the same settings, so overriding one
+/// limit through the builder never silently changes the others.
+#[test]
+fn parser_settings_builder_defaults_match_default() {
+    use sansio_mqtt_v5_types::ParserSettings;
+
+    let defaults = ParserSettings::default();
+    assert_eq!(ParserSettings::builder().build(), defaults);
+    assert_eq!(defaults.max_bytes_string, 5 * 1024);
+    assert_eq!(defaults.max_bytes_binary_data, 5 * 1024);
+    assert_eq!(defaults.max_remaining_bytes, 1024 * 1024);
+    assert_eq!(defaults.max_subscriptions_len, 32);
+    assert_eq!(defaults.max_user_properties_len, 32);
+    assert_eq!(defaults.max_subscription_identifiers_len, 32);
+
+    let lowered = ParserSettings::builder().max_user_properties_len(1).build();
+    assert_eq!(lowered.max_user_properties_len, 1);
+    assert_eq!(lowered.max_remaining_bytes, defaults.max_remaining_bytes);
+}

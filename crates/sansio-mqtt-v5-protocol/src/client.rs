@@ -138,14 +138,14 @@ impl<T> Client<T> {
     /// [`ClientSettings::maximum_packet_size`], and the counters come
     /// straight from [`ClientSettings`].
     fn parser_settings(&self) -> ParserSettings {
-        ParserSettings {
-            max_bytes_string: u16::MAX,
-            max_bytes_binary_data: u16::MAX,
-            max_remaining_bytes: self.scratchpad.effective_client_max_remaining_bytes,
-            max_subscriptions_len: self.settings.max_subscriptions,
-            max_user_properties_len: self.settings.max_user_properties,
-            max_subscription_identifiers_len: self.settings.max_subscription_identifiers,
-        }
+        ParserSettings::builder()
+            .max_bytes_string(u16::MAX)
+            .max_bytes_binary_data(u16::MAX)
+            .max_remaining_bytes(self.scratchpad.effective_client_max_remaining_bytes)
+            .max_subscriptions_len(self.settings.max_subscriptions)
+            .max_user_properties_len(self.settings.max_user_properties)
+            .max_subscription_identifiers_len(self.settings.max_subscription_identifiers)
+            .build()
     }
 
     #[inline(always)]

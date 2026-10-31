@@ -7,7 +7,7 @@ use winnow::error::ContextError;
 use winnow::Parser;
 
 fuzz_target!(|data: &[u8]| {
-    let settings = ParserSettings::new();
+    let settings = ParserSettings::default();
     let mut input = data;
     let _ =
         ControlPacket::parser::<_, ContextError, ContextError>(&settings).parse_next(&mut input);

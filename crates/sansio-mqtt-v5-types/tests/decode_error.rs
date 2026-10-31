@@ -155,10 +155,7 @@ fn exceeding_a_parser_limit_is_implementation_specific() {
         16, 27, 0, 4, 77, 81, 84, 84, 5, 2, 0, 60, 14, 38, 0, 1, 97, 0, 1, 98, 38, 0, 1, 99, 0, 1,
         100, 0, 0,
     ];
-    let settings = ParserSettings {
-        max_user_properties_len: 1,
-        ..ParserSettings::default()
-    };
+    let settings = ParserSettings::builder().max_user_properties_len(1).build();
 
     let error = decode_err_with(bytes, &settings);
 
