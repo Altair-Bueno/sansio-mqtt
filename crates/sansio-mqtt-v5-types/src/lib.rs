@@ -17,4 +17,5 @@ pub use encoder::EncodeError;
 pub use parser::BytesSource;
 pub use parser::DecodeError;
 pub use parser::ParserSettings;
+pub use parser::variable_byte_integer;
 pub use types::*;

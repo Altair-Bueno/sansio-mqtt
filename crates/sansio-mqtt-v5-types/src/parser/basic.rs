@@ -26,6 +26,15 @@ where
         .context(StrContext::Label("variable_byte_integer_len_with_limits"))
 }
 
+/// Parses a Variable Byte Integer
+/// ([§1.5.5](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901011)),
+/// such as the Remaining Length of a fixed header.
+///
+/// # Errors
+///
+/// Fails when the encoding uses more than four bytes [MQTT-1.5.5-1], or
+/// reports incomplete input on a [`Partial`](winnow::stream::Partial) stream
+/// that ends mid-integer.
 #[inline]
 pub fn variable_byte_integer<Input, Error>(input: &mut Input) -> Result<u64, Error>
 where
