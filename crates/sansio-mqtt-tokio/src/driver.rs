@@ -7,6 +7,7 @@ use sansio_mqtt_protocol::Error;
 use sansio_mqtt_protocol::Event;
 use sansio_mqtt_protocol::IncomingData;
 use sansio_mqtt_protocol::MqttProtocol;
+use sansio_mqtt_protocol::Timestamped;
 use std::future::pending;
 use std::io;
 use std::pin::Pin;
@@ -26,6 +27,12 @@ use tokio::time::sleep_until;
 /// Socket I/O, keep-alive and every other timer only make progress while
 /// [`next`](Self::next) is being awaited, so the application must keep
 /// polling it for the connection to stay alive.
+///
+/// Every input handed to the protocol is stamped with [`Instant::now`], so
+/// the protocol's own deadlines apply: a connection attempt that is still
+/// opening the socket or waiting for CONNACK when the protocol's connect
+/// timeout elapses is abandoned and reported as
+/// [`Event::Disconnected(None)`](Event::Disconnected).
 pub struct Driver<Protocol, Socket, MakeSocket, MakeSocketFuture> {
     client: Protocol,
     connect: MakeSocket,
@@ -88,7 +95,7 @@ where
         }
     }
 
-    /// Hands `command` to the client.
+    /// Hands `command` to the client, stamped with the current instant.
     ///
     /// This performs no I/O: an accepted command only takes effect on the
     /// wire once [`next`](Self::next) is awaited, and its outcome (e.g.
@@ -101,7 +108,10 @@ where
     pub fn submit(&mut self, command: Command) -> Result<(), Error> {
         let kind = CommandDiscriminants::from(&command);
         tracing::debug!(command = %kind, "submitting command");
-        self.client.handle_write(command)
+        self.client.handle_write(Timestamped {
+            value: command,
+            at: Instant::now(),
+        })
     }
 
     /// Drives socket I/O and timers until the client produces the next
@@ -308,7 +318,10 @@ where
             }
             Input::Connected(Ok(socket)) => {
                 tracing::debug!("socket connected");
-                match self.client.handle_event(DriverEvent::SocketConnected) {
+                match self.client.handle_event(Timestamped {
+                    value: DriverEvent::SocketConnected,
+                    at: Instant::now(),
+                }) {
                     Ok(()) => self.connection = Connection::Open(socket),
                     Err(error) => {
                         // The client did not want this socket, so it will
@@ -331,6 +344,10 @@ where
         self.connection = Connection::Closed;
         self.outgoing.clear();
         self.needs_flush = false;
+        let event = Timestamped {
+            value: event,
+            at: Instant::now(),
+        };
         log_client_error(self.client.handle_event(event), "socket lost");
     }
 }

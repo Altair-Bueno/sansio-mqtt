@@ -5,6 +5,7 @@ use crate::state::ClientState;
 use crate::state::StateHandler;
 use bytes::Buf;
 use core::num::NonZero;
+use core::time::Duration;
 use sansio::Protocol;
 use sansio_mqtt_protocol::Command;
 use sansio_mqtt_protocol::DriverAction;
@@ -15,6 +16,7 @@ use sansio_mqtt_protocol::IncomingData;
 use sansio_mqtt_protocol::MqttProtocol;
 use sansio_mqtt_protocol::Qos;
 use sansio_mqtt_protocol::Time;
+use sansio_mqtt_protocol::Timestamped;
 use sansio_mqtt_v5_types::ControlPacket;
 use sansio_mqtt_v5_types::DisconnectReasonCode;
 use sansio_mqtt_v5_types::ParserSettings;
@@ -84,11 +86,30 @@ pub struct ClientSettings {
     /// SUBSCRIBE.
     #[builder(default = 32)]
     pub max_subscriptions: u32,
+    /// How long a connection attempt may take, from the
+    /// [`Command::Connect`] that starts it until CONNACK arrives.
+    ///
+    /// The deadline is measured from the instant the `Connect` command is
+    /// stamped with and covers both opening the socket (including any TLS
+    /// handshake the driver performs) and waiting for CONNACK; it is not
+    /// restarted when the socket connects. When it elapses the client gives
+    /// up on the attempt: it withdraws or cancels the socket request, or
+    /// closes the socket without sending DISCONNECT, and reports
+    /// [`Event::Disconnected(None)`](Event::Disconnected). "If the Client
+    /// does not receive a CONNACK packet from the Server within a reasonable
+    /// amount of time, the Client SHOULD close the Network Connection"
+    /// (MQTT v5.0 §3.2). Once CONNACK arrives, the keep-alive deadline (if
+    /// any) takes its place. Defaults to
+    /// [`DEFAULT_CONNECT_TIMEOUT`](Self::DEFAULT_CONNECT_TIMEOUT).
+    #[builder(default = ClientSettings::DEFAULT_CONNECT_TIMEOUT)]
+    pub connect_timeout: Duration,
 }
 
 impl ClientSettings {
     /// Default [`maximum_packet_size`](Self::maximum_packet_size): 1 MiB.
     pub const DEFAULT_MAXIMUM_PACKET_SIZE: NonZero<u32> = NonZero::new(1024 * 1024).unwrap();
+    /// Default [`connect_timeout`](Self::connect_timeout): 30 seconds.
+    pub const DEFAULT_CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
 }
 
 impl Default for ClientSettings {
@@ -101,9 +122,10 @@ impl Default for ClientSettings {
 ///
 /// Implements [`sansio_mqtt_protocol::MqttProtocol`] (checked at compile time
 /// by a private assertion below): feed it [`IncomingData`] read
-/// from the network, [`Command`]s from the application, and [`DriverEvent`]s
-/// from the driver, then drain [`Event`]s, encoded bytes, and
-/// [`DriverAction`]s.
+/// from the network, and [`Command`]s from the application and
+/// [`DriverEvent`]s from the driver, each [`Timestamped`] with the instant it
+/// happened, then drain [`Event`]s, encoded bytes, [`DriverAction`]s and the
+/// next deadline.
 #[derive(Debug)]
 pub struct Client<T> {
     settings: ClientSettings,
@@ -252,7 +274,9 @@ where
     }
 }
 
-impl<'bytes, T> Protocol<IncomingData<'bytes, T>, Command, DriverEvent> for Client<T>
+impl<'bytes, T>
+    Protocol<IncomingData<'bytes, T>, Timestamped<Command, T>, Timestamped<DriverEvent, T>>
+    for Client<T>
 where
     T: Time,
 {
@@ -298,15 +322,17 @@ where
     }
 
     #[tracing::instrument(skip_all)]
-    fn handle_write(&mut self, msg: Command) -> Result<(), Self::Error> {
+    fn handle_write(&mut self, msg: Timestamped<Command, T>) -> Result<(), Self::Error> {
         // Keep-alive activity is tracked in `queues::enqueue_packet`, at the
         // one point where a packet actually reaches the write queue.
-        self.dispatch(|s, set, ses, sp| s.handle_write(set, ses, sp, msg))
+        let Timestamped { value, at } = msg;
+        self.dispatch(|s, set, ses, sp| s.handle_write(set, ses, sp, value, at))
     }
 
     #[tracing::instrument(skip_all)]
-    fn handle_event(&mut self, evt: DriverEvent) -> Result<(), Self::Error> {
-        self.dispatch(|s, set, ses, sp| s.handle_event(set, ses, sp, evt))
+    fn handle_event(&mut self, evt: Timestamped<DriverEvent, T>) -> Result<(), Self::Error> {
+        let Timestamped { value, at } = evt;
+        self.dispatch(|s, set, ses, sp| s.handle_event(set, ses, sp, value, at))
     }
 
     #[tracing::instrument(skip_all)]

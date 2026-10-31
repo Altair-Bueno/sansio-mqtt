@@ -15,6 +15,7 @@ use sansio_mqtt_protocol::Error;
 use sansio_mqtt_protocol::Event;
 use sansio_mqtt_protocol::IncomingData;
 use sansio_mqtt_protocol::MqttProtocol;
+use sansio_mqtt_protocol::Timestamped;
 use sansio_mqtt_tokio::Driver;
 use tokio::io::AsyncReadExt;
 use tokio::io::BufReader;
@@ -29,8 +30,12 @@ struct RejectsSocketConnected {
     actions: VecDeque<DriverAction>,
 }
 
-impl<'bytes> Protocol<IncomingData<'bytes, Instant>, Command, DriverEvent>
-    for RejectsSocketConnected
+impl<'bytes>
+    Protocol<
+        IncomingData<'bytes, Instant>,
+        Timestamped<Command, Instant>,
+        Timestamped<DriverEvent, Instant>,
+    > for RejectsSocketConnected
 {
     type Rout = Event;
     type Wout = Bytes;
@@ -42,8 +47,8 @@ impl<'bytes> Protocol<IncomingData<'bytes, Instant>, Command, DriverEvent>
         Err(Error::InvalidStateTransition)
     }
 
-    fn handle_write(&mut self, msg: Command) -> Result<(), Error> {
-        match msg {
+    fn handle_write(&mut self, msg: Timestamped<Command, Instant>) -> Result<(), Error> {
+        match msg.value {
             Command::Connect(_) => {
                 self.actions.push_back(DriverAction::OpenSocket);
                 Ok(())
@@ -52,7 +57,7 @@ impl<'bytes> Protocol<IncomingData<'bytes, Instant>, Command, DriverEvent>
         }
     }
 
-    fn handle_event(&mut self, _evt: DriverEvent) -> Result<(), Error> {
+    fn handle_event(&mut self, _evt: Timestamped<DriverEvent, Instant>) -> Result<(), Error> {
         Err(Error::InvalidStateTransition)
     }
 

@@ -33,12 +33,17 @@ pub(crate) struct Disconnected;
 /// moves to [`Connecting`] awaiting the socket, which keeps the encoded CONNECT
 /// until the driver reports `SocketConnected`.
 ///
+/// Arms the connect deadline [`ClientSettings::connect_timeout`] after `at`. It
+/// bounds the whole attempt, socket and CONNACK alike, and is replaced or
+/// cleared when the attempt ends.
+///
 /// [MQTT-3.1.2-4] Clean Start=1 starts a new Session.
 fn begin_connect<T>(
     settings: &ClientSettings,
     session: &mut ClientSession,
     scratchpad: &mut ClientScratchpad<T>,
     options: ConnectOptions,
+    at: T,
 ) -> Result<ClientState, Error>
 where
     T: Time,
@@ -59,6 +64,7 @@ where
     }
     scratchpad.session_should_persist = session_should_persist;
     scratchpad.action_queue.push_back(DriverAction::OpenSocket);
+    scratchpad.arm_connect_deadline(at, settings.connect_timeout);
 
     Ok(ClientState::Connecting(Connecting::awaiting_socket(
         connect,
@@ -90,10 +96,11 @@ where
         session: &mut ClientSession,
         scratchpad: &mut ClientScratchpad<T>,
         msg: Command,
+        at: T,
     ) -> (ClientState, Result<(), Error>) {
         match msg {
             Command::Connect(options) => {
-                match begin_connect(settings, session, scratchpad, options) {
+                match begin_connect(settings, session, scratchpad, options, at) {
                     Ok(next) => (next, Ok(())),
                     Err(err) => (ClientState::Disconnected(self), Err(err)),
                 }
@@ -113,6 +120,7 @@ where
         _session: &mut ClientSession,
         _scratchpad: &mut ClientScratchpad<T>,
         evt: DriverEvent,
+        _at: T,
     ) -> (ClientState, Result<(), Error>) {
         match evt {
             // The protocol never asked for a socket: reject it so stored

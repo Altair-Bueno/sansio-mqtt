@@ -19,6 +19,7 @@ use sansio_mqtt_protocol::Message;
 use sansio_mqtt_protocol::Qos as ProtoQos;
 use sansio_mqtt_protocol::ReasonCode;
 use sansio_mqtt_protocol::SubscribeOptions;
+use sansio_mqtt_protocol::Timestamped;
 use sansio_mqtt_v5_protocol::Client;
 use sansio_mqtt_v5_types::ConnAck;
 use sansio_mqtt_v5_types::ConnAckKind;
@@ -32,6 +33,15 @@ use sansio_mqtt_v5_types::PubRec;
 use sansio_mqtt_v5_types::PubRecReasonCode;
 use winnow::Parser;
 use winnow::error::ContextError;
+
+/// Stamps a protocol input with `Duration::ZERO`, the instant these tests
+/// treat as the start of the connection.
+fn at_zero<Value>(value: Value) -> Timestamped<Value, Duration> {
+    Timestamped {
+        value,
+        at: Duration::ZERO,
+    }
+}
 
 fn encode_packet(packet: &ControlPacket) -> Bytes {
     let mut out = Vec::new();
@@ -63,14 +73,17 @@ fn message(topic: &str, qos: ProtoQos, payload: &[u8]) -> Message {
 /// Drives `client` to `Connected` with default `ConnectOptions`.
 fn connect(client: &mut Client<Duration>) {
     assert_eq!(
-        client.handle_write(Command::Connect(connect_options())),
+        client.handle_write(at_zero(Command::Connect(connect_options()))),
         Ok(())
     );
     assert!(matches!(
         client.poll_event(),
         Some(DriverAction::OpenSocket)
     ));
-    assert_eq!(client.handle_event(DriverEvent::SocketConnected), Ok(()));
+    assert_eq!(
+        client.handle_event(at_zero(DriverEvent::SocketConnected)),
+        Ok(())
+    );
     assert!(client.poll_write().is_some(), "CONNECT should be queued");
 
     let connack = ControlPacket::ConnAck(
@@ -92,10 +105,10 @@ fn qos1_publish_acknowledged_event_carries_the_app_token() {
     connect(&mut client);
 
     assert_eq!(
-        client.handle_write(Command::Publish {
+        client.handle_write(at_zero(Command::Publish {
             token: 42,
             message: message("public/qos1", ProtoQos::AtLeastOnce, b"hi"),
-        }),
+        })),
         Ok(())
     );
     let publish_bytes = client.poll_write().expect("PUBLISH should be queued");
@@ -136,10 +149,10 @@ fn qos2_publish_completed_event_carries_the_app_token() {
     connect(&mut client);
 
     assert_eq!(
-        client.handle_write(Command::Publish {
+        client.handle_write(at_zero(Command::Publish {
             token: 42,
             message: message("public/qos2", ProtoQos::ExactlyOnce, b"hi"),
-        }),
+        })),
         Ok(())
     );
     let publish_bytes = client.poll_write().expect("PUBLISH should be queued");
@@ -189,18 +202,18 @@ fn two_in_flight_publishes_acknowledged_out_of_order_report_the_right_tokens() {
     connect(&mut client);
 
     assert_eq!(
-        client.handle_write(Command::Publish {
+        client.handle_write(at_zero(Command::Publish {
             token: 100,
             message: message("public/first", ProtoQos::AtLeastOnce, b"a"),
-        }),
+        })),
         Ok(())
     );
     let first_bytes = client.poll_write().expect("first PUBLISH should be queued");
     assert_eq!(
-        client.handle_write(Command::Publish {
+        client.handle_write(at_zero(Command::Publish {
             token: 200,
             message: message("public/second", ProtoQos::AtLeastOnce, b"b"),
-        }),
+        })),
         Ok(())
     );
     let second_bytes = client
@@ -272,10 +285,10 @@ fn publish_with_wildcard_topic_is_invalid_topic_and_emits_no_bytes() {
     connect(&mut client);
 
     assert_eq!(
-        client.handle_write(Command::Publish {
+        client.handle_write(at_zero(Command::Publish {
             token: 1,
             message: message("a/+/b", ProtoQos::AtMostOnce, b"x"),
-        }),
+        })),
         Err(Error::InvalidTopic)
     );
     assert_eq!(client.poll_write(), None);
@@ -290,10 +303,10 @@ fn publish_with_oversized_topic_is_string_too_long() {
 
     let topic = "t".repeat(70_000);
     assert_eq!(
-        client.handle_write(Command::Publish {
+        client.handle_write(at_zero(Command::Publish {
             token: 1,
             message: message(&topic, ProtoQos::AtMostOnce, b"x"),
-        }),
+        })),
         Err(Error::StringTooLong)
     );
     assert_eq!(client.poll_write(), None);
@@ -306,7 +319,9 @@ fn subscribe_with_empty_subscriptions_is_empty_subscribe() {
     connect(&mut client);
 
     assert_eq!(
-        client.handle_write(Command::Subscribe(SubscribeOptions::builder().build())),
+        client.handle_write(at_zero(Command::Subscribe(
+            SubscribeOptions::builder().build()
+        ))),
         Err(Error::EmptySubscribe)
     );
     assert_eq!(client.poll_write(), None);
@@ -321,10 +336,10 @@ fn outbound_publish_never_carries_a_topic_alias() {
     connect(&mut client);
 
     assert_eq!(
-        client.handle_write(Command::Publish {
+        client.handle_write(at_zero(Command::Publish {
             token: 1,
             message: message("public/no-alias", ProtoQos::AtMostOnce, b"x"),
-        }),
+        })),
         Ok(())
     );
     let publish_bytes = client.poll_write().expect("PUBLISH should be queued");

@@ -21,6 +21,37 @@ pub struct IncomingData<'bytes, Time> {
     pub received_at: Time,
 }
 
+/// An input to the protocol paired with the instant it happened.
+///
+/// A sans-IO protocol has no clock: it only learns the time from its inputs.
+/// Every input it reacts to therefore carries the instant it happened, read
+/// from the driver's clock: bytes arrive as [`IncomingData`], and
+/// [`Command`]s and [`DriverEvent`]s arrive wrapped in a `Timestamped`. This
+/// lets the protocol arm deadlines from any input, e.g. a connect timeout
+/// from the [`Command::Connect`] that starts the attempt, and report them
+/// through `poll_timeout`.
+///
+/// # Examples
+///
+/// ```
+/// use core::time::Duration;
+/// use sansio_mqtt_protocol::Command;
+/// use sansio_mqtt_protocol::Timestamped;
+///
+/// let input = Timestamped {
+///     value: Command::Disconnect,
+///     at: Duration::from_secs(5),
+/// };
+/// assert_eq!(input.at, Duration::from_secs(5));
+/// ```
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Timestamped<Value, Time> {
+    /// The input itself.
+    pub value: Value,
+    /// When the input happened, on the driver's clock.
+    pub at: Time,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Qos {
     #[default]
@@ -385,7 +416,8 @@ pub enum Capability {
 ///
 /// Connection-level failures that the protocol handles itself are not errors.
 /// A malformed or protocol-violating packet from the server, a rejected
-/// CONNACK, a socket error, a connect timeout or a keep-alive timeout returns
+/// CONNACK, a socket error, a connect timeout (no CONNACK before the deadline
+/// armed by [`Command::Connect`]) or a keep-alive timeout returns
 /// `Ok(())`: the protocol queues any DISCONNECT and
 /// [`DriverAction::CloseSocket`] it needs and reports the failure as
 /// [`Event::Disconnected`] carrying the most fitting [`ReasonCode`] (for
@@ -440,11 +472,19 @@ pub enum Error {
     EmptyUnsubscribe,
 }
 
+/// An MQTT client state machine for one protocol version, driven through
+/// [`sansio::Protocol`].
+///
+/// Every input carries the instant it happened on the driver's clock `T`:
+/// bytes as [`IncomingData`], [`Command`]s and [`DriverEvent`]s as
+/// [`Timestamped`]. The protocol never reads a clock itself; it reports its
+/// next deadline through `poll_timeout` and expects `handle_timeout` once that
+/// deadline has passed.
 pub trait MqttProtocol<'bytes, T: Time>:
     sansio::Protocol<
         IncomingData<'bytes, T>,
-        Command,
-        DriverEvent,
+        Timestamped<Command, T>,
+        Timestamped<DriverEvent, T>,
         Rout = Event,
         Wout = Bytes,
         Eout = DriverAction,

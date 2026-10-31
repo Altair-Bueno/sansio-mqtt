@@ -24,6 +24,7 @@ use sansio_mqtt_protocol::Error;
 use sansio_mqtt_protocol::Event;
 use sansio_mqtt_protocol::IncomingData;
 use sansio_mqtt_protocol::ReasonCode;
+use sansio_mqtt_protocol::Timestamped;
 use sansio_mqtt_v5_protocol::Client;
 use sansio_mqtt_v5_protocol::ClientSettings;
 use sansio_mqtt_v5_types::ConnAck;
@@ -38,6 +39,15 @@ use sansio_mqtt_v5_types::ParserSettings;
 use sansio_mqtt_v5_types::Utf8String;
 use winnow::Parser;
 use winnow::error::ContextError;
+
+/// Stamps a protocol input with `Duration::ZERO`, the instant these tests
+/// treat as the start of the connection.
+fn at_zero<Value>(value: Value) -> Timestamped<Value, Duration> {
+    Timestamped {
+        value,
+        at: Duration::ZERO,
+    }
+}
 
 fn encode_packet(packet: &ControlPacket) -> Bytes {
     let mut out = Vec::new();
@@ -120,14 +130,17 @@ fn connecting_client_with(settings: ClientSettings) -> (Client<Duration>, Connec
     let mut client = Client::<Duration>::new(settings);
 
     assert_eq!(
-        client.handle_write(Command::Connect(connect_options())),
+        client.handle_write(at_zero(Command::Connect(connect_options()))),
         Ok(())
     );
     assert!(matches!(
         client.poll_event(),
         Some(DriverAction::OpenSocket)
     ));
-    assert_eq!(client.handle_event(DriverEvent::SocketConnected), Ok(()));
+    assert_eq!(
+        client.handle_event(at_zero(DriverEvent::SocketConnected)),
+        Ok(())
+    );
     let connect = client.poll_write().expect("CONNECT should be queued");
     let connect =
         match ControlPacket::parser::<_, ContextError, ContextError>(&ParserSettings::default())

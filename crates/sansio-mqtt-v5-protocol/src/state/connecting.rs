@@ -201,9 +201,11 @@ where
         session_ops::reset_session_state(session);
     }
 
-    // [MQTT-3.1.2-22] Arm the keep-alive timer from the CONNACK arrival
-    // instant so the first deadline fires one interval after the session was
-    // established.
+    // CONNACK ends the connection attempt, and with it the connect deadline
+    // (MQTT v5.0 §3.2). [MQTT-3.1.2-22] Arm the keep-alive timer from the
+    // CONNACK arrival instant so the first deadline fires one interval after
+    // the session was established.
+    scratchpad.next_timeout = None;
     if let Some(interval_secs) = scratchpad.keep_alive_interval_secs {
         scratchpad.arm_keep_alive_deadline(received_at, u64::from(interval_secs.get()));
     }
@@ -255,6 +257,7 @@ where
         session: &mut ClientSession,
         scratchpad: &mut ClientScratchpad<T>,
         msg: Command,
+        _at: T,
     ) -> (ClientState, Result<(), Error>) {
         match msg {
             // A user-requested disconnect is the same teardown as `close`.
@@ -272,6 +275,7 @@ where
         session: &mut ClientSession,
         scratchpad: &mut ClientScratchpad<T>,
         evt: DriverEvent,
+        _at: T,
     ) -> (ClientState, Result<(), Error>) {
         match (self.phase, evt) {
             (ConnectingPhase::AwaitingSocket { connect }, DriverEvent::SocketConnected) => {
@@ -301,10 +305,10 @@ where
         scratchpad: &mut ClientScratchpad<T>,
         _now: T,
     ) -> (ClientState, Result<(), Error>) {
-        // The connection attempt did not complete within the caller-imposed
-        // deadline. "If the Client does not receive a CONNACK packet from the
+        // The connect deadline armed by `Command::Connect` elapsed before
+        // CONNACK. "If the Client does not receive a CONNACK packet from the
         // Server within a reasonable amount of time, the Client SHOULD close
-        // the Network Connection" (MQTT v5.0 §3.1.4).
+        // the Network Connection" (MQTT v5.0 §3.2).
         match self.phase {
             ConnectingPhase::AwaitingSocket { .. } => {
                 queues::abandon_socket_request(settings, session, scratchpad);
