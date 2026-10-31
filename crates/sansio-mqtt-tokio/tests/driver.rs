@@ -8,6 +8,7 @@
 use std::collections::VecDeque;
 use std::io;
 use std::num::NonZero;
+use std::pin::Pin;
 use std::time::Duration;
 
 use bytes::Bytes;
@@ -24,6 +25,7 @@ use sansio_mqtt_protocol::SubscribeOptions;
 use sansio_mqtt_protocol::Subscription;
 use sansio_mqtt_tokio::Driver;
 use sansio_mqtt_v5_protocol::Client;
+use sansio_mqtt_v5_protocol::ClientSettings;
 use sansio_mqtt_v5_types::ConnAck;
 use sansio_mqtt_v5_types::ConnAckKind;
 use sansio_mqtt_v5_types::ConnackReasonCode;
@@ -93,7 +95,12 @@ async fn read_packet(broker: &mut DuplexStream, buffer: &mut BytesMut) -> Contro
 enum Dial {
     Accept,
     Refuse,
+    /// The attempt never completes, like a TCP connect to a black hole.
+    Hang,
 }
+
+type Socket = BufReader<DuplexStream>;
+type Dialing = Pin<Box<dyn Future<Output = io::Result<Socket>> + Send>>;
 
 /// Commands submitted back to back, with no `next` call in between.
 type Request = (Vec<Command>, oneshot::Sender<Vec<Result<(), Error>>>);
@@ -112,27 +119,38 @@ impl Harness {
     }
 
     fn spawn_with_buffer(dials: &[Dial], buffer: usize) -> Self {
-        let mut sockets = VecDeque::new();
+        Self::spawn_with(dials, buffer, ClientSettings::default())
+    }
+
+    fn spawn_with_settings(dials: &[Dial], settings: ClientSettings) -> Self {
+        Self::spawn_with(dials, BUFFER, settings)
+    }
+
+    fn spawn_with(dials: &[Dial], buffer: usize, settings: ClientSettings) -> Self {
+        let mut attempts: VecDeque<Dialing> = VecDeque::new();
         let mut brokers = VecDeque::new();
         for dial in dials {
             match dial {
                 Dial::Accept => {
                     let (client_side, broker) = duplex(buffer);
-                    sockets.push_back(Ok(BufReader::new(client_side)));
+                    attempts.push_back(Box::pin(std::future::ready(Ok(BufReader::new(
+                        client_side,
+                    )))));
                     brokers.push_back(broker);
                 }
-                Dial::Refuse => sockets.push_back(Err(io::ErrorKind::ConnectionRefused.into())),
+                Dial::Refuse => attempts.push_back(Box::pin(std::future::ready(Err(
+                    io::ErrorKind::ConnectionRefused.into(),
+                )))),
+                Dial::Hang => attempts.push_back(Box::pin(std::future::pending())),
             }
         }
         let connector = move || {
-            std::future::ready(
-                sockets
-                    .pop_front()
-                    .expect("driver connected more often than the test allows"),
-            )
+            attempts
+                .pop_front()
+                .expect("driver connected more often than the test allows")
         };
 
-        let mut driver = Driver::new(Client::<Instant>::default(), connector);
+        let mut driver = Driver::new(Client::<Instant>::new(settings), connector);
         let (commands, mut requests) = mpsc::channel::<Request>(1);
         let (event_tx, events) = mpsc::channel(64);
         tokio::spawn(async move {
@@ -447,4 +465,52 @@ async fn keep_alive_timeout_closes_a_connection_whose_peer_stopped_reading() {
         .await
         .expect("client did not close the socket")
         .unwrap();
+}
+
+fn settings_with_connect_timeout(connect_timeout: Duration) -> ClientSettings {
+    ClientSettings::builder()
+        .connect_timeout(connect_timeout)
+        .build()
+}
+
+#[tokio::test(start_paused = true)]
+async fn connection_attempt_that_never_completes_times_out_and_allows_retrying() {
+    let connect_timeout = Duration::from_secs(5);
+    let mut harness = Harness::spawn_with_settings(
+        &[Dial::Hang, Dial::Accept],
+        settings_with_connect_timeout(connect_timeout),
+    );
+    let started = Instant::now();
+
+    harness.submit(connect_command()).await.unwrap();
+
+    assert_eq!(
+        harness.event_within(Duration::from_secs(60)).await,
+        Event::Disconnected(None)
+    );
+    assert!(started.elapsed() >= connect_timeout);
+    // The abandoned attempt released the connection slot.
+    harness.connect().await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn broker_that_never_sends_connack_times_out_and_the_socket_is_closed() {
+    let connect_timeout = Duration::from_secs(5);
+    let mut harness = Harness::spawn_with_settings(
+        &[Dial::Accept, Dial::Accept],
+        settings_with_connect_timeout(connect_timeout),
+    );
+    let started = Instant::now();
+
+    harness.submit(connect_command()).await.unwrap();
+    assert!(matches!(harness.packet().await, ControlPacket::Connect(_)));
+
+    assert_eq!(
+        harness.event_within(Duration::from_secs(60)).await,
+        Event::Disconnected(None)
+    );
+    assert!(started.elapsed() >= connect_timeout);
+    // No DISCONNECT: no session was ever established [MQTT-3.2.2-7].
+    harness.expect_closed().await;
+    harness.connect().await;
 }

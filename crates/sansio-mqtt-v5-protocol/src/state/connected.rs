@@ -514,6 +514,7 @@ where
         session: &mut ClientSession,
         scratchpad: &mut ClientScratchpad<T>,
         msg: Command,
+        _at: T,
     ) -> (ClientState, Result<(), Error>) {
         match msg {
             Command::Connect(_) => (
@@ -623,6 +624,7 @@ where
         session: &mut ClientSession,
         scratchpad: &mut ClientScratchpad<T>,
         evt: DriverEvent,
+        _at: T,
     ) -> (ClientState, Result<(), Error>) {
         match evt {
             DriverEvent::SocketConnected => (

@@ -49,10 +49,17 @@ impl<T> ClientScratchpad<T>
 where
     T: Time,
 {
-    /// Schedules the next keep-alive deadline `secs` seconds after `from`.
+    /// Schedules the connect deadline `timeout` after `from`, the instant the
+    /// `Command::Connect` starting the attempt was issued.
     ///
-    /// The only place in the crate where an instant is advanced; everything
+    /// Together with [`arm_keep_alive_deadline`](Self::arm_keep_alive_deadline)
+    /// the only places in the crate where an instant is advanced; everything
     /// else stores and compares `T` values supplied by the driver.
+    pub(crate) fn arm_connect_deadline(&mut self, from: T, timeout: Duration) {
+        self.next_timeout = Some(from + timeout);
+    }
+
+    /// Schedules the next keep-alive deadline `secs` seconds after `from`.
     pub(crate) fn arm_keep_alive_deadline(&mut self, from: T, secs: u64) {
         self.next_timeout = Some(from + Duration::from_secs(secs));
     }

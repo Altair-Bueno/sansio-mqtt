@@ -22,6 +22,7 @@ use sansio_mqtt_protocol::Qos as ProtoQos;
 use sansio_mqtt_protocol::RejectReason;
 use sansio_mqtt_protocol::SubscribeOptions;
 use sansio_mqtt_protocol::Subscription as ProtoSubscription;
+use sansio_mqtt_protocol::Timestamped;
 use sansio_mqtt_protocol::Will as ProtoWill;
 use sansio_mqtt_v5_protocol::Client;
 use sansio_mqtt_v5_protocol::ClientSettings;
@@ -39,6 +40,15 @@ use sansio_mqtt_v5_types::Publish;
 use sansio_mqtt_v5_types::PublishKind;
 use sansio_mqtt_v5_types::Topic;
 use sansio_mqtt_v5_types::Utf8String;
+
+/// Stamps a protocol input with `Duration::ZERO`, the instant these tests
+/// treat as the start of the connection.
+fn at_zero<Value>(value: Value) -> Timestamped<Value, Duration> {
+    Timestamped {
+        value,
+        at: Duration::ZERO,
+    }
+}
 
 fn encode_packet(packet: &ControlPacket) -> Bytes {
     let mut out = Vec::new();
@@ -105,14 +115,17 @@ fn connect_options() -> ConnectOptions {
 fn connected_client(properties: ConnAckProperties) -> Client<Duration> {
     let mut client = Client::<Duration>::default();
     assert_eq!(
-        client.handle_write(Command::Connect(connect_options())),
+        client.handle_write(at_zero(Command::Connect(connect_options()))),
         Ok(())
     );
     assert!(matches!(
         client.poll_event(),
         Some(DriverAction::OpenSocket)
     ));
-    assert_eq!(client.handle_event(DriverEvent::SocketConnected), Ok(()));
+    assert_eq!(
+        client.handle_event(at_zero(DriverEvent::SocketConnected)),
+        Ok(())
+    );
     assert!(client.poll_write().is_some(), "CONNECT should be queued");
     assert_eq!(read(&mut client, &connack(properties)), Ok(()));
     assert!(matches!(client.poll_read(), Some(Event::Connected)));
@@ -225,7 +238,7 @@ fn acknowledgement_exceeding_broker_maximum_packet_size_fails_the_connection() {
     };
 
     assert_eq!(
-        client.handle_write(Command::Acknowledge(id)),
+        client.handle_write(at_zero(Command::Acknowledge(id))),
         Ok(()),
         "an unsendable PUBACK leaves the QoS1 exchange unresolvable"
     );
@@ -254,16 +267,19 @@ fn deciding_twice_on_a_message_is_an_invalid_state_transition() {
     };
 
     // First decision moves the QoS2 exchange on to awaiting PUBREL.
-    assert_eq!(client.handle_write(Command::Acknowledge(id)), Ok(()));
+    assert_eq!(
+        client.handle_write(at_zero(Command::Acknowledge(id))),
+        Ok(())
+    );
     assert!(client.poll_write().is_some(), "PUBREC should be queued");
 
     assert_eq!(
-        client.handle_write(Command::Acknowledge(id)),
+        client.handle_write(at_zero(Command::Acknowledge(id))),
         Err(Error::InvalidStateTransition),
         "the peer did nothing wrong, so this is not a protocol error"
     );
     assert_eq!(
-        client.handle_write(Command::Reject(id, RejectReason::UnspecifiedError)),
+        client.handle_write(at_zero(Command::Reject(id, RejectReason::UnspecifiedError))),
         Err(Error::InvalidStateTransition)
     );
 
@@ -288,7 +304,7 @@ fn deciding_on_an_undelivered_packet_id_is_an_invalid_state_transition() {
     let mut client = connected_client(ConnAckProperties::default());
 
     assert_eq!(
-        client.handle_write(Command::Acknowledge(MessageId::new(packet_id(9)))),
+        client.handle_write(at_zero(Command::Acknowledge(MessageId::new(packet_id(9))))),
         Err(Error::InvalidStateTransition)
     );
     assert!(
@@ -314,7 +330,10 @@ fn acknowledging_a_qos2_message_moves_it_to_awaiting_pubrel() {
         other => panic!("expected an ack-required message, got {other:?}"),
     };
 
-    assert_eq!(client.handle_write(Command::Acknowledge(id)), Ok(()));
+    assert_eq!(
+        client.handle_write(at_zero(Command::Acknowledge(id))),
+        Ok(())
+    );
     assert!(client.poll_write().is_some(), "PUBREC should be queued");
 
     // The server may now complete the exchange.
@@ -416,7 +435,7 @@ fn socket_connected_while_already_connected_is_an_invalid_state_transition() {
     let mut client = connected_client(ConnAckProperties::default());
 
     assert_eq!(
-        client.handle_event(DriverEvent::SocketConnected),
+        client.handle_event(at_zero(DriverEvent::SocketConnected)),
         Err(Error::InvalidStateTransition)
     );
     assert!(
@@ -431,7 +450,10 @@ fn socket_connected_while_already_connected_is_an_invalid_state_transition() {
 fn socket_error_while_connected_resets_and_reports_disconnected() {
     let mut client = connected_client(ConnAckProperties::default());
 
-    assert_eq!(client.handle_event(DriverEvent::SocketError), Ok(()));
+    assert_eq!(
+        client.handle_event(at_zero(DriverEvent::SocketError)),
+        Ok(())
+    );
     assert!(client.poll_event().is_none());
     assert!(matches!(
         client.poll_read(),
@@ -456,29 +478,35 @@ fn resumed_session_replays_qos2_publish_awaiting_pubrec() {
     let mut client = connected_client(ConnAckProperties::default());
 
     assert_eq!(
-        client.handle_write(Command::Publish {
+        client.handle_write(at_zero(Command::Publish {
             token: 1,
             message: message("cov/qos2", ProtoQos::ExactlyOnce, b"q2"),
-        }),
+        })),
         Ok(())
     );
     assert!(client.poll_write().is_some(), "PUBLISH should be queued");
 
-    assert_eq!(client.handle_event(DriverEvent::SocketClosed), Ok(()));
+    assert_eq!(
+        client.handle_event(at_zero(DriverEvent::SocketClosed)),
+        Ok(())
+    );
     assert!(matches!(
         client.poll_read(),
         Some(Event::Disconnected(None))
     ));
 
     assert_eq!(
-        client.handle_write(Command::Connect(connect_options())),
+        client.handle_write(at_zero(Command::Connect(connect_options()))),
         Ok(())
     );
     assert!(matches!(
         client.poll_event(),
         Some(DriverAction::OpenSocket)
     ));
-    assert_eq!(client.handle_event(DriverEvent::SocketConnected), Ok(()));
+    assert_eq!(
+        client.handle_event(at_zero(DriverEvent::SocketConnected)),
+        Ok(())
+    );
     assert!(client.poll_write().is_some(), "CONNECT should be queued");
     assert_eq!(
         read(
@@ -519,7 +547,10 @@ fn redelivered_qos2_publish_awaiting_pubrel_resends_pubrec() {
         Some(Event::MessageRequiresAcknowledgement(id, _)) => id,
         other => panic!("expected an ack-required message, got {other:?}"),
     };
-    assert_eq!(client.handle_write(Command::Acknowledge(id)), Ok(()));
+    assert_eq!(
+        client.handle_write(at_zero(Command::Acknowledge(id))),
+        Ok(())
+    );
     let first_pubrec = client.poll_write().expect("PUBREC should be queued");
 
     // [MQTT-4.3.3-2] The server may redeliver until it sees PUBREC.
@@ -544,9 +575,9 @@ fn shared_subscription_without_no_local_is_accepted() {
         .filter(ByteString::from_static("$share/group/cov"))
         .build();
     assert_eq!(
-        client.handle_write(Command::Subscribe(
+        client.handle_write(at_zero(Command::Subscribe(
             SubscribeOptions::builder().subscriptions(vec![sub]).build(),
-        )),
+        ))),
         Ok(())
     );
     assert!(client.poll_write().is_some(), "SUBSCRIBE should be queued");
@@ -562,9 +593,9 @@ fn shared_subscription_with_no_local_is_rejected() {
         .build();
     sub.no_local = true;
     assert_eq!(
-        client.handle_write(Command::Subscribe(
+        client.handle_write(at_zero(Command::Subscribe(
             SubscribeOptions::builder().subscriptions(vec![sub]).build(),
-        )),
+        ))),
         Err(Error::NoLocalOnSharedSubscription)
     );
 }
@@ -586,7 +617,7 @@ fn unencodable_will_rejects_connect_and_allows_a_retry() {
         .build();
 
     assert_eq!(
-        client.handle_write(Command::Connect(options)),
+        client.handle_write(at_zero(Command::Connect(options))),
         Err(Error::IntervalTooLong),
         "a Will that cannot be encoded must reject the Connect"
     );
@@ -597,7 +628,7 @@ fn unencodable_will_rejects_connect_and_allows_a_retry() {
     assert!(client.poll_write().is_none(), "no CONNECT should be queued");
 
     assert_eq!(
-        client.handle_write(Command::Connect(connect_options())),
+        client.handle_write(at_zero(Command::Connect(connect_options()))),
         Ok(())
     );
     assert!(matches!(

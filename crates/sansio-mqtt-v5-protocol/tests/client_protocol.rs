@@ -20,6 +20,7 @@ use sansio_mqtt_protocol::ReasonCode;
 use sansio_mqtt_protocol::RejectReason;
 use sansio_mqtt_protocol::SubscribeOptions;
 use sansio_mqtt_protocol::Subscription as ProtoSubscription;
+use sansio_mqtt_protocol::Timestamped;
 use sansio_mqtt_protocol::UnsubscribeOptions;
 use sansio_mqtt_v5_protocol::Client;
 use sansio_mqtt_v5_protocol::ClientSettings;
@@ -57,6 +58,15 @@ use sansio_mqtt_v5_types::UnsubAckReasonCode;
 use sansio_mqtt_v5_types::Utf8String;
 use winnow::Parser;
 use winnow::error::ContextError;
+
+/// Stamps a protocol input with `Duration::ZERO`, the instant these tests
+/// treat as the start of the connection.
+fn at_zero<Value>(value: Value) -> Timestamped<Value, Duration> {
+    Timestamped {
+        value,
+        at: Duration::ZERO,
+    }
+}
 
 // ── Wire-level helpers (build/decode raw packets with `sansio-mqtt-v5-types`)
 // ─
@@ -210,12 +220,18 @@ fn settings(overrides: SettingsOverrides) -> ClientSettings {
 /// `DriverAction::OpenSocket`, then delivers `DriverEvent::SocketConnected` and
 /// returns the encoded CONNECT bytes.
 fn open_connecting(client: &mut Client<Duration>, options: ConnectOptions) -> Bytes {
-    assert_eq!(client.handle_write(Command::Connect(options)), Ok(()));
+    assert_eq!(
+        client.handle_write(at_zero(Command::Connect(options))),
+        Ok(())
+    );
     assert!(matches!(
         client.poll_event(),
         Some(DriverAction::OpenSocket)
     ));
-    assert_eq!(client.handle_event(DriverEvent::SocketConnected), Ok(()));
+    assert_eq!(
+        client.handle_event(at_zero(DriverEvent::SocketConnected)),
+        Ok(())
+    );
     client.poll_write().expect("connect frame expected")
 }
 
@@ -376,7 +392,7 @@ fn client_settings_default_includes_permissive_negotiation_policy() {
 fn socket_connected_before_connect_is_invalid_state_transition() {
     let mut client = Client::<Duration>::default();
 
-    let result = client.handle_event(DriverEvent::SocketConnected);
+    let result = client.handle_event(at_zero(DriverEvent::SocketConnected));
 
     assert_eq!(result, Err(Error::InvalidStateTransition));
     assert_eq!(client.poll_write(), None);
@@ -442,7 +458,7 @@ fn socket_closed_emits_disconnected_event() {
     let mut client = Client::<Duration>::default();
     let _ = connect_default(&mut client);
 
-    let result = client.handle_event(DriverEvent::SocketClosed);
+    let result = client.handle_event(at_zero(DriverEvent::SocketClosed));
 
     assert_eq!(result, Ok(()));
     assert!(matches!(client.poll_read(), Some(Event::Disconnected(_))));
@@ -453,7 +469,7 @@ fn socket_connected_in_connecting_state_returns_invalid_transition() {
     let mut client = Client::<Duration>::default();
     let _ = open_connecting(&mut client, connect_options());
 
-    let result = client.handle_event(DriverEvent::SocketConnected);
+    let result = client.handle_event(at_zero(DriverEvent::SocketConnected));
 
     assert_eq!(result, Err(Error::InvalidStateTransition));
     assert_eq!(client.poll_write(), None);
@@ -555,10 +571,10 @@ fn connack_transitions_to_connected_and_emits_connected() {
     assert!(matches!(client.poll_read(), Some(Event::Connected)));
 
     assert_eq!(
-        client.handle_write(Command::Publish {
+        client.handle_write(at_zero(Command::Publish {
             token: 1,
             message: message("test/topic", ProtoQos::AtMostOnce, b"qos0"),
-        }),
+        })),
         Ok(())
     );
     assert!(
@@ -929,7 +945,7 @@ fn inbound_qos1_publish_waits_for_app_ack_then_sends_puback() {
     assert_eq!(client.poll_write(), None);
 
     assert_eq!(
-        client.handle_write(Command::Acknowledge(inbound_message_id)),
+        client.handle_write(at_zero(Command::Acknowledge(inbound_message_id))),
         Ok(())
     );
 
@@ -969,10 +985,10 @@ fn inbound_qos1_publish_reject_sends_puback_failure_reason() {
     assert_eq!(client.poll_write(), None);
 
     assert_eq!(
-        client.handle_write(Command::Reject(
+        client.handle_write(at_zero(Command::Reject(
             inbound_message_id,
             RejectReason::NotAuthorized
-        )),
+        ))),
         Ok(())
     );
 
@@ -1011,7 +1027,7 @@ fn inbound_qos2_publish_waits_for_app_ack_then_sends_pubrec_and_completes_on_pub
     assert_eq!(client.poll_write(), None);
 
     assert_eq!(
-        client.handle_write(Command::Acknowledge(inbound_message_id)),
+        client.handle_write(at_zero(Command::Acknowledge(inbound_message_id))),
         Ok(())
     );
 
@@ -1066,10 +1082,10 @@ fn inbound_qos2_publish_reject_sends_pubrec_failure_and_clears_state() {
     assert_eq!(client.poll_write(), None);
 
     assert_eq!(
-        client.handle_write(Command::Reject(
+        client.handle_write(at_zero(Command::Reject(
             inbound_message_id,
             RejectReason::QuotaExceeded
-        )),
+        ))),
         Ok(())
     );
 
@@ -1169,10 +1185,10 @@ fn duplicate_qos2_publish_after_reject_resends_same_failure_pubrec_without_redel
         other => panic!("expected received message with acknowledgement, got {other:?}"),
     };
     assert_eq!(
-        client.handle_write(Command::Reject(
+        client.handle_write(at_zero(Command::Reject(
             inbound_message_id,
             RejectReason::NotAuthorized
-        )),
+        ))),
         Ok(())
     );
 
@@ -1226,7 +1242,7 @@ fn manual_ack_sends_puback_success_for_pending_message_id() {
     };
 
     assert_eq!(
-        client.handle_write(Command::Acknowledge(inbound_message_id)),
+        client.handle_write(at_zero(Command::Acknowledge(inbound_message_id))),
         Ok(())
     );
 
@@ -1287,7 +1303,7 @@ fn reject_reason_maps_to_puback_failure_codes_for_qos1() {
         };
 
         assert_eq!(
-            client.handle_write(Command::Reject(inbound_message_id, *reject_reason)),
+            client.handle_write(at_zero(Command::Reject(inbound_message_id, *reject_reason))),
             Ok(())
         );
 
@@ -1348,7 +1364,7 @@ fn reject_reason_maps_to_pubrec_failure_codes_for_qos2() {
         };
 
         assert_eq!(
-            client.handle_write(Command::Reject(inbound_message_id, *reject_reason)),
+            client.handle_write(at_zero(Command::Reject(inbound_message_id, *reject_reason))),
             Ok(())
         );
 
@@ -1403,7 +1419,10 @@ fn socket_closed_after_disconnect_does_not_duplicate_disconnected_event() {
         Some(DriverAction::CloseSocket)
     ));
 
-    assert_eq!(client.handle_event(DriverEvent::SocketClosed), Ok(()));
+    assert_eq!(
+        client.handle_event(at_zero(DriverEvent::SocketClosed)),
+        Ok(())
+    );
     assert!(matches!(client.poll_read(), Some(Event::Disconnected(_))));
     assert!(client.poll_read().is_none());
 }
@@ -1416,10 +1435,10 @@ fn outbound_qos1_publish_emits_acknowledged_event_on_puback() {
     let qos1_message = message("test/topic", ProtoQos::AtLeastOnce, b"qos1");
 
     assert_eq!(
-        client.handle_write(Command::Publish {
+        client.handle_write(at_zero(Command::Publish {
             token: 42,
             message: qos1_message.clone(),
-        }),
+        })),
         Ok(())
     );
 
@@ -1485,10 +1504,10 @@ fn qos2_inflight_receiving_puback_triggers_protocol_error_close() {
 
     let qos2_message = message("test/topic", ProtoQos::ExactlyOnce, b"qos2");
     assert_eq!(
-        client.handle_write(Command::Publish {
+        client.handle_write(at_zero(Command::Publish {
             token: 1,
             message: qos2_message,
-        }),
+        })),
         Ok(())
     );
     assert!(client.poll_write().is_some());
@@ -1523,10 +1542,10 @@ fn qos1_inflight_receiving_pubrec_triggers_protocol_error_close() {
 
     let qos1_message = message("test/topic", ProtoQos::AtLeastOnce, b"qos1");
     assert_eq!(
-        client.handle_write(Command::Publish {
+        client.handle_write(at_zero(Command::Publish {
             token: 1,
             message: qos1_message,
-        }),
+        })),
         Ok(())
     );
     assert!(client.poll_write().is_some());
@@ -1573,10 +1592,10 @@ fn connack_receive_maximum_only_limits_broker_facing_publish_flow() {
 
     let first_message = message("test/topic", ProtoQos::AtLeastOnce, b"qos1-first");
     assert_eq!(
-        client.handle_write(Command::Publish {
+        client.handle_write(at_zero(Command::Publish {
             token: 1,
             message: first_message.clone(),
-        }),
+        })),
         Ok(())
     );
 
@@ -1631,7 +1650,7 @@ fn connack_receive_maximum_only_limits_broker_facing_publish_flow() {
         other => panic!("expected qos1 inbound message with ack id, got {other:?}"),
     };
     assert_eq!(
-        client.handle_write(Command::Acknowledge(inbound_message_id)),
+        client.handle_write(at_zero(Command::Acknowledge(inbound_message_id))),
         Ok(())
     );
     let expected_puback = ControlPacket::PubAck(
@@ -1644,10 +1663,10 @@ fn connack_receive_maximum_only_limits_broker_facing_publish_flow() {
 
     let second_message = message("test/second", ProtoQos::AtLeastOnce, b"qos1-second");
     assert_eq!(
-        client.handle_write(Command::Publish {
+        client.handle_write(at_zero(Command::Publish {
             token: 2,
             message: second_message,
-        }),
+        })),
         Err(Error::ReceiveMaximumExceeded)
     );
     assert_eq!(client.poll_write(), None);
@@ -1677,15 +1696,18 @@ fn effective_limits_recompute_on_connect_socketconnected_connack_and_socketclose
     assert!(matches!(client.poll_read(), Some(Event::Connected)));
 
     assert_eq!(
-        client.handle_write(Command::Publish {
+        client.handle_write(at_zero(Command::Publish {
             token: 1,
             message: qos1_message.clone(),
-        }),
+        })),
         Err(Error::CapabilityNotAvailable(Capability::MaximumQos))
     );
     assert_eq!(client.poll_write(), None);
 
-    assert_eq!(client.handle_event(DriverEvent::SocketClosed), Ok(()));
+    assert_eq!(
+        client.handle_event(at_zero(DriverEvent::SocketClosed)),
+        Ok(())
+    );
     assert!(matches!(client.poll_read(), Some(Event::Disconnected(_))));
 
     let _ = open_connecting(&mut client, connect_options());
@@ -1703,10 +1725,10 @@ fn effective_limits_recompute_on_connect_socketconnected_connack_and_socketclose
     assert!(matches!(client.poll_read(), Some(Event::Connected)));
 
     assert_eq!(
-        client.handle_write(Command::Publish {
+        client.handle_write(at_zero(Command::Publish {
             token: 2,
             message: qos1_message,
-        }),
+        })),
         Err(Error::CapabilityNotAvailable(Capability::MaximumQos))
     );
     assert_eq!(client.poll_write(), None);
@@ -1731,10 +1753,10 @@ fn effective_limits_recompute_on_connect_applies_pending_connect_options() {
 
     let qos2_message = message("test/qos2", ProtoQos::ExactlyOnce, b"qos2");
     assert_eq!(
-        client.handle_write(Command::Publish {
+        client.handle_write(at_zero(Command::Publish {
             token: 1,
             message: qos2_message,
-        }),
+        })),
         Err(Error::CapabilityNotAvailable(Capability::MaximumQos))
     );
 }
@@ -1758,20 +1780,20 @@ fn effective_limits_recompute_on_connack_applies_broker_receive_maximum() {
 
     let first = message("test/first", ProtoQos::AtLeastOnce, b"1");
     assert_eq!(
-        client.handle_write(Command::Publish {
+        client.handle_write(at_zero(Command::Publish {
             token: 1,
             message: first,
-        }),
+        })),
         Ok(())
     );
     assert!(client.poll_write().is_some());
 
     let second = message("test/second", ProtoQos::AtLeastOnce, b"2");
     assert_eq!(
-        client.handle_write(Command::Publish {
+        client.handle_write(at_zero(Command::Publish {
             token: 2,
             message: second,
-        }),
+        })),
         Err(Error::ReceiveMaximumExceeded)
     );
 }
@@ -1795,10 +1817,10 @@ fn app_retain_policy_false_blocks_retain_publish_even_if_broker_allows() {
     let mut retained_message = message("retain/topic", ProtoQos::AtMostOnce, b"retained");
     retained_message.retain = true;
     assert_eq!(
-        client.handle_write(Command::Publish {
+        client.handle_write(at_zero(Command::Publish {
             token: 1,
             message: retained_message,
-        }),
+        })),
         Err(Error::CapabilityNotAvailable(Capability::Retain))
     );
 }
@@ -1828,19 +1850,19 @@ fn app_subscription_policy_flags_override_broker_allowances() {
     assert!(matches!(client.poll_read(), Some(Event::Connected)));
 
     assert_eq!(
-        client.handle_write(Command::Subscribe(
+        client.handle_write(at_zero(Command::Subscribe(
             SubscribeOptions::builder()
                 .subscriptions(vec![app_subscription("topic/+")])
                 .identifier(NonZero::new(1u64).unwrap())
                 .build(),
-        )),
+        ))),
         Err(Error::CapabilityNotAvailable(
             Capability::SubscriptionIdentifiers
         ))
     );
 
     assert_eq!(
-        client.handle_write(subscribe_one(app_subscription("$share/g/topic"))),
+        client.handle_write(at_zero(subscribe_one(app_subscription("$share/g/topic")))),
         Err(Error::CapabilityNotAvailable(
             Capability::SharedSubscriptions
         ))
@@ -1854,10 +1876,10 @@ fn outbound_qos2_publish_emits_completed_event_on_pubcomp() {
 
     let qos2_message = message("test/topic", ProtoQos::ExactlyOnce, b"qos2");
     assert_eq!(
-        client.handle_write(Command::Publish {
+        client.handle_write(at_zero(Command::Publish {
             token: 9,
             message: qos2_message.clone(),
-        }),
+        })),
         Ok(())
     );
 
@@ -1915,10 +1937,10 @@ fn unexpected_pubcomp_before_pubrec_transition_triggers_protocol_error_close() {
 
     let qos2_message = message("test/topic", ProtoQos::ExactlyOnce, b"qos2");
     assert_eq!(
-        client.handle_write(Command::Publish {
+        client.handle_write(at_zero(Command::Publish {
             token: 1,
             message: qos2_message,
-        }),
+        })),
         Ok(())
     );
     assert!(client.poll_write().is_some());
@@ -1961,10 +1983,10 @@ fn receive_maximum_full_returns_immediate_error_for_new_qos2_publish() {
 
     let first_message = message("test/topic", ProtoQos::ExactlyOnce, b"qos2-first");
     assert_eq!(
-        client.handle_write(Command::Publish {
+        client.handle_write(at_zero(Command::Publish {
             token: 1,
             message: first_message.clone(),
-        }),
+        })),
         Ok(())
     );
 
@@ -1987,10 +2009,10 @@ fn receive_maximum_full_returns_immediate_error_for_new_qos2_publish() {
 
     let second_message = message("test/topic", ProtoQos::ExactlyOnce, b"qos2-second");
     assert_eq!(
-        client.handle_write(Command::Publish {
+        client.handle_write(at_zero(Command::Publish {
             token: 2,
             message: second_message,
-        }),
+        })),
         Err(Error::ReceiveMaximumExceeded)
     );
     assert_eq!(client.poll_write(), None);
@@ -2003,10 +2025,10 @@ fn duplicate_pubrec_in_qos2_await_pubcomp_resends_pubrel_without_disconnect() {
 
     let qos2_message = message("test/topic", ProtoQos::ExactlyOnce, b"qos2");
     assert_eq!(
-        client.handle_write(Command::Publish {
+        client.handle_write(at_zero(Command::Publish {
             token: 1,
             message: qos2_message.clone(),
-        }),
+        })),
         Ok(())
     );
 
@@ -2067,10 +2089,10 @@ fn qos2_pubrec_failure_reason_drops_inflight_without_pubrel() {
 
     let qos2_message = message("test/topic", ProtoQos::ExactlyOnce, b"qos2");
     assert_eq!(
-        client.handle_write(Command::Publish {
+        client.handle_write(at_zero(Command::Publish {
             token: 5,
             message: qos2_message,
-        }),
+        })),
         Ok(())
     );
     let packet_id = NonZero::new(1).expect("non-zero packet id");
@@ -2124,7 +2146,7 @@ fn publish_rejects_packet_exceeding_connack_maximum_packet_size() {
 
     let message = message("test/topic", ProtoQos::AtMostOnce, &[0; 64]);
     assert_eq!(
-        client.handle_write(Command::Publish { token: 1, message }),
+        client.handle_write(at_zero(Command::Publish { token: 1, message })),
         Err(Error::PacketTooLarge)
     );
     assert_eq!(client.poll_write(), None);
@@ -2148,7 +2170,9 @@ fn subscribe_rejects_packet_exceeding_connack_maximum_packet_size() {
     assert!(matches!(client.poll_read(), Some(Event::Connected)));
 
     assert_eq!(
-        client.handle_write(subscribe_one(app_subscription("a/very/long/topic/filter"))),
+        client.handle_write(at_zero(subscribe_one(app_subscription(
+            "a/very/long/topic/filter"
+        )))),
         Err(Error::PacketTooLarge)
     );
     assert_eq!(client.poll_write(), None);
@@ -2159,13 +2183,13 @@ fn repeated_connect_does_not_duplicate_open_socket_event() {
     let mut client = Client::<Duration>::default();
 
     assert_eq!(
-        client.handle_write(Command::Connect(connect_options())),
+        client.handle_write(at_zero(Command::Connect(connect_options()))),
         Ok(())
     );
     // A connection attempt is already in progress: the second Connect is
     // rejected rather than requesting another socket.
     assert_eq!(
-        client.handle_write(Command::Connect(connect_options())),
+        client.handle_write(at_zero(Command::Connect(connect_options()))),
         Err(Error::InvalidStateTransition)
     );
 
@@ -2195,7 +2219,7 @@ fn rejected_connect_does_not_mutate_pending_connect_options() {
     assert_ne!(first_connect_bytes, rejected_connect_bytes);
 
     assert_eq!(
-        client.handle_write(Command::Connect(rejected_options)),
+        client.handle_write(at_zero(Command::Connect(rejected_options))),
         Err(Error::InvalidStateTransition)
     );
     // The rejected Connect neither requested a socket nor sent a CONNECT, and
@@ -2224,7 +2248,10 @@ fn reconnect_ignores_previous_connack_maximum_packet_size_for_connect() {
     );
     assert!(matches!(client.poll_read(), Some(Event::Connected)));
 
-    assert_eq!(client.handle_event(DriverEvent::SocketClosed), Ok(()));
+    assert_eq!(
+        client.handle_event(at_zero(DriverEvent::SocketClosed)),
+        Ok(())
+    );
     assert!(matches!(client.poll_read(), Some(Event::Disconnected(_))));
 
     let reconnect_connect = open_connecting(&mut client, connect_options());
@@ -2280,10 +2307,10 @@ fn resumed_session_replays_outbound_qos_publish_with_dup_set() {
 
     let outbound = message("replay/topic", ProtoQos::AtLeastOnce, b"replay");
     assert_eq!(
-        client.handle_write(Command::Publish {
+        client.handle_write(at_zero(Command::Publish {
             token: 1,
             message: outbound.clone(),
-        }),
+        })),
         Ok(())
     );
 
@@ -2301,7 +2328,10 @@ fn resumed_session_replays_outbound_qos_publish_with_dup_set() {
     );
     assert_eq!(client.poll_write(), Some(encode_packet(&first_publish)));
 
-    assert_eq!(client.handle_event(DriverEvent::SocketClosed), Ok(()));
+    assert_eq!(
+        client.handle_event(at_zero(DriverEvent::SocketClosed)),
+        Ok(())
+    );
     assert!(matches!(client.poll_read(), Some(Event::Disconnected(_))));
 
     let _ = open_connecting(&mut client, session_expiry_options(30));
@@ -2344,10 +2374,10 @@ fn resumed_session_replay_failure_does_not_emit_connected_and_closes() {
 
     let outbound = message("replay/failure", ProtoQos::AtLeastOnce, &[0; 64]);
     assert_eq!(
-        client.handle_write(Command::Publish {
+        client.handle_write(at_zero(Command::Publish {
             token: 1,
             message: outbound.clone(),
-        }),
+        })),
         Ok(())
     );
 
@@ -2367,7 +2397,10 @@ fn resumed_session_replay_failure_does_not_emit_connected_and_closes() {
         )))
     );
 
-    assert_eq!(client.handle_event(DriverEvent::SocketClosed), Ok(()));
+    assert_eq!(
+        client.handle_event(at_zero(DriverEvent::SocketClosed)),
+        Ok(())
+    );
     assert!(matches!(client.poll_read(), Some(Event::Disconnected(_))));
 
     let _ = open_connecting(&mut client, session_expiry_options(30));
@@ -2400,10 +2433,10 @@ fn resumed_session_replays_unacknowledged_pubrel() {
 
     let outbound = message("resume/qos2", ProtoQos::ExactlyOnce, b"qos2");
     assert_eq!(
-        client.handle_write(Command::Publish {
+        client.handle_write(at_zero(Command::Publish {
             token: 1,
             message: outbound.clone(),
-        }),
+        })),
         Ok(())
     );
 
@@ -2440,7 +2473,10 @@ fn resumed_session_replays_unacknowledged_pubrel() {
         )))
     );
 
-    assert_eq!(client.handle_event(DriverEvent::SocketClosed), Ok(()));
+    assert_eq!(
+        client.handle_event(at_zero(DriverEvent::SocketClosed)),
+        Ok(())
+    );
     assert!(matches!(client.poll_read(), Some(Event::Disconnected(_))));
 
     let _ = open_connecting(&mut client, session_expiry_options(30));
@@ -2479,10 +2515,10 @@ fn non_resumed_session_drops_inflight_and_emits_publish_dropped_events() {
 
     let qos1_topic = "drop/topic";
     assert_eq!(
-        client.handle_write(Command::Publish {
+        client.handle_write(at_zero(Command::Publish {
             token: 1,
             message: message(qos1_topic, ProtoQos::AtLeastOnce, b"qos1"),
-        }),
+        })),
         Ok(())
     );
     let qos1_packet_id = NonZero::new(1).expect("non-zero packet id");
@@ -2502,10 +2538,10 @@ fn non_resumed_session_drops_inflight_and_emits_publish_dropped_events() {
     );
 
     assert_eq!(
-        client.handle_write(Command::Publish {
+        client.handle_write(at_zero(Command::Publish {
             token: 2,
             message: message(qos1_topic, ProtoQos::ExactlyOnce, b"qos2"),
-        }),
+        })),
         Ok(())
     );
     let qos2_packet_id = NonZero::new(2).expect("non-zero packet id");
@@ -2540,7 +2576,10 @@ fn non_resumed_session_drops_inflight_and_emits_publish_dropped_events() {
     let _ = client.poll_read();
     assert_eq!(client.poll_write(), None);
 
-    assert_eq!(client.handle_event(DriverEvent::SocketClosed), Ok(()));
+    assert_eq!(
+        client.handle_event(at_zero(DriverEvent::SocketClosed)),
+        Ok(())
+    );
     assert!(matches!(client.poll_read(), Some(Event::Disconnected(_))));
 
     let _ = open_connecting(&mut client, session_expiry_options(30));
@@ -2587,10 +2626,10 @@ fn non_resumed_connack_discards_all_local_session_state() {
     let _ = connect_default(&mut client);
 
     assert_eq!(
-        client.handle_write(Command::Publish {
+        client.handle_write(at_zero(Command::Publish {
             token: 1,
             message: message("state/topic", ProtoQos::AtLeastOnce, b"qos1"),
-        }),
+        })),
         Ok(())
     );
     assert!(client.poll_write().is_some());
@@ -2612,15 +2651,21 @@ fn non_resumed_connack_discards_all_local_session_state() {
     assert_eq!(client.poll_write(), None);
 
     assert_eq!(
-        client.handle_write(subscribe_one(app_subscription("state/sub"))),
+        client.handle_write(at_zero(subscribe_one(app_subscription("state/sub")))),
         Ok(())
     );
     let _ = client.poll_write().expect("subscribe frame expected");
 
-    assert_eq!(client.handle_write(unsubscribe_one("state/sub")), Ok(()));
+    assert_eq!(
+        client.handle_write(at_zero(unsubscribe_one("state/sub"))),
+        Ok(())
+    );
     let _ = client.poll_write().expect("unsubscribe frame expected");
 
-    assert_eq!(client.handle_event(DriverEvent::SocketClosed), Ok(()));
+    assert_eq!(
+        client.handle_event(at_zero(DriverEvent::SocketClosed)),
+        Ok(())
+    );
     assert!(matches!(client.poll_read(), Some(Event::Disconnected(_))));
 
     let _ = open_connecting(&mut client, connect_options());
@@ -2659,10 +2704,16 @@ fn non_resumed_connack_discards_all_local_session_state() {
     let mut client = Client::<Duration>::default();
     let _ = connect_default(&mut client);
 
-    assert_eq!(client.handle_write(unsubscribe_one("state/unsub")), Ok(()));
+    assert_eq!(
+        client.handle_write(at_zero(unsubscribe_one("state/unsub"))),
+        Ok(())
+    );
     let _ = client.poll_write().expect("unsubscribe frame expected");
 
-    assert_eq!(client.handle_event(DriverEvent::SocketClosed), Ok(()));
+    assert_eq!(
+        client.handle_event(at_zero(DriverEvent::SocketClosed)),
+        Ok(())
+    );
     assert!(matches!(client.poll_read(), Some(Event::Disconnected(_))));
     let _ = open_connecting(&mut client, connect_options());
     assert_eq!(read(&mut client, &success_connack()), Ok(()));
@@ -2694,7 +2745,10 @@ fn stale_read_buffer_is_cleared_on_socket_closed() {
         Ok(())
     );
 
-    assert_eq!(client.handle_event(DriverEvent::SocketClosed), Ok(()));
+    assert_eq!(
+        client.handle_event(at_zero(DriverEvent::SocketClosed)),
+        Ok(())
+    );
     assert!(matches!(client.poll_read(), Some(Event::Disconnected(_))));
 
     let _ = open_connecting(&mut client, connect_options());
@@ -2716,7 +2770,10 @@ fn stale_read_buffer_is_cleared_on_socket_error() {
     );
 
     // The driver already dropped the socket: no CloseSocket is requested.
-    assert_eq!(client.handle_event(DriverEvent::SocketError), Ok(()));
+    assert_eq!(
+        client.handle_event(at_zero(DriverEvent::SocketError)),
+        Ok(())
+    );
     assert!(client.poll_event().is_none());
     assert!(matches!(
         client.poll_read(),
@@ -2741,7 +2798,7 @@ fn stale_read_buffer_is_cleared_on_user_disconnect() {
         Ok(())
     );
 
-    assert_eq!(client.handle_write(Command::Disconnect), Ok(()));
+    assert_eq!(client.handle_write(at_zero(Command::Disconnect)), Ok(()));
     assert!(matches!(client.poll_read(), Some(Event::Disconnected(_))));
     assert!(matches!(
         client.poll_event(),
@@ -2809,7 +2866,10 @@ fn close_enqueues_disconnect_and_close_socket() {
     assert!(matches!(client.poll_read(), Some(Event::Disconnected(_))));
     assert!(client.poll_read().is_none());
 
-    assert_eq!(client.handle_event(DriverEvent::SocketClosed), Ok(()));
+    assert_eq!(
+        client.handle_event(at_zero(DriverEvent::SocketClosed)),
+        Ok(())
+    );
     assert!(client.poll_read().is_none());
 }
 
@@ -2839,7 +2899,10 @@ fn close_succeeds_even_when_disconnect_packet_exceeds_maximum_packet_size() {
     assert!(matches!(client.poll_read(), Some(Event::Disconnected(_))));
     assert!(client.poll_read().is_none());
 
-    assert_eq!(client.handle_event(DriverEvent::SocketClosed), Ok(()));
+    assert_eq!(
+        client.handle_event(at_zero(DriverEvent::SocketClosed)),
+        Ok(())
+    );
     assert!(client.poll_read().is_none());
 }
 
@@ -2860,7 +2923,7 @@ fn user_disconnect_succeeds_even_when_disconnect_packet_exceeds_maximum_packet_s
     );
     assert!(matches!(client.poll_read(), Some(Event::Connected)));
 
-    assert_eq!(client.handle_write(Command::Disconnect), Ok(()));
+    assert_eq!(client.handle_write(at_zero(Command::Disconnect)), Ok(()));
     assert_eq!(client.poll_write(), None);
     assert!(matches!(
         client.poll_event(),
@@ -2869,7 +2932,10 @@ fn user_disconnect_succeeds_even_when_disconnect_packet_exceeds_maximum_packet_s
     assert!(matches!(client.poll_read(), Some(Event::Disconnected(_))));
     assert!(client.poll_read().is_none());
 
-    assert_eq!(client.handle_event(DriverEvent::SocketClosed), Ok(()));
+    assert_eq!(
+        client.handle_event(at_zero(DriverEvent::SocketClosed)),
+        Ok(())
+    );
     assert!(client.poll_read().is_none());
 }
 
@@ -2907,7 +2973,7 @@ fn timeout_is_cleared_on_close() {
     );
 
     assert_eq!(
-        socket_closed_client.handle_event(DriverEvent::SocketClosed),
+        socket_closed_client.handle_event(at_zero(DriverEvent::SocketClosed)),
         Ok(())
     );
     assert_eq!(socket_closed_client.poll_timeout(), None);
@@ -3023,10 +3089,10 @@ fn publish_qos_above_server_maximum_qos_is_rejected() {
     assert!(matches!(client.poll_read(), Some(Event::Connected)));
 
     assert_eq!(
-        client.handle_write(Command::Publish {
+        client.handle_write(at_zero(Command::Publish {
             token: 1,
             message: message("qos/guard", ProtoQos::AtLeastOnce, b"payload"),
-        }),
+        })),
         Err(Error::CapabilityNotAvailable(Capability::MaximumQos))
     );
     assert_eq!(client.poll_write(), None);
@@ -3048,10 +3114,10 @@ fn publish_retain_when_server_retain_not_available_is_rejected() {
     let mut retained_message = message("retain/guard", ProtoQos::AtMostOnce, b"payload");
     retained_message.retain = true;
     assert_eq!(
-        client.handle_write(Command::Publish {
+        client.handle_write(at_zero(Command::Publish {
             token: 1,
             message: retained_message,
-        }),
+        })),
         Err(Error::CapabilityNotAvailable(Capability::Retain))
     );
     assert_eq!(client.poll_write(), None);
@@ -3065,7 +3131,7 @@ fn subscribe_shared_with_no_local_is_rejected() {
     let mut shared = app_subscription("$share/group/topic");
     shared.no_local = true;
     assert_eq!(
-        client.handle_write(subscribe_one(shared)),
+        client.handle_write(at_zero(subscribe_one(shared))),
         Err(Error::NoLocalOnSharedSubscription)
     );
     assert_eq!(client.poll_write(), None);
@@ -3089,7 +3155,7 @@ fn subscribe_wildcard_when_server_disallows_is_rejected() {
     assert!(matches!(client.poll_read(), Some(Event::Connected)));
 
     assert_eq!(
-        client.handle_write(subscribe_one(app_subscription("topic/#"))),
+        client.handle_write(at_zero(subscribe_one(app_subscription("topic/#")))),
         Err(Error::CapabilityNotAvailable(
             Capability::WildcardSubscriptions
         ))
@@ -3115,7 +3181,7 @@ fn subscribe_shared_when_server_disallows_is_rejected() {
     assert!(matches!(client.poll_read(), Some(Event::Connected)));
 
     assert_eq!(
-        client.handle_write(subscribe_one(app_subscription("$share/g/topic"))),
+        client.handle_write(at_zero(subscribe_one(app_subscription("$share/g/topic")))),
         Err(Error::CapabilityNotAvailable(
             Capability::SharedSubscriptions
         ))
@@ -3141,12 +3207,12 @@ fn subscribe_identifier_when_server_disallows_is_rejected() {
     assert!(matches!(client.poll_read(), Some(Event::Connected)));
 
     assert_eq!(
-        client.handle_write(Command::Subscribe(
+        client.handle_write(at_zero(Command::Subscribe(
             SubscribeOptions::builder()
                 .subscriptions(vec![app_subscription("topic/a")])
                 .identifier(NonZero::new(1u64).unwrap())
                 .build(),
-        )),
+        ))),
         Err(Error::CapabilityNotAvailable(
             Capability::SubscriptionIdentifiers
         ))
@@ -3308,15 +3374,18 @@ fn connack_session_expiry_zero_overrides_client_session_should_persist() {
     assert!(matches!(client.poll_read(), Some(Event::Connected)));
 
     assert_eq!(
-        client.handle_write(Command::Publish {
+        client.handle_write(at_zero(Command::Publish {
             token: 1,
             message: message("test/topic", ProtoQos::AtLeastOnce, b"data"),
-        }),
+        })),
         Ok(())
     );
     assert!(client.poll_write().is_some(), "PUBLISH must be sent");
 
-    assert_eq!(client.handle_event(DriverEvent::SocketClosed), Ok(()));
+    assert_eq!(
+        client.handle_event(at_zero(DriverEvent::SocketClosed)),
+        Ok(())
+    );
     assert!(matches!(client.poll_read(), Some(Event::Disconnected(_))));
     assert!(client.poll_read().is_none(), "no drop event at disconnect");
 
@@ -3356,15 +3425,18 @@ fn connack_session_expiry_nonzero_sets_session_should_persist() {
     assert!(matches!(client.poll_read(), Some(Event::Connected)));
 
     assert_eq!(
-        client.handle_write(Command::Publish {
+        client.handle_write(at_zero(Command::Publish {
             token: 1,
             message: message("test/topic", ProtoQos::AtLeastOnce, b"data"),
-        }),
+        })),
         Ok(())
     );
     assert!(client.poll_write().is_some(), "PUBLISH must be sent");
 
-    assert_eq!(client.handle_event(DriverEvent::SocketClosed), Ok(()));
+    assert_eq!(
+        client.handle_event(at_zero(DriverEvent::SocketClosed)),
+        Ok(())
+    );
     assert!(matches!(client.poll_read(), Some(Event::Disconnected(_))));
     assert!(client.poll_read().is_none(), "no extra events");
 
@@ -3400,15 +3472,15 @@ fn clean_start_true_clears_local_session_before_connect() {
     let _ = connect_client(&mut client, first_options);
 
     assert_eq!(
-        client.handle_write(Command::Publish {
+        client.handle_write(at_zero(Command::Publish {
             token: 1,
             message: message("clean/start", ProtoQos::AtLeastOnce, b"qos1"),
-        }),
+        })),
         Ok(())
     );
     assert!(client.poll_write().is_some());
 
-    assert_eq!(client.handle_write(Command::Disconnect), Ok(()));
+    assert_eq!(client.handle_write(at_zero(Command::Disconnect)), Ok(()));
     assert_eq!(client.poll_write(), Some(Bytes::from_static(&[0xE0, 0x00])));
     assert!(matches!(
         client.poll_event(),
@@ -3440,15 +3512,15 @@ fn session_with_expiry_keeps_inflight_across_graceful_disconnect() {
     let _ = connect_client(&mut client, session_expiry_options(30));
 
     assert_eq!(
-        client.handle_write(Command::Publish {
+        client.handle_write(at_zero(Command::Publish {
             token: 1,
             message: message("session/persist", ProtoQos::AtLeastOnce, b"persist"),
-        }),
+        })),
         Ok(())
     );
     let publish = client.poll_write().expect("publish expected");
 
-    assert_eq!(client.handle_write(Command::Disconnect), Ok(()));
+    assert_eq!(client.handle_write(at_zero(Command::Disconnect)), Ok(()));
     assert_eq!(client.poll_write(), Some(Bytes::from_static(&[0xE0, 0x00])));
     assert!(matches!(
         client.poll_event(),
@@ -3472,15 +3544,15 @@ fn zero_session_expiry_clears_inflight_on_disconnect() {
     let _ = connect_client(&mut client, session_expiry_options(0));
 
     assert_eq!(
-        client.handle_write(Command::Publish {
+        client.handle_write(at_zero(Command::Publish {
             token: 1,
             message: message("session/clear", ProtoQos::AtLeastOnce, b"clear"),
-        }),
+        })),
         Ok(())
     );
     assert!(client.poll_write().is_some());
 
-    assert_eq!(client.handle_write(Command::Disconnect), Ok(()));
+    assert_eq!(client.handle_write(at_zero(Command::Disconnect)), Ok(()));
     assert_eq!(client.poll_write(), Some(Bytes::from_static(&[0xE0, 0x00])));
     assert!(matches!(
         client.poll_event(),
@@ -3501,15 +3573,18 @@ fn zero_session_expiry_clears_inflight_on_socket_closed() {
     let _ = connect_client(&mut client, session_expiry_options(0));
 
     assert_eq!(
-        client.handle_write(Command::Publish {
+        client.handle_write(at_zero(Command::Publish {
             token: 1,
             message: message("session/close-clear", ProtoQos::AtLeastOnce, b"clear"),
-        }),
+        })),
         Ok(())
     );
     let first_publish = client.poll_write().expect("publish expected");
 
-    assert_eq!(client.handle_event(DriverEvent::SocketClosed), Ok(()));
+    assert_eq!(
+        client.handle_event(at_zero(DriverEvent::SocketClosed)),
+        Ok(())
+    );
     assert!(matches!(client.poll_read(), Some(Event::Disconnected(_))));
 
     let _ = open_connecting(&mut client, session_expiry_options(0));
@@ -3532,10 +3607,10 @@ fn keepalive_timeout_with_session_expiry_preserves_inflight_for_resume() {
     let _ = connect_client(&mut client, options.clone());
 
     assert_eq!(
-        client.handle_write(Command::Publish {
+        client.handle_write(at_zero(Command::Publish {
             token: 1,
             message: message("session/timeout-persist", ProtoQos::AtLeastOnce, b"persist"),
-        }),
+        })),
         Ok(())
     );
     let first_publish = client.poll_write().expect("publish expected");
@@ -3576,16 +3651,16 @@ fn subscribe_tracks_packet_id_until_suback() {
     let _ = connect_default(&mut client);
 
     assert_eq!(
-        client.handle_write(subscribe_one(app_subscription("topic/a"))),
+        client.handle_write(at_zero(subscribe_one(app_subscription("topic/a")))),
         Ok(())
     );
     let subscribe_frame = client.poll_write().expect("subscribe frame expected");
 
     assert_eq!(
-        client.handle_write(Command::Publish {
+        client.handle_write(at_zero(Command::Publish {
             token: 1,
             message: message("topic/pub", ProtoQos::AtLeastOnce, b"payload"),
-        }),
+        })),
         Ok(())
     );
     let publish_frame = client.poll_write().expect("publish frame expected");
@@ -3605,14 +3680,17 @@ fn unsubscribe_tracks_packet_id_until_unsuback() {
     let mut client = Client::<Duration>::default();
     let _ = connect_default(&mut client);
 
-    assert_eq!(client.handle_write(unsubscribe_one("topic/a")), Ok(()));
+    assert_eq!(
+        client.handle_write(at_zero(unsubscribe_one("topic/a"))),
+        Ok(())
+    );
     let unsub_frame = client.poll_write().expect("unsubscribe frame expected");
 
     assert_eq!(
-        client.handle_write(Command::Publish {
+        client.handle_write(at_zero(Command::Publish {
             token: 1,
             message: message("topic/pub", ProtoQos::AtLeastOnce, b"payload"),
-        }),
+        })),
         Ok(())
     );
     let publish_frame = client.poll_write().expect("publish frame expected");
@@ -3721,7 +3799,7 @@ fn client_initiated_disconnect_emits_disconnected_none() {
     let mut client = Client::<Duration>::default();
     let _ = connect_default(&mut client);
 
-    assert_eq!(client.handle_write(Command::Disconnect), Ok(()));
+    assert_eq!(client.handle_write(at_zero(Command::Disconnect)), Ok(()));
     let event = client.poll_read();
     assert!(
         matches!(event, Some(Event::Disconnected(None))),
@@ -3821,10 +3899,10 @@ fn handle_timeout_reschedules_deadline_to_now_plus_interval_when_outgoing_packet
     assert_eq!(client.poll_timeout(), Some(Duration::from_secs(30)));
 
     assert_eq!(
-        client.handle_write(Command::Publish {
+        client.handle_write(at_zero(Command::Publish {
             token: 1,
             message: message("t", ProtoQos::AtMostOnce, b""),
-        }),
+        })),
         Ok(())
     );
     let _ = client.poll_write();
@@ -3942,18 +4020,24 @@ fn reconnect_from_disconnected_preserves_connect_options_for_effective_limit_rec
     }));
     let _ = connect_default(&mut client);
 
-    assert_eq!(client.handle_event(DriverEvent::SocketClosed), Ok(()));
+    assert_eq!(
+        client.handle_event(at_zero(DriverEvent::SocketClosed)),
+        Ok(())
+    );
     assert!(matches!(client.poll_read(), Some(Event::Disconnected(_))));
 
     assert_eq!(
-        client.handle_write(Command::Connect(connect_options())),
+        client.handle_write(at_zero(Command::Connect(connect_options()))),
         Ok(())
     );
     assert!(matches!(
         client.poll_event(),
         Some(DriverAction::OpenSocket)
     ));
-    assert_eq!(client.handle_event(DriverEvent::SocketConnected), Ok(()));
+    assert_eq!(
+        client.handle_event(at_zero(DriverEvent::SocketConnected)),
+        Ok(())
+    );
     let _ = client
         .poll_write()
         .expect("reconnect CONNECT frame expected");

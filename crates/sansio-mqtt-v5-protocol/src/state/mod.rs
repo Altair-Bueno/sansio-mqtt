@@ -102,6 +102,7 @@ pub(crate) trait StateHandler<T>: Sized {
         session: &mut ClientSession,
         scratchpad: &mut ClientScratchpad<T>,
         msg: Command,
+        at: T,
     ) -> (ClientState, Result<(), Error>);
 
     fn handle_event(
@@ -110,6 +111,7 @@ pub(crate) trait StateHandler<T>: Sized {
         session: &mut ClientSession,
         scratchpad: &mut ClientScratchpad<T>,
         evt: DriverEvent,
+        at: T,
     ) -> (ClientState, Result<(), Error>);
 
     fn handle_timeout(
@@ -167,8 +169,9 @@ where
         session: &mut ClientSession,
         scratchpad: &mut ClientScratchpad<T>,
         msg: Command,
+        at: T,
     ) -> (ClientState, Result<(), Error>) {
-        forward_to_state!(self, handle_write(settings, session, scratchpad, msg))
+        forward_to_state!(self, handle_write(settings, session, scratchpad, msg, at))
     }
 
     fn handle_event(
@@ -177,6 +180,7 @@ where
         session: &mut ClientSession,
         scratchpad: &mut ClientScratchpad<T>,
         evt: DriverEvent,
+        at: T,
     ) -> (ClientState, Result<(), Error>) {
         if matches!(evt, DriverEvent::SocketClosed | DriverEvent::SocketError) {
             // Unsent bytes belonged to the lost socket and must never reach
@@ -191,7 +195,7 @@ where
                 return (self, Ok(()));
             }
         }
-        forward_to_state!(self, handle_event(settings, session, scratchpad, evt))
+        forward_to_state!(self, handle_event(settings, session, scratchpad, evt, at))
     }
 
     fn handle_timeout(
