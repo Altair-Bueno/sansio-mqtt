@@ -1,25 +1,12 @@
 # AGENTS.md
 
-## Index
-
-- [Purpose and Scope](#purpose-and-scope)
-- [Mandatory Checklist (MUST follow)](#mandatory-checklist-must-follow)
-- [Build and Tooling](#build-and-tooling)
-- [Architecture and Crates](#architecture-and-crates)
-- [Protocol and Spec Compliance](#protocol-and-spec-compliance)
-- [Error Handling and Invalid States](#error-handling-and-invalid-states)
-- [Contribution Workflow](#contribution-workflow)
-- [Key Paths](#key-paths)
-
 ## Purpose and Scope
 
-- This repo implements sansio MQTT protocol components in Rust.
 - Current focus: MQTT v5.0; future MQTT versions are planned and should follow
   the same conventions.
 
 ## Mandatory Checklist (MUST follow)
 
-- Follow andrej-karpathy-skills skill for all code changes
 - Spec gate: MUST read the MQTT v5.0 spec before implementing anything:
   https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html
 - TDD: for behavior changes, add/adjust tests before implementation when
@@ -54,18 +41,7 @@
 
 ## Build and Tooling
 
-- Build system: Cargo.
-- Toolchain: **stable** (pinned in `rust-toolchain.toml`). Exception:
-  `cargo fmt` must be run with nightly because `rustfmt.toml` uses nightly-only
-  options (`imports_granularity`, `wrap_comments`). Use `cargo +nightly fmt`
-  locally.
-- Tests: for behavior changes follow the TDD checklist item; for non-behavior
-  changes they are optional.
-- **Parked crates**: `sansio-mqtt-v5-tokio` and
-  `test-sansio-mqtt-v5-tokio-mosquitto` are out of `default-members` and are not
-  built, linted or tested by default (nor in CI). Do not modify them unless
-  asked. The Mosquitto crate needs Docker; run it with
-  `cargo test -p test-sansio-mqtt-v5-tokio-mosquitto` when you need it.
+- Toolchain: **stable** (pinned in `rust-toolchain.toml`).
 - **rust-analyzer is REQUIRED**: at session start, verify rust-analyzer is
   available by running `rust-analyzer --version`. If the command fails, STOP all
   work and ask the user whether you should install it by running
@@ -76,7 +52,6 @@
 
 ## Architecture and Crates
 
-- Workspace layout: `crates/*`.
 - Crate naming convention: `sansio-mqtt-<mqtt-version>-<scope>` (crate naming).
   `sansio-mqtt-protocol` is the one version-neutral crate: it defines the public
   application API (`Command`, `Event`, `Message`, ...) and the `MqttProtocol`
@@ -87,7 +62,6 @@
 ## Protocol and Spec Compliance
 
 - MQTT v5.0 spec is authoritative for current behavior.
-- Spec gate applies (see checklist item).
 - Cite exact conformance statements using `[MQTT-x.x.x-y]` in code or docs when
   relevant.
 - Apply the same citation style for future MQTT versions.
@@ -106,14 +80,5 @@
 
 ## Contribution Workflow
 
-- Keep changes minimal and atomic (see checklist).
-- Run required checks from the checklist before completion.
 - Default execution mode: subagent-driven (use subagents for plan execution by
   default).
-
-## Key Paths
-
-- `AGENTS.md` (repo root)
-- `Cargo.toml`
-- `crates/*`
-- `rust-toolchain.toml`
