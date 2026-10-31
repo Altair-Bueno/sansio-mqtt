@@ -109,7 +109,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     drop(commands);
 
     let (r1, r2, r3) = tokio::join!(driver_handle, mqtt_task, signal_task);
-    r1??;
+    r1?;
     r2?;
     r3?;
 
