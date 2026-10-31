@@ -9,8 +9,21 @@ bytes = { workspace = true }
 sansio-mqtt-protocol = { workspace = true }
 tokio = { workspace = true, features = ["io-util", "macros", "net", "time"] }
 tracing = { workspace = true, features = ["attributes"] }
+thiserror = { workspace = true, optional = true }
+tokio-rustls = { workspace = true, optional = true, features = [
+  "logging",
+  "ring",
+  "tls12",
+] }
+
+[features]
+# TLS over any connector, using rustls with the ring crypto provider.
+rustls = ["dep:thiserror", "dep:tokio-rustls"]
 
 [dev-dependencies]
+rcgen = { workspace = true, features = ["crypto", "pem", "ring"] }
+webpki-roots = { workspace = true }
+tokio-rustls = { workspace = true, features = ["logging", "ring", "tls12"] }
 sansio = { workspace = true }
 semver = { workspace = true }
 encode = { workspace = true }
@@ -20,3 +33,7 @@ sansio-mqtt-v5-types = { workspace = true }
 winnow = { workspace = true }
 tracing-subscriber = { workspace = true, features = ["env-filter", "fmt"] }
 tokio = { workspace = true, features = ["full", "test-util"] }
+
+[[example]]
+name = "tlsv5"
+required-features = ["rustls"]

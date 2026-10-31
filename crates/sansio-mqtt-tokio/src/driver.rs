@@ -332,7 +332,10 @@ where
                 }
             }
             Input::Connected(Err(error)) => {
-                tracing::warn!(%error, "failed to open socket");
+                tracing::warn!(
+                    error = &error as &dyn core::error::Error,
+                    "failed to open socket"
+                );
                 self.lose_socket(DriverEvent::SocketError);
             }
         }
