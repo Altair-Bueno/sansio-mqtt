@@ -228,7 +228,8 @@ pub enum ReasonCode {
     ReAuthenticate,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, strum::EnumDiscriminants)]
+#[strum_discriminants(derive(strum::Display))]
 #[non_exhaustive]
 pub enum Command {
     Connect(ConnectOptions),
@@ -240,7 +241,8 @@ pub enum Command {
     Disconnect,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, strum::EnumDiscriminants)]
+#[strum_discriminants(derive(strum::Display))]
 #[non_exhaustive]
 pub enum Event {
     Connected,
@@ -268,7 +270,8 @@ pub enum Event {
     },
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, strum::EnumDiscriminants)]
+#[strum_discriminants(derive(strum::Display))]
 #[non_exhaustive]
 pub enum DriverEvent {
     SocketConnected,
@@ -276,7 +279,8 @@ pub enum DriverEvent {
     SocketError,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, strum::EnumDiscriminants)]
+#[strum_discriminants(derive(strum::Display))]
 #[non_exhaustive]
 pub enum DriverAction {
     OpenSocket,
