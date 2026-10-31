@@ -4,6 +4,7 @@ use sansio_mqtt_protocol::Event;
 use sansio_mqtt_protocol::Message;
 use sansio_mqtt_protocol::SubscribeOptions;
 use sansio_mqtt_protocol::Subscription;
+use sansio_mqtt_tokio::Driver;
 use sansio_mqtt_v5_protocol::Client;
 use tokio::io::BufStream;
 use tokio::net::TcpStream;
@@ -20,98 +21,77 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         )
         .init();
     tracing::info!("initializing client");
-    let (driver_handle, commands, mut events) =
-        sansio_mqtt_tokio::spawn(Client::default(), || async {
-            let stream = TcpStream::connect("test.mosquitto.org:1883").await?;
-            stream.set_nodelay(true)?;
-            let stream = BufStream::new(stream);
-            Ok(stream)
-        })
-        .await?;
-
-    let commands_signal = commands.clone();
-    let commands_mqtt = commands.clone();
-
-    tracing::info!("spawning event consumer");
-    let mqtt_task = async move {
-        while let Some(event) = events.recv().await {
-            match event {
-                Event::Disconnected(_) => break,
-                Event::Connected => {
-                    tracing::info!("subscribing to all topics");
-                    commands_mqtt
-                        .send(Command::Subscribe(
-                            SubscribeOptions::builder()
-                                .subscriptions(vec![
-                                    Subscription::builder().filter("test/topic").build(),
-                                ])
-                                .build(),
-                        ))
-                        .await?;
-
-                    commands_mqtt
-                        .send(Command::Publish {
-                            token: 1,
-                            message: Message::builder()
-                                .topic("test/topic")
-                                .payload("Hello, MQTT!")
-                                .build(),
-                        })
-                        .await?;
-                }
-                Event::Message(Message {
-                    topic,
-                    payload,
-                    qos,
-                    retain,
-                    payload_format,
-                    message_expiry,
-                    response_topic,
-                    correlation_data,
-                    content_type,
-                    user_properties,
-                    subscription_identifiers,
-                    ..
-                }) => {
-                    tracing::info!(
-                        %topic,
-                        ?payload,
-                        ?qos,
-                        %retain,
-                        ?payload_format,
-                        ?message_expiry,
-                        ?response_topic,
-                        ?correlation_data,
-                        ?content_type,
-                        ?user_properties,
-                        ?subscription_identifiers,
-                        "received a message"
-                    );
-                }
-                event => tracing::debug!(?event, "received an event but was not handled"),
-            };
-        }
-        Ok::<_, Box<dyn core::error::Error + Send + Sync>>(())
-    };
-
-    let signal_task = async move {
-        tokio::signal::ctrl_c().await?;
-        tracing::info!("shutting down system");
-        commands_signal.send(Command::Disconnect).await?;
-        Ok::<_, Box<dyn std::error::Error + Send + Sync>>(())
-    };
+    let mut driver = Driver::new(Client::default(), || async {
+        let stream = TcpStream::connect("test.mosquitto.org:1883").await?;
+        stream.set_nodelay(true)?;
+        Ok(BufStream::new(stream))
+    });
 
     tracing::info!("connecting to broker");
-    commands
-        .send(Command::Connect(ConnectOptions::builder().build()))
-        .await?;
+    driver.submit(Command::Connect(ConnectOptions::builder().build()))?;
 
-    drop(commands);
-
-    let (r1, r2, r3) = tokio::join!(driver_handle, mqtt_task, signal_task);
-    r1?;
-    r2?;
-    r3?;
+    let mut shutdown = std::pin::pin!(tokio::signal::ctrl_c());
+    let mut shutting_down = false;
+    loop {
+        let event = tokio::select! {
+            event = driver.next() => event,
+            result = &mut shutdown, if !shutting_down => {
+                result?;
+                shutting_down = true;
+                tracing::info!("shutting down system");
+                driver.submit(Command::Disconnect)?;
+                continue;
+            }
+        };
+        match event {
+            Event::Disconnected(_) => break,
+            Event::Connected => {
+                tracing::info!("subscribing to all topics");
+                driver.submit(Command::Subscribe(
+                    SubscribeOptions::builder()
+                        .subscriptions(vec![Subscription::builder().filter("test/topic").build()])
+                        .build(),
+                ))?;
+                driver.submit(Command::Publish {
+                    token: 1,
+                    message: Message::builder()
+                        .topic("test/topic")
+                        .payload("Hello, MQTT!")
+                        .build(),
+                })?;
+            }
+            Event::Message(Message {
+                topic,
+                payload,
+                qos,
+                retain,
+                payload_format,
+                message_expiry,
+                response_topic,
+                correlation_data,
+                content_type,
+                user_properties,
+                subscription_identifiers,
+                ..
+            }) => {
+                tracing::info!(
+                    %topic,
+                    ?payload,
+                    ?qos,
+                    %retain,
+                    ?payload_format,
+                    ?message_expiry,
+                    ?response_topic,
+                    ?correlation_data,
+                    ?content_type,
+                    ?user_properties,
+                    ?subscription_identifiers,
+                    "received a message"
+                );
+            }
+            event => tracing::debug!(?event, "received an event but was not handled"),
+        }
+    }
 
     tracing::info!("Driver finished");
     Ok(())

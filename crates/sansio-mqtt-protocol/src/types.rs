@@ -324,8 +324,7 @@ pub enum DriverEvent {
 ///   `SocketConnected` and the next `CloseSocket`, `SocketClosed` or
 ///   `SocketError`. In the action queue, a `CloseSocket` always precedes the
 ///   next `OpenSocket`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, strum::EnumDiscriminants)]
-#[strum_discriminants(derive(strum::Display))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum DriverAction {
     /// Open a socket to the server and answer with
@@ -337,8 +336,6 @@ pub enum DriverAction {
     /// and emitted whatever [`Event`] the application needs. A `CloseSocket`
     /// with no socket open is a no-op for the driver.
     CloseSocket,
-    /// Stop the driver.
-    Quit,
 }
 
 /// A feature the server can disable in its CONNACK, and the client can
