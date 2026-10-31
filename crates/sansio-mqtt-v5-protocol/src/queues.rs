@@ -173,14 +173,14 @@ pub(crate) fn abandon_socket_request<T>(
 /// `SocketError`).
 ///
 /// The driver has already dropped the socket, so no `CloseSocket` is queued.
-/// Bytes not yet written are discarded: they belonged to the lost connection
-/// and must never reach the next one.
+/// Bytes not yet written were already discarded by the caller (every loss
+/// report does so, whatever the state).
 pub(crate) fn on_socket_lost<T>(
     settings: &ClientSettings,
     session: &mut ClientSession,
     scratchpad: &mut ClientScratchpad<T>,
 ) {
-    scratchpad.write_queue.clear();
+    debug_assert!(scratchpad.write_queue.is_empty());
     reset_connection_state(settings, session, scratchpad);
     scratchpad.read_queue.push_back(Event::Disconnected(None));
 }

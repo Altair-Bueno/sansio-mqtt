@@ -4,7 +4,9 @@
 //! - The driver reports only what the protocol did not ask for: `OpenSocket` is
 //!   answered by `SocketConnected` or `SocketError`; `CloseSocket` gets no
 //!   reply; an unsolicited EOF or I/O error is reported as `SocketClosed` /
-//!   `SocketError` after the driver has already dropped the socket.
+//!   `SocketError` after the driver has already dropped the socket. A loss
+//!   reported while `CloseSocket` is still pending concerns the socket being
+//!   closed, never a connection attempt queued after it.
 //! - `Err` from the protocol means only "this input was rejected and nothing
 //!   changed". Connection failures the protocol handles itself return `Ok(())`
 //!   and surface as `Event::Disconnected`.
@@ -284,6 +286,75 @@ fn unsent_bytes_are_discarded_when_the_socket_is_lost() {
     assert_eq!(client.handle_event(DriverEvent::SocketError), Ok(()));
 
     assert_eq!(drain_writes(&mut client), Vec::<Bytes>::new());
+}
+
+/// The driver writes the DISCONNECT before performing `CloseSocket`; if that
+/// write fails it reports the loss while `CloseSocket` is still queued. The
+/// report concerns the socket being closed, not the attempt the application
+/// started right after, which must still go ahead.
+#[test]
+fn loss_of_the_closing_socket_is_not_attributed_to_a_new_connection_attempt() {
+    for evt in [DriverEvent::SocketError, DriverEvent::SocketClosed] {
+        let mut client = connected();
+        assert_eq!(client.handle_write(Command::Disconnect), Ok(()));
+        assert_eq!(
+            client.handle_write(Command::Connect(connect_options())),
+            Ok(())
+        );
+        assert_eq!(drain_events(&mut client), vec![Event::Disconnected(None)]);
+
+        assert_eq!(client.handle_event(evt), Ok(()), "{evt:?}");
+
+        assert_eq!(drain_events(&mut client), vec![], "{evt:?}");
+        assert_eq!(
+            drain_writes(&mut client),
+            Vec::<Bytes>::new(),
+            "DISCONNECT belonged to the lost socket"
+        );
+        assert_eq!(
+            drain_actions(&mut client),
+            vec![DriverAction::CloseSocket, DriverAction::OpenSocket]
+        );
+        assert_eq!(client.handle_event(DriverEvent::SocketConnected), Ok(()));
+        let writes = drain_writes(&mut client);
+        assert_eq!(writes.len(), 1);
+        assert_eq!(writes[0][0], 0x10, "CONNECT on the new socket");
+    }
+}
+
+#[test]
+fn loss_of_the_closing_socket_discards_every_byte_queued_for_it() {
+    let mut client = connected();
+    for token in 1..=3 {
+        assert_eq!(
+            client.handle_write(publish(token, Qos::AtMostOnce, b"x")),
+            Ok(())
+        );
+    }
+    assert_eq!(client.handle_write(Command::Disconnect), Ok(()));
+    assert_eq!(drain_events(&mut client), vec![Event::Disconnected(None)]);
+
+    // The first PUBLISH fails to write.
+    assert_eq!(client.poll_write().map(|bytes| bytes[0]), Some(0x30));
+    assert_eq!(client.handle_event(DriverEvent::SocketError), Ok(()));
+
+    assert_eq!(drain_writes(&mut client), Vec::<Bytes>::new());
+    assert_eq!(drain_events(&mut client), vec![]);
+    assert_eq!(drain_actions(&mut client), vec![DriverAction::CloseSocket]);
+    assert_can_reconnect(&mut client);
+}
+
+#[test]
+fn socket_loss_while_disconnected_discards_unsent_bytes() {
+    let mut client = connected();
+    assert_eq!(client.handle_write(Command::Disconnect), Ok(()));
+    // A driver that already took `CloseSocket` but still holds the DISCONNECT.
+    assert_eq!(drain_actions(&mut client), vec![DriverAction::CloseSocket]);
+
+    assert_eq!(client.handle_event(DriverEvent::SocketClosed), Ok(()));
+
+    assert_eq!(drain_writes(&mut client), Vec::<Bytes>::new());
+    assert_eq!(drain_events(&mut client), vec![Event::Disconnected(None)]);
 }
 
 // ── Invariant (b): no bytes after CloseSocket until the next SocketConnected ─

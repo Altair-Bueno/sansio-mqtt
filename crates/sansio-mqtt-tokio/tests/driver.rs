@@ -94,7 +94,8 @@ enum Dial {
     Refuse,
 }
 
-type Request = (Command, oneshot::Sender<Result<(), Error>>);
+/// Commands submitted back to back, with no `next` call in between.
+type Request = (Vec<Command>, oneshot::Sender<Vec<Result<(), Error>>>);
 
 struct Harness {
     commands: mpsc::Sender<Request>,
@@ -136,10 +137,17 @@ impl Harness {
         tokio::spawn(async move {
             loop {
                 tokio::select! {
-                    event = driver.next() => if event_tx.send(event).await.is_err() { break },
-                    Some((command, reply)) = requests.recv() => {
-                        let _ = reply.send(driver.submit(command));
+                    // Commands first, so a test can queue commands before the
+                    // driver reacts to anything it did to the broker side.
+                    biased;
+                    Some((commands, reply)) = requests.recv() => {
+                        let results = commands
+                            .into_iter()
+                            .map(|command| driver.submit(command))
+                            .collect();
+                        let _ = reply.send(results);
                     }
+                    event = driver.next() => if event_tx.send(event).await.is_err() { break },
                 }
             }
         });
@@ -153,9 +161,16 @@ impl Harness {
     }
 
     async fn submit(&self, command: Command) -> Result<(), Error> {
-        let (reply, result) = oneshot::channel();
-        self.commands.send((command, reply)).await.unwrap();
-        result.await.expect("driver task stopped")
+        let mut results = self.submit_all(vec![command]).await;
+        results.pop().expect("one result per command")
+    }
+
+    /// Submits `commands` back to back, without the driver running in
+    /// between.
+    async fn submit_all(&self, commands: Vec<Command>) -> Vec<Result<(), Error>> {
+        let (reply, results) = oneshot::channel();
+        self.commands.send((commands, reply)).await.unwrap();
+        results.await.expect("driver task stopped")
     }
 
     async fn event(&mut self) -> Event {
@@ -194,6 +209,11 @@ impl Harness {
     /// Submits CONNECT and completes the handshake from the broker side.
     async fn connect(&mut self) {
         self.submit(connect_command()).await.unwrap();
+        self.accept_connect().await;
+    }
+
+    /// Reads CONNECT on the current connection and accepts it.
+    async fn accept_connect(&mut self) {
         assert!(matches!(self.packet().await, ControlPacket::Connect(_)));
 
         let connack = ControlPacket::ConnAck(
@@ -348,4 +368,41 @@ async fn cancelling_next_mid_write_does_not_corrupt_outgoing_packets() {
             ControlPacket::Subscribe(_)
         ));
     }
+}
+
+#[tokio::test]
+async fn failed_disconnect_write_does_not_fail_the_following_connect() {
+    let mut harness = Harness::spawn(&[Dial::Accept, Dial::Accept]);
+    harness.connect().await;
+
+    // The broker vanishes; the driver only finds out when writing the
+    // DISCONNECT, after the application already asked to reconnect.
+    harness.next_connection();
+    let results = harness
+        .submit_all(vec![Command::Disconnect, connect_command()])
+        .await;
+    assert_eq!(results, vec![Ok(()), Ok(())]);
+
+    assert_eq!(harness.event().await, Event::Disconnected(None));
+    harness.accept_connect().await;
+}
+
+#[tokio::test]
+async fn failed_write_discards_the_rest_of_the_closing_socket_bytes() {
+    let mut harness = Harness::spawn(&[Dial::Accept, Dial::Accept]);
+    harness.connect().await;
+
+    harness.next_connection();
+    let results = harness
+        .submit_all(vec![
+            publish_command(1, Bytes::from_static(b"one")),
+            publish_command(2, Bytes::from_static(b"two")),
+            publish_command(3, Bytes::from_static(b"three")),
+            Command::Disconnect,
+        ])
+        .await;
+    assert!(results.iter().all(Result::is_ok), "{results:?}");
+
+    assert_eq!(harness.event().await, Event::Disconnected(None));
+    harness.connect().await;
 }
