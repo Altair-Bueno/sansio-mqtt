@@ -147,7 +147,6 @@ pub struct ConnectOptions {
     pub client_id: ByteString,
     #[builder(default)]
     pub clean_start: bool,
-    pub keep_alive: Option<NonZero<u16>>,
     pub session_expiry: Option<Duration>,
     pub user_name: Option<ByteString>,
     pub password: Option<Bytes>,

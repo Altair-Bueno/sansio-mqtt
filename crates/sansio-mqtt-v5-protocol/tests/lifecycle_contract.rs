@@ -684,10 +684,11 @@ fn timeout_without_connection_attempt_is_a_no_op() {
 #[test]
 fn keep_alive_timeout_disconnects_with_reason_and_returns_ok() {
     let mut client = connected_with(
-        ClientSettings::default(),
+        ClientSettings::builder()
+            .keep_alive(NonZero::new(10))
+            .build(),
         ConnectOptions::builder()
             .client_id(ByteString::from_static("test-client"))
-            .keep_alive(NonZero::new(10).unwrap())
             .build(),
         connack(ConnackReasonCode::Success),
     );

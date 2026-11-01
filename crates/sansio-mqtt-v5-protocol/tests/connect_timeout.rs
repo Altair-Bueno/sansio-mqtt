@@ -43,13 +43,6 @@ fn connect_options() -> ConnectOptions {
         .build()
 }
 
-fn connect_options_with_keep_alive(seconds: u16) -> ConnectOptions {
-    ConnectOptions::builder()
-        .client_id(ByteString::from_static("connect-timeout"))
-        .keep_alive(NonZero::new(seconds).unwrap())
-        .build()
-}
-
 fn read(client: &mut Client<Duration>, packet: &ControlPacket, received_at: Duration) {
     let mut bytes = Vec::new();
     packet.encode(&mut bytes).expect("packet should encode");
@@ -241,7 +234,7 @@ fn a_new_attempt_after_a_connect_timeout_arms_a_fresh_deadline() {
 
 #[test]
 fn connack_without_keep_alive_clears_the_connect_deadline() {
-    let mut client = Client::<Duration>::default();
+    let mut client = Client::<Duration>::new(ClientSettings::builder().keep_alive(None).build());
     awaiting_connack(&mut client, connect_options());
 
     read(
@@ -256,8 +249,12 @@ fn connack_without_keep_alive_clears_the_connect_deadline() {
 
 #[test]
 fn connack_with_keep_alive_replaces_the_connect_deadline_with_keep_alive() {
-    let mut client = Client::<Duration>::default();
-    awaiting_connack(&mut client, connect_options_with_keep_alive(10));
+    let mut client = Client::<Duration>::new(
+        ClientSettings::builder()
+            .keep_alive(NonZero::new(10))
+            .build(),
+    );
+    awaiting_connack(&mut client, connect_options());
     let received_at = T0 + Duration::from_secs(2);
 
     read(
