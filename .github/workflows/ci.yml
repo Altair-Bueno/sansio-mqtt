@@ -93,7 +93,7 @@ jobs:
           key:
             ${{ runner.os }}-${{ github.job }}-${{ needs.msrv.outputs.version }}
       - name: Run clippy
-        run: cargo clippy --all-targets -- -D warnings
+        run: cargo clippy --all-targets --all-features -- -D warnings
 
   rust-coverage:
     name: coverage
@@ -118,8 +118,8 @@ jobs:
           key: ${{ runner.os }}-${{ github.job }}
       - name: Collect coverage data
         run: |
-          cargo llvm-cov --no-report nextest --profile ci
-          cargo llvm-cov --no-report --doc
+          cargo llvm-cov --no-report nextest --profile ci --all-features
+          cargo llvm-cov --no-report --doc --all-features
           cargo llvm-cov report --doctests --lcov --output-path lcov.info
       - name: Upload to Codecov
         uses: codecov/codecov-action@v6
