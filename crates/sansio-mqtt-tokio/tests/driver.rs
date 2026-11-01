@@ -259,15 +259,6 @@ fn connect_command() -> Command {
     )
 }
 
-fn connect_command_with_keep_alive(seconds: u16) -> Command {
-    Command::Connect(
-        ConnectOptions::builder()
-            .client_id(ByteString::from_static("driver-test"))
-            .keep_alive(NonZero::new(seconds).unwrap())
-            .build(),
-    )
-}
-
 fn publish_command(token: u64, payload: Bytes) -> Command {
     Command::Publish {
         token,
@@ -441,11 +432,14 @@ async fn failed_write_discards_the_rest_of_the_closing_socket_bytes() {
 
 #[tokio::test(start_paused = true)]
 async fn keep_alive_timeout_closes_a_connection_whose_peer_stopped_reading() {
-    let mut harness = Harness::spawn_with_buffer(&[Dial::Accept], 64);
-    harness
-        .submit(connect_command_with_keep_alive(1))
-        .await
-        .unwrap();
+    let mut harness = Harness::spawn_with(
+        &[Dial::Accept],
+        64,
+        ClientSettings::builder()
+            .keep_alive(NonZero::new(1))
+            .build(),
+    );
+    harness.submit(connect_command()).await.unwrap();
     harness.accept_connect().await;
 
     // The broker stops reading, so this PUBLISH never fits in the socket

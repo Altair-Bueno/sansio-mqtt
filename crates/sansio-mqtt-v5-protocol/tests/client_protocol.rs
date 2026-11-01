@@ -2875,10 +2875,13 @@ fn stale_read_buffer_is_cleared_on_close() {
 
 #[test]
 fn timeout_in_connected_state_enqueues_pingreq() {
-    let mut client = Client::<Duration>::default();
+    let mut client = Client::<Duration>::new(
+        ClientSettings::builder()
+            .keep_alive(NonZero::new(10))
+            .build(),
+    );
     let options = ConnectOptions::builder()
         .client_id(ByteString::from_static("test-client"))
-        .keep_alive(NonZero::new(10).unwrap())
         .build();
     let _ = connect_client(&mut client, options);
 
@@ -2979,11 +2982,14 @@ fn user_disconnect_succeeds_even_when_disconnect_packet_exceeds_maximum_packet_s
 
 #[test]
 fn timeout_is_cleared_on_close() {
-    let mut close_client = Client::<Duration>::default();
+    let mut close_client = Client::<Duration>::new(
+        ClientSettings::builder()
+            .keep_alive(NonZero::new(10))
+            .build(),
+    );
     let options = || {
         ConnectOptions::builder()
             .client_id(ByteString::from_static("test-client"))
-            .keep_alive(NonZero::new(10).unwrap())
             .build()
     };
     let _ = connect_client(&mut close_client, options());
@@ -2996,7 +3002,11 @@ fn timeout_is_cleared_on_close() {
     assert_eq!(close_client.close(), Ok(()));
     assert_eq!(close_client.poll_timeout(), None);
 
-    let mut socket_closed_client = Client::<Duration>::default();
+    let mut socket_closed_client = Client::<Duration>::new(
+        ClientSettings::builder()
+            .keep_alive(NonZero::new(10))
+            .build(),
+    );
     let _ = connect_client(&mut socket_closed_client, options());
 
     assert_eq!(
@@ -3301,7 +3311,7 @@ fn auth_in_connected_state_is_forwarded_not_protocol_error() {
 
 #[test]
 fn keepalive_disabled_without_interval_no_pingreq() {
-    let mut client = Client::<Duration>::default();
+    let mut client = Client::<Duration>::new(ClientSettings::builder().keep_alive(None).build());
     let _ = connect_default(&mut client);
 
     assert_eq!(client.handle_timeout(Duration::from_secs(1)), Ok(()));
@@ -3311,10 +3321,13 @@ fn keepalive_disabled_without_interval_no_pingreq() {
 
 #[test]
 fn connack_server_keep_alive_zero_disables_keepalive_without_panic() {
-    let mut client = Client::<Duration>::default();
+    let mut client = Client::<Duration>::new(
+        ClientSettings::builder()
+            .keep_alive(NonZero::new(10))
+            .build(),
+    );
     let options = ConnectOptions::builder()
         .client_id(ByteString::from_static("test-client"))
-        .keep_alive(NonZero::new(10).unwrap())
         .build();
     let _ = open_connecting(&mut client, options);
     assert_eq!(
@@ -3333,10 +3346,13 @@ fn connack_server_keep_alive_zero_disables_keepalive_without_panic() {
 
 #[test]
 fn keepalive_timeout_without_pingresp_closes_connection() {
-    let mut client = Client::<Duration>::default();
+    let mut client = Client::<Duration>::new(
+        ClientSettings::builder()
+            .keep_alive(NonZero::new(10))
+            .build(),
+    );
     let options = ConnectOptions::builder()
         .client_id(ByteString::from_static("test-client"))
-        .keep_alive(NonZero::new(10).unwrap())
         .build();
     let _ = connect_client(&mut client, options);
 
@@ -3501,11 +3517,14 @@ fn connack_session_expiry_nonzero_sets_session_should_persist() {
 
 #[test]
 fn clean_start_true_clears_local_session_before_connect() {
-    let mut client = Client::<Duration>::default();
+    let mut client = Client::<Duration>::new(
+        ClientSettings::builder()
+            .keep_alive(NonZero::new(10))
+            .build(),
+    );
     let first_options = ConnectOptions::builder()
         .client_id(ByteString::from_static("test-client"))
         .session_expiry(Duration::from_secs(30))
-        .keep_alive(NonZero::new(10).unwrap())
         .build();
     let _ = connect_client(&mut client, first_options);
 
@@ -3636,10 +3655,13 @@ fn zero_session_expiry_clears_inflight_on_socket_closed() {
 
 #[test]
 fn keepalive_timeout_with_session_expiry_preserves_inflight_for_resume() {
-    let mut client = Client::<Duration>::default();
+    let mut client = Client::<Duration>::new(
+        ClientSettings::builder()
+            .keep_alive(NonZero::new(10))
+            .build(),
+    );
     let options = ConnectOptions::builder()
         .client_id(ByteString::from_static("test-client"))
-        .keep_alive(NonZero::new(10).unwrap())
         .session_expiry(Duration::from_secs(30))
         .build();
     let _ = connect_client(&mut client, options.clone());
@@ -3923,8 +3945,30 @@ fn keep_alive_timer_armed_after_connack_uses_received_at_timestamp() {
 
 #[test]
 fn keep_alive_timer_not_armed_when_no_keep_alive_configured() {
-    let mut client = make_connected_client_with_keep_alive(None);
+    let mut client = Client::<Duration>::new(ClientSettings::builder().keep_alive(None).build());
+    let _ = open_connecting(&mut client, connect_options());
+    assert_eq!(read(&mut client, &success_connack()), Ok(()));
+    assert!(matches!(client.poll_read(), Some(Event::Connected)));
+
     assert_eq!(client.poll_timeout(), None);
+}
+
+/// The interval the client advertised in CONNECT is the one it enforces
+/// when the server does not override it [MQTT-3.1.2-22]; with default
+/// settings that is [`ClientSettings::DEFAULT_KEEP_ALIVE`].
+#[test]
+fn keep_alive_from_settings_arms_the_timer_after_connack() {
+    let mut client = Client::<Duration>::default();
+    let _ = open_connecting(&mut client, connect_options());
+    assert_eq!(read(&mut client, &success_connack()), Ok(()));
+    assert!(matches!(client.poll_read(), Some(Event::Connected)));
+
+    assert_eq!(
+        client.poll_timeout(),
+        Some(Duration::from_secs(u64::from(
+            ClientSettings::DEFAULT_KEEP_ALIVE.get()
+        )))
+    );
 }
 
 /// An outgoing packet (any successful `handle_write`) sets the keep-alive

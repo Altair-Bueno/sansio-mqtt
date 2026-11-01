@@ -162,15 +162,12 @@ where
             .is_some_and(|interval| !interval.is_zero()),
     };
 
-    // [MQTT-3.1.2-22] If the server specifies a keep-alive of 0 in CONNACK, it
-    // disables keep-alive for this connection. The client MUST use the server's
-    // value when present.
+    // [MQTT-3.1.2-22] The client enforces the keep-alive it sent in CONNECT,
+    // unless the server specifies its own in CONNACK, which the client MUST
+    // use (0 disables keep-alive for this connection).
     scratchpad.keep_alive_interval_secs = match scratchpad.negotiated_server_keep_alive {
         Some(server_keep_alive) => NonZero::new(server_keep_alive),
-        None => scratchpad
-            .pending_connect_options
-            .as_ref()
-            .and_then(|options| options.keep_alive),
+        None => settings.keep_alive,
     };
     scratchpad.keep_alive_saw_network_activity = false;
     scratchpad.keep_alive_ping_outstanding = false;

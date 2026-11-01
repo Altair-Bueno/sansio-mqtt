@@ -245,7 +245,7 @@ pub(crate) fn connect_options_to_wire(
         .maybe_will(will)
         .maybe_user_name(user_name)
         .maybe_password(password)
-        .maybe_keep_alive(options.keep_alive.or(settings.keep_alive))
+        .maybe_keep_alive(settings.keep_alive)
         .properties(
             ConnectProperties::builder()
                 .maybe_session_expiry_interval(session_expiry_interval)

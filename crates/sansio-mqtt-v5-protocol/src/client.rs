@@ -54,8 +54,8 @@ pub struct ClientSettings {
     pub request_response_information: Option<bool>,
     /// Request Problem Information flag sent in CONNECT.
     pub request_problem_information: Option<bool>,
-    /// Keep Alive, in seconds, sent in CONNECT when
-    /// [`sansio_mqtt_protocol::ConnectOptions::keep_alive`] is `None`.
+    /// Keep Alive, in seconds, sent in every CONNECT and enforced by the
+    /// client for the whole connection.
     ///
     /// Keep-alive is what detects a connection that died without being
     /// closed (lost network, idle NAT entry dropped, crashed peer): the client
