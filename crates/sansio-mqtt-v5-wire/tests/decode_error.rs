@@ -17,7 +17,7 @@
 )]
 
 use rstest::rstest;
-use sansio_mqtt_v5_types::*;
+use sansio_mqtt_v5_wire::*;
 use winnow::Parser as _;
 
 /// Decodes `bytes`, asserting it fails, and returns the [`DecodeError`].

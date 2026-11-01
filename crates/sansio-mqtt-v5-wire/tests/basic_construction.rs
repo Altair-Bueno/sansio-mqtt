@@ -6,11 +6,11 @@
 use bytes::Bytes;
 use bytestring::ByteString;
 use rstest::rstest;
-use sansio_mqtt_v5_types::BinaryData;
-use sansio_mqtt_v5_types::Payload;
-use sansio_mqtt_v5_types::Topic;
-use sansio_mqtt_v5_types::Utf8String;
-use sansio_mqtt_v5_types::Utf8StringError;
+use sansio_mqtt_v5_wire::BinaryData;
+use sansio_mqtt_v5_wire::Payload;
+use sansio_mqtt_v5_wire::Topic;
+use sansio_mqtt_v5_wire::Utf8String;
+use sansio_mqtt_v5_wire::Utf8StringError;
 
 #[test]
 fn payload_from_byte_array_copies_the_bytes() {
@@ -152,7 +152,7 @@ fn topic_boundary_lengths() {
 /// limit through the builder never silently changes the others.
 #[test]
 fn parser_settings_builder_defaults_match_default() {
-    use sansio_mqtt_v5_types::ParserSettings;
+    use sansio_mqtt_v5_wire::ParserSettings;
 
     let defaults = ParserSettings::default();
     assert_eq!(ParserSettings::builder().build(), defaults);

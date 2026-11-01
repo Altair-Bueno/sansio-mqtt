@@ -33,39 +33,39 @@ use sansio_mqtt_protocol::Timestamped;
 use sansio_mqtt_protocol::UnsubscribeOptions;
 use sansio_mqtt_v5_protocol::Client;
 use sansio_mqtt_v5_protocol::ClientSettings;
-use sansio_mqtt_v5_types::Auth;
-use sansio_mqtt_v5_types::AuthProperties;
-use sansio_mqtt_v5_types::AuthReasonCode;
-use sansio_mqtt_v5_types::AuthenticationKind;
-use sansio_mqtt_v5_types::ConnAck;
-use sansio_mqtt_v5_types::ConnAckKind;
-use sansio_mqtt_v5_types::ConnAckProperties;
-use sansio_mqtt_v5_types::ConnackReasonCode;
-use sansio_mqtt_v5_types::Connect;
-use sansio_mqtt_v5_types::ControlPacket;
-use sansio_mqtt_v5_types::Disconnect;
-use sansio_mqtt_v5_types::DisconnectReasonCode;
-use sansio_mqtt_v5_types::GuaranteedQoS;
-use sansio_mqtt_v5_types::MaximumQoS;
-use sansio_mqtt_v5_types::ParserSettings;
-use sansio_mqtt_v5_types::Payload;
-use sansio_mqtt_v5_types::PubAck;
-use sansio_mqtt_v5_types::PubAckReasonCode;
-use sansio_mqtt_v5_types::PubComp;
-use sansio_mqtt_v5_types::PubCompReasonCode;
-use sansio_mqtt_v5_types::PubRec;
-use sansio_mqtt_v5_types::PubRecReasonCode;
-use sansio_mqtt_v5_types::PubRel;
-use sansio_mqtt_v5_types::PubRelReasonCode;
-use sansio_mqtt_v5_types::Publish;
-use sansio_mqtt_v5_types::PublishKind;
-use sansio_mqtt_v5_types::PublishProperties;
-use sansio_mqtt_v5_types::SubAck;
-use sansio_mqtt_v5_types::SubAckReasonCode;
-use sansio_mqtt_v5_types::Topic;
-use sansio_mqtt_v5_types::UnsubAck;
-use sansio_mqtt_v5_types::UnsubAckReasonCode;
-use sansio_mqtt_v5_types::Utf8String;
+use sansio_mqtt_v5_wire::Auth;
+use sansio_mqtt_v5_wire::AuthProperties;
+use sansio_mqtt_v5_wire::AuthReasonCode;
+use sansio_mqtt_v5_wire::AuthenticationKind;
+use sansio_mqtt_v5_wire::ConnAck;
+use sansio_mqtt_v5_wire::ConnAckKind;
+use sansio_mqtt_v5_wire::ConnAckProperties;
+use sansio_mqtt_v5_wire::ConnackReasonCode;
+use sansio_mqtt_v5_wire::Connect;
+use sansio_mqtt_v5_wire::ControlPacket;
+use sansio_mqtt_v5_wire::Disconnect;
+use sansio_mqtt_v5_wire::DisconnectReasonCode;
+use sansio_mqtt_v5_wire::GuaranteedQoS;
+use sansio_mqtt_v5_wire::MaximumQoS;
+use sansio_mqtt_v5_wire::ParserSettings;
+use sansio_mqtt_v5_wire::Payload;
+use sansio_mqtt_v5_wire::PubAck;
+use sansio_mqtt_v5_wire::PubAckReasonCode;
+use sansio_mqtt_v5_wire::PubComp;
+use sansio_mqtt_v5_wire::PubCompReasonCode;
+use sansio_mqtt_v5_wire::PubRec;
+use sansio_mqtt_v5_wire::PubRecReasonCode;
+use sansio_mqtt_v5_wire::PubRel;
+use sansio_mqtt_v5_wire::PubRelReasonCode;
+use sansio_mqtt_v5_wire::Publish;
+use sansio_mqtt_v5_wire::PublishKind;
+use sansio_mqtt_v5_wire::PublishProperties;
+use sansio_mqtt_v5_wire::SubAck;
+use sansio_mqtt_v5_wire::SubAckReasonCode;
+use sansio_mqtt_v5_wire::Topic;
+use sansio_mqtt_v5_wire::UnsubAck;
+use sansio_mqtt_v5_wire::UnsubAckReasonCode;
+use sansio_mqtt_v5_wire::Utf8String;
 use winnow::Parser as _;
 use winnow::error::ContextError;
 
@@ -78,7 +78,7 @@ fn at_zero<Value>(value: Value) -> Timestamped<Value, Duration> {
     }
 }
 
-// ── Wire-level helpers (build/decode raw packets with `sansio-mqtt-v5-types`)
+// ── Wire-level helpers (build/decode raw packets with `sansio-mqtt-v5-wire`)
 // ─
 
 fn encode_packet(packet: &ControlPacket) -> Bytes {
@@ -4269,7 +4269,7 @@ fn handle_timeout_pingresp_before_half_interval_deadline_resets_ping_outstanding
     assert!(client.poll_write().is_some(), "PINGREQ must be sent");
     assert_eq!(client.poll_timeout(), Some(Duration::from_secs(15)));
 
-    let pingresp = ControlPacket::PingResp(sansio_mqtt_v5_types::PingResp {});
+    let pingresp = ControlPacket::PingResp(sansio_mqtt_v5_wire::PingResp {});
     assert_eq!(
         read_at(&mut client, &pingresp, Duration::from_secs(12)),
         Ok(())

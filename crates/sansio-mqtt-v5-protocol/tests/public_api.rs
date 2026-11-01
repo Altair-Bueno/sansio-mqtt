@@ -25,16 +25,16 @@ use sansio_mqtt_protocol::ReasonCode;
 use sansio_mqtt_protocol::SubscribeOptions;
 use sansio_mqtt_protocol::Timestamped;
 use sansio_mqtt_v5_protocol::Client;
-use sansio_mqtt_v5_types::ConnAck;
-use sansio_mqtt_v5_types::ConnAckKind;
-use sansio_mqtt_v5_types::ConnackReasonCode;
-use sansio_mqtt_v5_types::ControlPacket;
-use sansio_mqtt_v5_types::PubAck;
-use sansio_mqtt_v5_types::PubAckReasonCode;
-use sansio_mqtt_v5_types::PubComp;
-use sansio_mqtt_v5_types::PubCompReasonCode;
-use sansio_mqtt_v5_types::PubRec;
-use sansio_mqtt_v5_types::PubRecReasonCode;
+use sansio_mqtt_v5_wire::ConnAck;
+use sansio_mqtt_v5_wire::ConnAckKind;
+use sansio_mqtt_v5_wire::ConnackReasonCode;
+use sansio_mqtt_v5_wire::ControlPacket;
+use sansio_mqtt_v5_wire::PubAck;
+use sansio_mqtt_v5_wire::PubAckReasonCode;
+use sansio_mqtt_v5_wire::PubComp;
+use sansio_mqtt_v5_wire::PubCompReasonCode;
+use sansio_mqtt_v5_wire::PubRec;
+use sansio_mqtt_v5_wire::PubRecReasonCode;
 use winnow::Parser as _;
 use winnow::error::ContextError;
 
@@ -121,14 +121,14 @@ fn qos1_publish_acknowledged_event_carries_the_app_token() {
     );
     let publish_bytes = client.poll_write().expect("PUBLISH should be queued");
     let packet_id = match ControlPacket::parser::<_, ContextError, ContextError>(
-        &sansio_mqtt_v5_types::ParserSettings::default(),
+        &sansio_mqtt_v5_wire::ParserSettings::default(),
     )
     .parse(publish_bytes.as_ref())
     .expect("publish packet should decode")
     {
         ControlPacket::Publish(publish) => match publish.kind {
-            sansio_mqtt_v5_types::PublishKind::Repetible { packet_id, .. } => packet_id,
-            other @ sansio_mqtt_v5_types::PublishKind::FireAndForget => {
+            sansio_mqtt_v5_wire::PublishKind::Repetible { packet_id, .. } => packet_id,
+            other @ sansio_mqtt_v5_wire::PublishKind::FireAndForget => {
                 panic!("expected a Packet Identifier, got {other:?}")
             }
         },
@@ -171,14 +171,14 @@ fn qos2_publish_completed_event_carries_the_app_token() {
     );
     let publish_bytes = client.poll_write().expect("PUBLISH should be queued");
     let packet_id = match ControlPacket::parser::<_, ContextError, ContextError>(
-        &sansio_mqtt_v5_types::ParserSettings::default(),
+        &sansio_mqtt_v5_wire::ParserSettings::default(),
     )
     .parse(publish_bytes.as_ref())
     .expect("publish packet should decode")
     {
         ControlPacket::Publish(publish) => match publish.kind {
-            sansio_mqtt_v5_types::PublishKind::Repetible { packet_id, .. } => packet_id,
-            other @ sansio_mqtt_v5_types::PublishKind::FireAndForget => {
+            sansio_mqtt_v5_wire::PublishKind::Repetible { packet_id, .. } => packet_id,
+            other @ sansio_mqtt_v5_wire::PublishKind::FireAndForget => {
                 panic!("expected a Packet Identifier, got {other:?}")
             }
         },
@@ -241,14 +241,14 @@ fn two_in_flight_publishes_acknowledged_out_of_order_report_the_right_tokens() {
         .expect("second PUBLISH should be queued");
 
     let packet_id_of = |bytes: &Bytes| match ControlPacket::parser::<_, ContextError, ContextError>(
-        &sansio_mqtt_v5_types::ParserSettings::default(),
+        &sansio_mqtt_v5_wire::ParserSettings::default(),
     )
     .parse(bytes.as_ref())
     .expect("publish packet should decode")
     {
         ControlPacket::Publish(publish) => match publish.kind {
-            sansio_mqtt_v5_types::PublishKind::Repetible { packet_id, .. } => packet_id,
-            other @ sansio_mqtt_v5_types::PublishKind::FireAndForget => {
+            sansio_mqtt_v5_wire::PublishKind::Repetible { packet_id, .. } => packet_id,
+            other @ sansio_mqtt_v5_wire::PublishKind::FireAndForget => {
                 panic!("expected a Packet Identifier, got {other:?}")
             }
         },
@@ -371,7 +371,7 @@ fn outbound_publish_never_carries_a_topic_alias() {
     let publish_bytes = client.poll_write().expect("PUBLISH should be queued");
 
     let publish = match ControlPacket::parser::<_, ContextError, ContextError>(
-        &sansio_mqtt_v5_types::ParserSettings::default(),
+        &sansio_mqtt_v5_wire::ParserSettings::default(),
     )
     .parse(publish_bytes.as_ref())
     .expect("publish packet should decode")

@@ -18,11 +18,11 @@ use sansio_mqtt_protocol::DriverEvent;
 use sansio_mqtt_protocol::Error;
 use sansio_mqtt_protocol::Event;
 use sansio_mqtt_protocol::Time;
-use sansio_mqtt_v5_types::AuthReasonCode;
-use sansio_mqtt_v5_types::ConnAck;
-use sansio_mqtt_v5_types::ConnAckKind;
-use sansio_mqtt_v5_types::ConnackReasonCode;
-use sansio_mqtt_v5_types::ControlPacket;
+use sansio_mqtt_v5_wire::AuthReasonCode;
+use sansio_mqtt_v5_wire::ConnAck;
+use sansio_mqtt_v5_wire::ConnAckKind;
+use sansio_mqtt_v5_wire::ConnackReasonCode;
+use sansio_mqtt_v5_wire::ControlPacket;
 
 /// A connection attempt is in progress: `OpenSocket` has been requested and
 /// CONNACK has not arrived yet.

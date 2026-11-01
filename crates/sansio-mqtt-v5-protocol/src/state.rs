@@ -5,8 +5,8 @@ use connected::Connected;
 use connecting::Connecting;
 pub(crate) use disconnected::Disconnected;
 
-use sansio_mqtt_v5_types::ControlPacket;
-use sansio_mqtt_v5_types::DisconnectReasonCode;
+use sansio_mqtt_v5_wire::ControlPacket;
+use sansio_mqtt_v5_wire::DisconnectReasonCode;
 
 use crate::queues;
 use crate::scratchpad::ClientScratchpad;
@@ -229,7 +229,7 @@ where
 mod tests {
     use super::*;
     use core::time::Duration;
-    use sansio_mqtt_v5_types::PingResp;
+    use sansio_mqtt_v5_wire::PingResp;
 
     /// `Client::handle_read` never parses without an open socket, so this
     /// guard is unreachable through the public API; it must still reject the

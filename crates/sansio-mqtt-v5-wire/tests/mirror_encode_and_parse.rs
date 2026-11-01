@@ -5,7 +5,7 @@
 use core::num::NonZero;
 use encode::Encodable as _;
 use encode::EncodableSize as _;
-use sansio_mqtt_v5_types::*;
+use sansio_mqtt_v5_wire::*;
 use winnow::Parser as _;
 use winnow::error::ContextError;
 

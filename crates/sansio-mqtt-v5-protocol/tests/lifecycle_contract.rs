@@ -35,17 +35,17 @@ use sansio_mqtt_protocol::ReasonCode;
 use sansio_mqtt_protocol::Timestamped;
 use sansio_mqtt_v5_protocol::Client;
 use sansio_mqtt_v5_protocol::ClientSettings;
-use sansio_mqtt_v5_types::ConnAck;
-use sansio_mqtt_v5_types::ConnAckKind;
-use sansio_mqtt_v5_types::ConnAckProperties;
-use sansio_mqtt_v5_types::ConnackReasonCode;
-use sansio_mqtt_v5_types::ControlPacket;
-use sansio_mqtt_v5_types::PubAck;
-use sansio_mqtt_v5_types::PubAckReasonCode;
-use sansio_mqtt_v5_types::Publish;
-use sansio_mqtt_v5_types::PublishKind;
-use sansio_mqtt_v5_types::Topic;
-use sansio_mqtt_v5_types::Utf8String;
+use sansio_mqtt_v5_wire::ConnAck;
+use sansio_mqtt_v5_wire::ConnAckKind;
+use sansio_mqtt_v5_wire::ConnAckProperties;
+use sansio_mqtt_v5_wire::ConnackReasonCode;
+use sansio_mqtt_v5_wire::ControlPacket;
+use sansio_mqtt_v5_wire::PubAck;
+use sansio_mqtt_v5_wire::PubAckReasonCode;
+use sansio_mqtt_v5_wire::Publish;
+use sansio_mqtt_v5_wire::PublishKind;
+use sansio_mqtt_v5_wire::Topic;
+use sansio_mqtt_v5_wire::Utf8String;
 
 /// Stamps a protocol input with `Duration::ZERO`, the instant these tests
 /// treat as the start of the connection.
@@ -111,7 +111,7 @@ fn qos0_publish(topic: &str) -> ControlPacket {
         Publish::builder()
             .kind(PublishKind::FireAndForget)
             .topic(Topic::try_from(Utf8String::try_from(topic).unwrap()).unwrap())
-            .payload(sansio_mqtt_v5_types::Payload::new(b"x".as_slice()))
+            .payload(sansio_mqtt_v5_wire::Payload::new(b"x".as_slice()))
             .build(),
     )
 }

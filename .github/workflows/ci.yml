@@ -118,7 +118,7 @@ jobs:
       - name: Check the no_std crates on a 32-bit target without std
         run:
           cargo check --target thumbv7em-none-eabi -p sansio-mqtt-protocol -p
-          sansio-mqtt-v5-types -p sansio-mqtt-v5-protocol
+          sansio-mqtt-v5-wire -p sansio-mqtt-v5-protocol
 
   rust-coverage:
     name: coverage

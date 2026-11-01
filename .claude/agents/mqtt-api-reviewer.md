@@ -20,7 +20,7 @@ The project philosophy is: **type safety MUST take priority over ergonomics**.
 
 You MUST review all public items (functions, types, traits, constants) in:
 
-- `crates/sansio-mqtt-v5-types/src/`
+- `crates/sansio-mqtt-v5-wire/src/`
 - `crates/sansio-mqtt-v5-protocol/src/`
 - `crates/sansio-mqtt-v5-tokio/src/`
 

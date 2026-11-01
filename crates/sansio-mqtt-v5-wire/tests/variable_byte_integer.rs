@@ -12,14 +12,14 @@ use alloc::vec::Vec;
 use core::num::NonZero;
 
 use encode::Encodable as _;
-use sansio_mqtt_v5_types::ControlPacket;
-use sansio_mqtt_v5_types::EncodeError;
-use sansio_mqtt_v5_types::ParserSettings;
-use sansio_mqtt_v5_types::Subscribe;
-use sansio_mqtt_v5_types::SubscribeProperties;
-use sansio_mqtt_v5_types::Subscription;
-use sansio_mqtt_v5_types::Utf8String;
-use sansio_mqtt_v5_types::variable_byte_integer;
+use sansio_mqtt_v5_wire::ControlPacket;
+use sansio_mqtt_v5_wire::EncodeError;
+use sansio_mqtt_v5_wire::ParserSettings;
+use sansio_mqtt_v5_wire::Subscribe;
+use sansio_mqtt_v5_wire::SubscribeProperties;
+use sansio_mqtt_v5_wire::Subscription;
+use sansio_mqtt_v5_wire::Utf8String;
+use sansio_mqtt_v5_wire::variable_byte_integer;
 use winnow::Parser as _;
 use winnow::error::ContextError;
 

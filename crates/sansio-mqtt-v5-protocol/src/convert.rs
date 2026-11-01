@@ -1,5 +1,5 @@
 //! Conversions between the version-neutral `sansio-mqtt-protocol` types and
-//! the MQTT v5 wire types from `sansio-mqtt-v5-types`.
+//! the MQTT v5 wire types from `sansio-mqtt-v5-wire`.
 //!
 //! String and binary fields are validated here (the version-neutral types
 //! carry unvalidated `ByteString`/`Bytes`); a wire `Utf8String`/`Topic` is
@@ -27,32 +27,32 @@ use sansio_mqtt_protocol::Subscription as ProtocolSubscription;
 use sansio_mqtt_protocol::UnsubscribeOptions;
 use sansio_mqtt_protocol::Will as ProtocolWill;
 
-use sansio_mqtt_v5_types::Auth as WireAuth;
-use sansio_mqtt_v5_types::AuthReasonCode;
-use sansio_mqtt_v5_types::AuthenticationKind;
-use sansio_mqtt_v5_types::BinaryData;
-use sansio_mqtt_v5_types::ConnackReasonCode;
-use sansio_mqtt_v5_types::Connect as WireConnect;
-use sansio_mqtt_v5_types::ConnectProperties;
-use sansio_mqtt_v5_types::DisconnectReasonCode;
-use sansio_mqtt_v5_types::FormatIndicator;
-use sansio_mqtt_v5_types::GuaranteedQoS;
-use sansio_mqtt_v5_types::Payload;
-use sansio_mqtt_v5_types::PubAckReasonCode;
-use sansio_mqtt_v5_types::PubCompReasonCode;
-use sansio_mqtt_v5_types::PubRecReasonCode;
-use sansio_mqtt_v5_types::Publish;
-use sansio_mqtt_v5_types::PublishKind;
-use sansio_mqtt_v5_types::PublishProperties;
-use sansio_mqtt_v5_types::Qos as WireQos;
-use sansio_mqtt_v5_types::RetainHandling as WireRetainHandling;
-use sansio_mqtt_v5_types::SubscribeProperties;
-use sansio_mqtt_v5_types::Subscription as WireSubscription;
-use sansio_mqtt_v5_types::Topic;
-use sansio_mqtt_v5_types::UnsubscribeProperties;
-use sansio_mqtt_v5_types::Utf8String;
-use sansio_mqtt_v5_types::Will as WireWill;
-use sansio_mqtt_v5_types::WillProperties;
+use sansio_mqtt_v5_wire::Auth as WireAuth;
+use sansio_mqtt_v5_wire::AuthReasonCode;
+use sansio_mqtt_v5_wire::AuthenticationKind;
+use sansio_mqtt_v5_wire::BinaryData;
+use sansio_mqtt_v5_wire::ConnackReasonCode;
+use sansio_mqtt_v5_wire::Connect as WireConnect;
+use sansio_mqtt_v5_wire::ConnectProperties;
+use sansio_mqtt_v5_wire::DisconnectReasonCode;
+use sansio_mqtt_v5_wire::FormatIndicator;
+use sansio_mqtt_v5_wire::GuaranteedQoS;
+use sansio_mqtt_v5_wire::Payload;
+use sansio_mqtt_v5_wire::PubAckReasonCode;
+use sansio_mqtt_v5_wire::PubCompReasonCode;
+use sansio_mqtt_v5_wire::PubRecReasonCode;
+use sansio_mqtt_v5_wire::Publish;
+use sansio_mqtt_v5_wire::PublishKind;
+use sansio_mqtt_v5_wire::PublishProperties;
+use sansio_mqtt_v5_wire::Qos as WireQos;
+use sansio_mqtt_v5_wire::RetainHandling as WireRetainHandling;
+use sansio_mqtt_v5_wire::SubscribeProperties;
+use sansio_mqtt_v5_wire::Subscription as WireSubscription;
+use sansio_mqtt_v5_wire::Topic;
+use sansio_mqtt_v5_wire::UnsubscribeProperties;
+use sansio_mqtt_v5_wire::Utf8String;
+use sansio_mqtt_v5_wire::Will as WireWill;
+use sansio_mqtt_v5_wire::WillProperties;
 
 /// Converts an application byte string into a wire [`Utf8String`].
 ///

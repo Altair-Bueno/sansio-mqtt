@@ -13,7 +13,7 @@ use sansio_mqtt_protocol::DriverAction;
 use sansio_mqtt_protocol::DriverEvent;
 use sansio_mqtt_protocol::Error;
 use sansio_mqtt_protocol::Time;
-use sansio_mqtt_v5_types::ControlPacket;
+use sansio_mqtt_v5_wire::ControlPacket;
 
 /// No live connection and no connection attempt; a `Connect` write can start
 /// a new one.

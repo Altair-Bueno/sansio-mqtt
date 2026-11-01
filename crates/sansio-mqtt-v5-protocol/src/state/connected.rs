@@ -25,17 +25,17 @@ use sansio_mqtt_protocol::Message;
 use sansio_mqtt_protocol::MessageId;
 use sansio_mqtt_protocol::Qos as ProtocolQos;
 use sansio_mqtt_protocol::Time;
-use sansio_mqtt_v5_types::ControlPacket;
-use sansio_mqtt_v5_types::DisconnectReasonCode;
-use sansio_mqtt_v5_types::GuaranteedQoS;
-use sansio_mqtt_v5_types::PingReq;
-use sansio_mqtt_v5_types::PubAckReasonCode;
-use sansio_mqtt_v5_types::PubCompReasonCode;
-use sansio_mqtt_v5_types::PubRecReasonCode;
-use sansio_mqtt_v5_types::Publish;
-use sansio_mqtt_v5_types::PublishKind;
-use sansio_mqtt_v5_types::Subscribe;
-use sansio_mqtt_v5_types::Unsubscribe;
+use sansio_mqtt_v5_wire::ControlPacket;
+use sansio_mqtt_v5_wire::DisconnectReasonCode;
+use sansio_mqtt_v5_wire::GuaranteedQoS;
+use sansio_mqtt_v5_wire::PingReq;
+use sansio_mqtt_v5_wire::PubAckReasonCode;
+use sansio_mqtt_v5_wire::PubCompReasonCode;
+use sansio_mqtt_v5_wire::PubRecReasonCode;
+use sansio_mqtt_v5_wire::Publish;
+use sansio_mqtt_v5_wire::PublishKind;
+use sansio_mqtt_v5_wire::Subscribe;
+use sansio_mqtt_v5_wire::Unsubscribe;
 
 #[derive(Debug)]
 pub(crate) struct Connected;

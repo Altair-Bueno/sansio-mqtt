@@ -3,8 +3,8 @@
 #![no_main]
 
 use libfuzzer_sys::fuzz_target;
-use sansio_mqtt_v5_types::ControlPacket;
-use sansio_mqtt_v5_types::ParserSettings;
+use sansio_mqtt_v5_wire::ControlPacket;
+use sansio_mqtt_v5_wire::ParserSettings;
 use winnow::error::ContextError;
 use winnow::Parser as _;
 

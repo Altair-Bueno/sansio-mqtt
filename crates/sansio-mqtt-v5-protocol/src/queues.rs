@@ -9,18 +9,18 @@ use sansio_mqtt_protocol::DriverAction;
 use sansio_mqtt_protocol::Error;
 use sansio_mqtt_protocol::Event;
 use sansio_mqtt_protocol::ReasonCode;
-use sansio_mqtt_v5_types::ControlPacket;
-use sansio_mqtt_v5_types::Disconnect;
-use sansio_mqtt_v5_types::DisconnectReasonCode;
-use sansio_mqtt_v5_types::EncodeError;
-use sansio_mqtt_v5_types::PubAck;
-use sansio_mqtt_v5_types::PubAckReasonCode;
-use sansio_mqtt_v5_types::PubComp;
-use sansio_mqtt_v5_types::PubCompReasonCode;
-use sansio_mqtt_v5_types::PubRec;
-use sansio_mqtt_v5_types::PubRecReasonCode;
-use sansio_mqtt_v5_types::PubRel;
-use sansio_mqtt_v5_types::PubRelReasonCode;
+use sansio_mqtt_v5_wire::ControlPacket;
+use sansio_mqtt_v5_wire::Disconnect;
+use sansio_mqtt_v5_wire::DisconnectReasonCode;
+use sansio_mqtt_v5_wire::EncodeError;
+use sansio_mqtt_v5_wire::PubAck;
+use sansio_mqtt_v5_wire::PubAckReasonCode;
+use sansio_mqtt_v5_wire::PubComp;
+use sansio_mqtt_v5_wire::PubCompReasonCode;
+use sansio_mqtt_v5_wire::PubRec;
+use sansio_mqtt_v5_wire::PubRecReasonCode;
+use sansio_mqtt_v5_wire::PubRel;
+use sansio_mqtt_v5_wire::PubRelReasonCode;
 
 /// Encodes `packet` into a fresh buffer.
 ///

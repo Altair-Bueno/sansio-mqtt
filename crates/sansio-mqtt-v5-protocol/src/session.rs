@@ -1,9 +1,9 @@
 use alloc::collections::btree_map::BTreeMap;
 use alloc::collections::btree_set::BTreeSet;
 use core::num::NonZero;
-use sansio_mqtt_v5_types::PubRecReasonCode;
-use sansio_mqtt_v5_types::Publish;
-use sansio_mqtt_v5_types::Topic;
+use sansio_mqtt_v5_wire::PubRecReasonCode;
+use sansio_mqtt_v5_wire::Publish;
+use sansio_mqtt_v5_wire::Topic;
 
 /// Where an outbound QoS1/QoS2 PUBLISH is in its acknowledgement exchange.
 ///

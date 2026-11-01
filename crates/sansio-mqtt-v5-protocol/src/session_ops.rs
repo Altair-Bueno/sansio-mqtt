@@ -5,10 +5,10 @@ use core::num::NonZero;
 use sansio_mqtt_protocol::DropReason;
 use sansio_mqtt_protocol::Error;
 use sansio_mqtt_protocol::Event;
-use sansio_mqtt_v5_types::ControlPacket;
-use sansio_mqtt_v5_types::PubRel;
-use sansio_mqtt_v5_types::PubRelReasonCode;
-use sansio_mqtt_v5_types::PublishKind;
+use sansio_mqtt_v5_wire::ControlPacket;
+use sansio_mqtt_v5_wire::PubRel;
+use sansio_mqtt_v5_wire::PubRelReasonCode;
+use sansio_mqtt_v5_wire::PublishKind;
 
 /// Resets all keep-alive fields on the scratchpad.
 ///

@@ -16,7 +16,7 @@ encode = { workspace = true }
 sansio = { workspace = true }
 semver = { workspace = true }
 sansio-mqtt-protocol = { workspace = true }
-sansio-mqtt-v5-types = { workspace = true }
+sansio-mqtt-v5-wire = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true, features = ["attributes"] }
 winnow = { workspace = true }

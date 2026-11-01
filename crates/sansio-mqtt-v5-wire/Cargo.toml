@@ -1,5 +1,5 @@
 [package]
-name = "sansio-mqtt-v5-types"
+name = "sansio-mqtt-v5-wire"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

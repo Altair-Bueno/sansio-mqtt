@@ -7,7 +7,7 @@ use sansio_mqtt_protocol::ConnectOptions;
 use sansio_mqtt_protocol::DriverAction;
 use sansio_mqtt_protocol::Event;
 use sansio_mqtt_protocol::Time;
-use sansio_mqtt_v5_types::MaximumQoS;
+use sansio_mqtt_v5_wire::MaximumQoS;
 
 #[derive(Debug)]
 #[expect(

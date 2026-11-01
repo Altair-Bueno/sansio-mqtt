@@ -27,11 +27,11 @@ use sansio_mqtt_protocol::ReasonCode;
 use sansio_mqtt_protocol::Timestamped;
 use sansio_mqtt_v5_protocol::Client;
 use sansio_mqtt_v5_protocol::ClientSettings;
-use sansio_mqtt_v5_types::ConnAck;
-use sansio_mqtt_v5_types::ConnAckKind;
-use sansio_mqtt_v5_types::ConnackReasonCode;
-use sansio_mqtt_v5_types::ControlPacket;
-use sansio_mqtt_v5_types::PingReq;
+use sansio_mqtt_v5_wire::ConnAck;
+use sansio_mqtt_v5_wire::ConnAckKind;
+use sansio_mqtt_v5_wire::ConnackReasonCode;
+use sansio_mqtt_v5_wire::ControlPacket;
+use sansio_mqtt_v5_wire::PingReq;
 
 /// When the tests issue `Command::Connect`; non-zero so a deadline computed
 /// from the wrong instant shows up.
