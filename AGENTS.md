@@ -71,8 +71,8 @@
 - Prefer types that make invalid states unrepresentable. Examples from this
   codebase: newtype wrappers with validated constructors (`Topic`, `Utf8String`
   in `sansio-mqtt-v5-types`), `NonZero<u16>` for packet identifiers, and the
-  typestate pattern in the protocol state machine (`Disconnected` →
-  `Connecting` → `Connected`).
+  typestate pattern in the protocol state machine (`Disconnected` → `Connecting`
+  → `Connected`).
 - Use `thiserror` for all error types (it is a workspace dependency). Derive
   `Display` and `Error` via `#[derive(thiserror::Error)]`. Error messages MUST
   include enough context to identify which MQTT packet or operation triggered
