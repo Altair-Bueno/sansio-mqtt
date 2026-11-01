@@ -4,9 +4,11 @@
 //! the broker's certificate is checked with the operating system's verifier,
 //! or against the PEM file of certificates `MQTT_TLS_CA` names.
 
-use std::sync::Arc;
+extern crate alloc;
 
-use rustls_platform_verifier::BuilderVerifierExt;
+use alloc::sync::Arc;
+
+use rustls_platform_verifier::BuilderVerifierExt as _;
 use sansio_mqtt_protocol::Command;
 use sansio_mqtt_protocol::ConnectOptions;
 use sansio_mqtt_protocol::Event;
@@ -20,14 +22,14 @@ use sansio_mqtt_tokio::rustls::ClientConfig;
 use sansio_mqtt_tokio::rustls::RootCertStore;
 use sansio_mqtt_tokio::rustls::pki_types::CertificateDer;
 use sansio_mqtt_tokio::rustls::pki_types::ServerName;
-use sansio_mqtt_tokio::rustls::pki_types::pem::PemObject;
+use sansio_mqtt_tokio::rustls::pki_types::pem::PemObject as _;
 use sansio_mqtt_tokio::tokio_rustls;
 use sansio_mqtt_v5_protocol::Client;
 use tracing::level_filters::LevelFilter;
 use tracing_subscriber::EnvFilter;
 
 #[tokio::main(flavor = "current_thread")]
-async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+async fn main() -> Result<(), Box<dyn core::error::Error + Send + Sync>> {
     tracing_subscriber::fmt()
         .with_env_filter(
             EnvFilter::builder()
@@ -72,6 +74,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     ))?;
 
     loop {
+        #[expect(
+            clippy::wildcard_enum_match_arm,
+            reason = "`Event` is `#[non_exhaustive]`; the example logs every event it does not act on"
+        )]
         match driver.next().await {
             Event::Connected => {
                 tracing::info!("connected over TLS");

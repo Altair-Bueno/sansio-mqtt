@@ -10,6 +10,10 @@ use sansio_mqtt_protocol::Time;
 use sansio_mqtt_v5_types::MaximumQoS;
 
 #[derive(Debug)]
+#[expect(
+    clippy::struct_excessive_bools,
+    reason = "independent flags: CONNACK capability properties (MQTT v5.0 §3.2.2.3), their effective values and keep-alive bookkeeping; no two form a state machine"
+)]
 pub(crate) struct ClientScratchpad<T> {
     /// The options from the most recent `Command::Connect`, consulted while
     /// the connection it started is negotiated (Keep Alive, Clean Start,

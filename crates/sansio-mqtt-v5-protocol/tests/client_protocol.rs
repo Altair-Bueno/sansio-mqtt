@@ -1,9 +1,18 @@
+//! Integration tests for the MQTT v5.0 [`Client`] state machine: connection
+//! lifecycle, `QoS` 1/2 exchanges, keep-alive, enhanced authentication, topic
+//! aliases and negotiated limits, driven through its public `sansio` API.
+#![expect(
+    clippy::expect_used,
+    clippy::panic,
+    reason = "test helpers fail the test on setup errors by design"
+)]
+
 use bytes::Bytes;
 use bytestring::ByteString;
 use core::num::NonZero;
 use core::time::Duration;
-use encode::Encodable;
-use sansio::Protocol;
+use encode::Encodable as _;
+use sansio::Protocol as _;
 use sansio_mqtt_protocol::Authentication;
 use sansio_mqtt_protocol::Capability;
 use sansio_mqtt_protocol::Command;
@@ -57,7 +66,7 @@ use sansio_mqtt_v5_types::Topic;
 use sansio_mqtt_v5_types::UnsubAck;
 use sansio_mqtt_v5_types::UnsubAckReasonCode;
 use sansio_mqtt_v5_types::Utf8String;
-use winnow::Parser;
+use winnow::Parser as _;
 use winnow::error::ContextError;
 
 /// Stamps a protocol input with `Duration::ZERO`, the instant these tests
@@ -169,6 +178,11 @@ fn unsubscribe_one(filter: &str) -> Command {
 /// `#[non_exhaustive]`, so struct-update syntax
 /// is unavailable to this integration test crate; this struct plus [`settings`]
 /// stands in for it.
+#[derive(Clone, Copy)]
+#[expect(
+    clippy::struct_excessive_bools,
+    reason = "mirrors the four independent `allow_*` flags of `ClientSettings`"
+)]
 struct SettingsOverrides {
     receive_maximum: Option<NonZero<u16>>,
     maximum_packet_size: Option<NonZero<u32>>,
@@ -249,6 +263,10 @@ fn connect_default(client: &mut Client<Duration>) -> Bytes {
     connect_client(client, connect_options())
 }
 
+#[expect(
+    clippy::wildcard_enum_match_arm,
+    reason = "`ControlPacket` is `#[non_exhaustive]`; every packet but CONNECT fails the test"
+)]
 fn decode_connect(bytes: &Bytes) -> Connect {
     match ControlPacket::parser::<_, ContextError, ContextError>(&ParserSettings::default())
         .parse(bytes.as_ref())
@@ -271,6 +289,10 @@ fn message_builder_default_qos_is_at_most_once() {
 }
 
 #[test]
+#[expect(
+    clippy::wildcard_enum_match_arm,
+    reason = "`Event` is `#[non_exhaustive]`; every variant but the expected one fails the test"
+)]
 fn event_exposes_qos_delivery_variants_with_token() {
     let no_ack = Event::Message(message("t", ProtoQos::AtMostOnce, b"x"));
     assert!(matches!(no_ack, Event::Message(_)));
@@ -338,6 +360,10 @@ fn client_new_uses_default_state_and_blank_scratchpad() {
 }
 
 #[test]
+#[expect(
+    clippy::wildcard_enum_match_arm,
+    reason = "`Error` is `#[non_exhaustive]`; unlisted variants classify as \"other\""
+)]
 fn error_variants_are_instantiable_and_matchable() {
     let classify = |error: Error| -> &'static str {
         match error {
@@ -452,13 +478,7 @@ fn connect_settings_populate_connect_properties() {
 
     let connect_bytes = connect_default(&mut client);
 
-    let packet = ControlPacket::parser::<_, ContextError, ContextError>(&ParserSettings::default())
-        .parse(connect_bytes.as_ref())
-        .expect("connect packet should decode");
-    let connect = match packet {
-        ControlPacket::Connect(connect) => connect,
-        other => panic!("expected CONNECT, got {other:?}"),
-    };
+    let connect = decode_connect(&connect_bytes);
 
     assert_eq!(connect.keep_alive, NonZero::new(30));
     assert_eq!(connect.properties.request_response_information, Some(true));
@@ -477,7 +497,7 @@ fn parser_uses_effective_client_limits_after_connect_policy_applied() {
         maximum_packet_size: NonZero::new(2),
         ..Default::default()
     }));
-    let _ = open_connecting(&mut client, connect_options());
+    open_connecting(&mut client, connect_options());
 
     assert_eq!(read(&mut client, &success_connack()), Ok(()));
     assert_eq!(
@@ -494,7 +514,7 @@ fn parser_uses_effective_client_limits_after_connect_policy_applied() {
 #[test]
 fn socket_closed_emits_disconnected_event() {
     let mut client = Client::<Duration>::default();
-    let _ = connect_default(&mut client);
+    connect_default(&mut client);
 
     let result = client.handle_event(at_zero(DriverEvent::SocketClosed));
 
@@ -505,7 +525,7 @@ fn socket_closed_emits_disconnected_event() {
 #[test]
 fn socket_connected_in_connecting_state_returns_invalid_transition() {
     let mut client = Client::<Duration>::default();
-    let _ = open_connecting(&mut client, connect_options());
+    open_connecting(&mut client, connect_options());
 
     let result = client.handle_event(at_zero(DriverEvent::SocketConnected));
 
@@ -516,7 +536,7 @@ fn socket_connected_in_connecting_state_returns_invalid_transition() {
 #[test]
 fn fragmented_packet_is_buffered_until_complete() {
     let mut client = Client::<Duration>::default();
-    let _ = open_connecting(&mut client, connect_options());
+    open_connecting(&mut client, connect_options());
 
     let first_fragment = client.handle_read(IncomingData {
         bytes: (&[0xD0]),
@@ -551,7 +571,7 @@ fn fragmented_packet_is_buffered_until_complete() {
 #[test]
 fn malformed_packet_triggers_close_action() {
     let mut client = Client::<Duration>::default();
-    let _ = open_connecting(&mut client, connect_options());
+    open_connecting(&mut client, connect_options());
 
     let result = client.handle_read(IncomingData {
         bytes: (&[0xD0, 0x01, 0x00]),
@@ -576,7 +596,7 @@ fn malformed_packet_triggers_close_action() {
 #[test]
 fn protocol_error_emits_disconnect_bytes_before_close_action_polling() {
     let mut client = Client::<Duration>::default();
-    let _ = open_connecting(&mut client, connect_options());
+    open_connecting(&mut client, connect_options());
 
     let result = client.handle_read(IncomingData {
         bytes: (&[0xD0, 0x00]),
@@ -603,7 +623,7 @@ fn protocol_error_emits_disconnect_bytes_before_close_action_polling() {
 #[test]
 fn connack_transitions_to_connected_and_emits_connected() {
     let mut client = Client::<Duration>::default();
-    let _ = open_connecting(&mut client, connect_options());
+    open_connecting(&mut client, connect_options());
 
     assert_eq!(read(&mut client, &success_connack()), Ok(()));
     assert!(matches!(client.poll_read(), Some(Event::Connected)));
@@ -625,7 +645,7 @@ fn connack_transitions_to_connected_and_emits_connected() {
 #[test]
 fn connack_rejected_reason_closes_without_connected_event() {
     let mut client = Client::<Duration>::default();
-    let _ = open_connecting(&mut client, connect_options());
+    open_connecting(&mut client, connect_options());
 
     let connack = ControlPacket::ConnAck(
         ConnAck::builder()
@@ -721,7 +741,7 @@ fn every_refused_connack_reason_is_reported_in_disconnected() {
 
     for (wire, expected) in refusals {
         let mut client = Client::<Duration>::default();
-        let _ = open_connecting(&mut client, connect_options());
+        open_connecting(&mut client, connect_options());
         let connack = ControlPacket::ConnAck(
             ConnAck::builder()
                 .kind(ConnAckKind::Other { reason_code: wire })
@@ -748,7 +768,7 @@ fn every_refused_connack_reason_is_reported_in_disconnected() {
 #[test]
 fn remaining_length_longer_than_four_bytes_is_a_malformed_packet() {
     let mut client = Client::<Duration>::default();
-    let _ = connect_default(&mut client);
+    connect_default(&mut client);
 
     let result = client.handle_read(IncomingData {
         bytes: &[0x30, 0xFF, 0xFF, 0xFF, 0xFF, 0x7F],
@@ -773,7 +793,7 @@ fn remaining_length_longer_than_four_bytes_is_a_malformed_packet() {
 #[test]
 fn inbound_publish_qos0_is_forwarded_to_user_queue() {
     let mut client = Client::<Duration>::default();
-    let _ = connect_default(&mut client);
+    connect_default(&mut client);
 
     let publish = ControlPacket::Publish(
         Publish::builder()
@@ -792,9 +812,12 @@ fn inbound_publish_qos0_is_forwarded_to_user_queue() {
             assert_eq!(message.message_expiry, None);
             assert_eq!(message.response_topic, None);
             assert_eq!(message.correlation_data, None);
-            assert!(message.subscription_identifiers.is_empty());
+            assert_eq!(message.subscription_identifiers, Vec::<NonZero<u64>>::new());
             assert_eq!(message.content_type, None);
-            assert!(message.user_properties.is_empty());
+            assert_eq!(
+                message.user_properties,
+                Vec::<(ByteString, ByteString)>::new()
+            );
         }
         other => panic!("expected received message, got {other:?}"),
     }
@@ -803,7 +826,7 @@ fn inbound_publish_qos0_is_forwarded_to_user_queue() {
 #[test]
 fn inbound_publish_multiple_subscription_identifiers_surface_to_user() {
     let mut client = Client::<Duration>::default();
-    let _ = connect_default(&mut client);
+    connect_default(&mut client);
 
     let publish = ControlPacket::Publish(
         Publish::builder()
@@ -841,7 +864,7 @@ fn inbound_publish_registers_topic_alias_then_resolves_alias_only_publish() {
         topic_alias_maximum: Some(10),
         ..Default::default()
     }));
-    let _ = connect_default(&mut client);
+    connect_default(&mut client);
 
     let alias = NonZero::new(1).expect("non-zero alias");
 
@@ -887,7 +910,7 @@ fn inbound_publish_alias_only_unknown_alias_is_protocol_error() {
         topic_alias_maximum: Some(10),
         ..Default::default()
     }));
-    let _ = connect_default(&mut client);
+    connect_default(&mut client);
 
     let unknown_alias_publish = ControlPacket::Publish(
         Publish::builder()
@@ -920,7 +943,7 @@ fn inbound_publish_alias_only_unknown_alias_is_protocol_error() {
 #[test]
 fn inbound_publish_empty_topic_without_alias_is_protocol_error() {
     let mut client = Client::<Duration>::default();
-    let _ = connect_default(&mut client);
+    connect_default(&mut client);
 
     let invalid_publish = ControlPacket::Publish(
         Publish::builder()
@@ -947,7 +970,7 @@ fn inbound_publish_empty_topic_without_alias_is_protocol_error() {
 #[test]
 fn inbound_publish_alias_rejected_when_topic_alias_maximum_is_zero() {
     let mut client = Client::<Duration>::default();
-    let _ = connect_default(&mut client);
+    connect_default(&mut client);
 
     let publish_with_alias = ControlPacket::Publish(
         Publish::builder()
@@ -985,7 +1008,7 @@ fn inbound_publish_alias_exceeding_topic_alias_maximum_is_topic_alias_invalid() 
         topic_alias_maximum: Some(1),
         ..Default::default()
     }));
-    let _ = connect_default(&mut client);
+    connect_default(&mut client);
 
     let alias_too_large_publish = ControlPacket::Publish(
         Publish::builder()
@@ -1024,7 +1047,7 @@ fn inbound_publish_alias_equal_to_topic_alias_maximum_is_accepted() {
         topic_alias_maximum: Some(2),
         ..Default::default()
     }));
-    let _ = connect_default(&mut client);
+    connect_default(&mut client);
 
     let alias = NonZero::new(2).expect("non-zero alias");
 
@@ -1080,7 +1103,7 @@ fn inbound_publish_alias_equal_to_topic_alias_maximum_is_accepted() {
 #[test]
 fn inbound_qos1_publish_waits_for_app_ack_then_sends_puback() {
     let mut client = Client::<Duration>::default();
-    let _ = connect_default(&mut client);
+    connect_default(&mut client);
 
     let packet_id = NonZero::new(7).expect("non-zero packet id");
     let publish = ControlPacket::Publish(
@@ -1124,7 +1147,7 @@ fn inbound_qos1_publish_waits_for_app_ack_then_sends_puback() {
 #[test]
 fn inbound_qos1_publish_reject_sends_puback_failure_reason() {
     let mut client = Client::<Duration>::default();
-    let _ = connect_default(&mut client);
+    connect_default(&mut client);
 
     let packet_id = NonZero::new(11).expect("non-zero packet id");
     let publish = ControlPacket::Publish(
@@ -1167,7 +1190,7 @@ fn inbound_qos1_publish_reject_sends_puback_failure_reason() {
 #[test]
 fn inbound_qos2_publish_waits_for_app_ack_then_sends_pubrec_and_completes_on_pubrel() {
     let mut client = Client::<Duration>::default();
-    let _ = connect_default(&mut client);
+    connect_default(&mut client);
 
     let packet_id = NonZero::new(13).expect("non-zero packet id");
     let publish = ControlPacket::Publish(
@@ -1222,7 +1245,7 @@ fn inbound_qos2_publish_waits_for_app_ack_then_sends_pubrec_and_completes_on_pub
 #[test]
 fn inbound_qos2_publish_reject_sends_pubrec_failure_and_clears_state() {
     let mut client = Client::<Duration>::default();
-    let _ = connect_default(&mut client);
+    connect_default(&mut client);
 
     let packet_id = NonZero::new(13).expect("non-zero packet id");
     let publish = ControlPacket::Publish(
@@ -1280,7 +1303,7 @@ fn inbound_qos2_publish_reject_sends_pubrec_failure_and_clears_state() {
 #[test]
 fn inbound_packet_id_reuse_conflict_causes_protocol_error() {
     let mut client = Client::<Duration>::default();
-    let _ = connect_default(&mut client);
+    connect_default(&mut client);
 
     let packet_id = NonZero::new(19).expect("non-zero packet id");
     let qos1_publish = ControlPacket::Publish(
@@ -1326,7 +1349,7 @@ fn inbound_packet_id_reuse_conflict_causes_protocol_error() {
 #[test]
 fn duplicate_qos2_publish_after_reject_resends_same_failure_pubrec_without_redelivery() {
     let mut client = Client::<Duration>::default();
-    let _ = connect_default(&mut client);
+    connect_default(&mut client);
 
     let packet_id = NonZero::new(23).expect("non-zero packet id");
     let first_publish = ControlPacket::Publish(
@@ -1382,7 +1405,7 @@ fn duplicate_qos2_publish_after_reject_resends_same_failure_pubrec_without_redel
 #[test]
 fn manual_ack_sends_puback_success_for_pending_message_id() {
     let mut client = Client::<Duration>::default();
-    let _ = connect_default(&mut client);
+    connect_default(&mut client);
 
     let packet_id = NonZero::new(77).expect("non-zero packet id");
     let publish = ControlPacket::Publish(
@@ -1443,9 +1466,10 @@ fn reject_reason_maps_to_puback_failure_codes_for_qos1() {
 
     for (offset, (reject_reason, expected_reason_code)) in cases.iter().enumerate() {
         let mut client = Client::<Duration>::default();
-        let _ = connect_default(&mut client);
+        connect_default(&mut client);
 
-        let packet_id = NonZero::new((offset + 1) as u16).expect("non-zero packet id");
+        let packet_id = NonZero::new(u16::try_from(offset + 1).expect("offset fits in a u16"))
+            .expect("non-zero packet id");
         let publish = ControlPacket::Publish(
             Publish::builder()
                 .kind(PublishKind::Repetible {
@@ -1504,9 +1528,10 @@ fn reject_reason_maps_to_pubrec_failure_codes_for_qos2() {
 
     for (offset, (reject_reason, expected_reason_code)) in cases.iter().enumerate() {
         let mut client = Client::<Duration>::default();
-        let _ = connect_default(&mut client);
+        connect_default(&mut client);
 
-        let packet_id = NonZero::new((offset + 1) as u16).expect("non-zero packet id");
+        let packet_id = NonZero::new(u16::try_from(offset + 1).expect("offset fits in a u16"))
+            .expect("non-zero packet id");
         let publish = ControlPacket::Publish(
             Publish::builder()
                 .kind(PublishKind::Repetible {
@@ -1543,7 +1568,7 @@ fn reject_reason_maps_to_pubrec_failure_codes_for_qos2() {
 #[test]
 fn inbound_qos2_unknown_pubrel_sends_pubcomp_packet_identifier_not_found() {
     let mut client = Client::<Duration>::default();
-    let _ = connect_default(&mut client);
+    connect_default(&mut client);
 
     let unknown_packet_id = NonZero::new(21).expect("non-zero packet id");
     let pubrel = ControlPacket::PubRel(
@@ -1568,7 +1593,7 @@ fn inbound_qos2_unknown_pubrel_sends_pubcomp_packet_identifier_not_found() {
 #[test]
 fn socket_closed_after_disconnect_does_not_duplicate_disconnected_event() {
     let mut client = Client::<Duration>::default();
-    let _ = connect_default(&mut client);
+    connect_default(&mut client);
 
     let disconnect = ControlPacket::Disconnect(
         Disconnect::builder()
@@ -1592,7 +1617,7 @@ fn socket_closed_after_disconnect_does_not_duplicate_disconnected_event() {
 #[test]
 fn outbound_qos1_publish_emits_acknowledged_event_on_puback() {
     let mut client = Client::<Duration>::default();
-    let _ = connect_default(&mut client);
+    connect_default(&mut client);
 
     let qos1_message = message("test/topic", ProtoQos::AtLeastOnce, b"qos1");
 
@@ -1638,7 +1663,7 @@ fn outbound_qos1_publish_emits_acknowledged_event_on_puback() {
 #[test]
 fn unexpected_puback_without_matching_qos1_transaction_triggers_protocol_error_close() {
     let mut client = Client::<Duration>::default();
-    let _ = connect_default(&mut client);
+    connect_default(&mut client);
 
     let packet_id = NonZero::new(42).expect("non-zero packet id");
     let puback = ControlPacket::PubAck(
@@ -1662,7 +1687,7 @@ fn unexpected_puback_without_matching_qos1_transaction_triggers_protocol_error_c
 #[test]
 fn qos2_inflight_receiving_puback_triggers_protocol_error_close() {
     let mut client = Client::<Duration>::default();
-    let _ = connect_default(&mut client);
+    connect_default(&mut client);
 
     let qos2_message = message("test/topic", ProtoQos::ExactlyOnce, b"qos2");
     assert_eq!(
@@ -1700,7 +1725,7 @@ fn qos2_inflight_receiving_puback_triggers_protocol_error_close() {
 #[test]
 fn qos1_inflight_receiving_pubrec_triggers_protocol_error_close() {
     let mut client = Client::<Duration>::default();
-    let _ = connect_default(&mut client);
+    connect_default(&mut client);
 
     let qos1_message = message("test/topic", ProtoQos::AtLeastOnce, b"qos1");
     assert_eq!(
@@ -1738,7 +1763,7 @@ fn qos1_inflight_receiving_pubrec_triggers_protocol_error_close() {
 #[test]
 fn connack_receive_maximum_only_limits_broker_facing_publish_flow() {
     let mut client = Client::<Duration>::default();
-    let _ = open_connecting(&mut client, connect_options());
+    open_connecting(&mut client, connect_options());
     assert_eq!(
         read(
             &mut client,
@@ -1843,7 +1868,7 @@ fn effective_limits_recompute_on_connect_socketconnected_connack_and_socketclose
 
     let qos1_message = message("test/topic", ProtoQos::AtLeastOnce, b"qos1");
 
-    let _ = open_connecting(&mut client, connect_options());
+    open_connecting(&mut client, connect_options());
     assert_eq!(
         read(
             &mut client,
@@ -1872,7 +1897,7 @@ fn effective_limits_recompute_on_connect_socketconnected_connack_and_socketclose
     );
     assert!(matches!(client.poll_read(), Some(Event::Disconnected(_))));
 
-    let _ = open_connecting(&mut client, connect_options());
+    open_connecting(&mut client, connect_options());
     assert_eq!(
         read(
             &mut client,
@@ -1899,7 +1924,7 @@ fn effective_limits_recompute_on_connect_socketconnected_connack_and_socketclose
 #[test]
 fn effective_limits_recompute_on_connect_applies_pending_connect_options() {
     let mut client = Client::<Duration>::new(ClientSettings::default());
-    let _ = open_connecting(&mut client, connect_options());
+    open_connecting(&mut client, connect_options());
     assert_eq!(
         read(
             &mut client,
@@ -1926,7 +1951,7 @@ fn effective_limits_recompute_on_connect_applies_pending_connect_options() {
 #[test]
 fn effective_limits_recompute_on_connack_applies_broker_receive_maximum() {
     let mut client = Client::<Duration>::new(ClientSettings::default());
-    let _ = open_connecting(&mut client, connect_options());
+    open_connecting(&mut client, connect_options());
     assert_eq!(
         read(
             &mut client,
@@ -1966,7 +1991,7 @@ fn app_retain_policy_false_blocks_retain_publish_even_if_broker_allows() {
         allow_retain: false,
         ..Default::default()
     }));
-    let _ = open_connecting(&mut client, connect_options());
+    open_connecting(&mut client, connect_options());
     assert_eq!(
         read(
             &mut client,
@@ -1995,7 +2020,7 @@ fn app_subscription_policy_flags_override_broker_allowances() {
         allow_shared_subscriptions: false,
         ..Default::default()
     }));
-    let _ = open_connecting(&mut client, connect_options());
+    open_connecting(&mut client, connect_options());
     assert_eq!(
         read(
             &mut client,
@@ -2034,7 +2059,7 @@ fn app_subscription_policy_flags_override_broker_allowances() {
 #[test]
 fn outbound_qos2_publish_emits_completed_event_on_pubcomp() {
     let mut client = Client::<Duration>::default();
-    let _ = connect_default(&mut client);
+    connect_default(&mut client);
 
     let qos2_message = message("test/topic", ProtoQos::ExactlyOnce, b"qos2");
     assert_eq!(
@@ -2095,7 +2120,7 @@ fn outbound_qos2_publish_emits_completed_event_on_pubcomp() {
 #[test]
 fn unexpected_pubcomp_before_pubrec_transition_triggers_protocol_error_close() {
     let mut client = Client::<Duration>::default();
-    let _ = connect_default(&mut client);
+    connect_default(&mut client);
 
     let qos2_message = message("test/topic", ProtoQos::ExactlyOnce, b"qos2");
     assert_eq!(
@@ -2129,7 +2154,7 @@ fn unexpected_pubcomp_before_pubrec_transition_triggers_protocol_error_close() {
 #[test]
 fn receive_maximum_full_returns_immediate_error_for_new_qos2_publish() {
     let mut client = Client::<Duration>::default();
-    let _ = open_connecting(&mut client, connect_options());
+    open_connecting(&mut client, connect_options());
     assert_eq!(
         read(
             &mut client,
@@ -2183,7 +2208,7 @@ fn receive_maximum_full_returns_immediate_error_for_new_qos2_publish() {
 #[test]
 fn duplicate_pubrec_in_qos2_await_pubcomp_resends_pubrel_without_disconnect() {
     let mut client = Client::<Duration>::default();
-    let _ = connect_default(&mut client);
+    connect_default(&mut client);
 
     let qos2_message = message("test/topic", ProtoQos::ExactlyOnce, b"qos2");
     assert_eq!(
@@ -2247,7 +2272,7 @@ fn duplicate_pubrec_in_qos2_await_pubcomp_resends_pubrel_without_disconnect() {
 #[test]
 fn qos2_pubrec_failure_reason_drops_inflight_without_pubrel() {
     let mut client = Client::<Duration>::default();
-    let _ = connect_default(&mut client);
+    connect_default(&mut client);
 
     let qos2_message = message("test/topic", ProtoQos::ExactlyOnce, b"qos2");
     assert_eq!(
@@ -2292,7 +2317,7 @@ fn qos2_pubrec_failure_reason_drops_inflight_without_pubrel() {
 #[test]
 fn publish_rejects_packet_exceeding_connack_maximum_packet_size() {
     let mut client = Client::<Duration>::default();
-    let _ = open_connecting(&mut client, connect_options());
+    open_connecting(&mut client, connect_options());
     assert_eq!(
         read(
             &mut client,
@@ -2317,7 +2342,7 @@ fn publish_rejects_packet_exceeding_connack_maximum_packet_size() {
 #[test]
 fn subscribe_rejects_packet_exceeding_connack_maximum_packet_size() {
     let mut client = Client::<Duration>::default();
-    let _ = open_connecting(&mut client, connect_options());
+    open_connecting(&mut client, connect_options());
     assert_eq!(
         read(
             &mut client,
@@ -2345,7 +2370,7 @@ fn subscribe_rejects_packet_exceeding_connack_maximum_packet_size() {
 #[test]
 fn unsubscribe_rejects_packet_exceeding_connack_maximum_packet_size() {
     let mut client = Client::<Duration>::default();
-    let _ = open_connecting(&mut client, connect_options());
+    open_connecting(&mut client, connect_options());
     assert_eq!(
         read(
             &mut client,
@@ -2383,7 +2408,7 @@ fn keep_alive_pingreq_exceeding_connack_maximum_packet_size_closes_the_connectio
             .keep_alive(NonZero::new(10))
             .build(),
     );
-    let _ = open_connecting(&mut client, connect_options());
+    open_connecting(&mut client, connect_options());
     assert_eq!(
         read(
             &mut client,
@@ -2500,7 +2525,7 @@ fn connack_resume_with_clean_start_is_protocol_error() {
         .client_id(ByteString::from_static("test-client"))
         .clean_start(true)
         .build();
-    let _ = open_connecting(&mut client, options);
+    open_connecting(&mut client, options);
 
     assert_eq!(read(&mut client, &resume_connack()), Ok(()));
     assert!(matches!(
@@ -2520,7 +2545,7 @@ fn connack_resume_without_local_state_is_accepted_when_clean_start_false() {
         .client_id(ByteString::from_static("test-client"))
         .clean_start(false)
         .build();
-    let _ = open_connecting(&mut client, options);
+    open_connecting(&mut client, options);
 
     assert_eq!(read(&mut client, &resume_connack()), Ok(()));
     assert!(matches!(client.poll_read(), Some(Event::Connected)));
@@ -2537,7 +2562,7 @@ fn session_expiry_options(secs: u64) -> ConnectOptions {
 #[test]
 fn resumed_session_replays_outbound_qos_publish_with_dup_set() {
     let mut client = Client::<Duration>::default();
-    let _ = connect_client(&mut client, session_expiry_options(30));
+    connect_client(&mut client, session_expiry_options(30));
 
     let outbound = message("replay/topic", ProtoQos::AtLeastOnce, b"replay");
     assert_eq!(
@@ -2568,7 +2593,7 @@ fn resumed_session_replays_outbound_qos_publish_with_dup_set() {
     );
     assert!(matches!(client.poll_read(), Some(Event::Disconnected(_))));
 
-    let _ = open_connecting(&mut client, session_expiry_options(30));
+    open_connecting(&mut client, session_expiry_options(30));
     assert_eq!(read(&mut client, &resume_connack()), Ok(()));
     assert!(matches!(client.poll_read(), Some(Event::Connected)));
 
@@ -2604,7 +2629,7 @@ fn resumed_session_replays_outbound_qos_publish_with_dup_set() {
 #[test]
 fn resumed_session_replay_failure_does_not_emit_connected_and_closes() {
     let mut client = Client::<Duration>::default();
-    let _ = connect_client(&mut client, session_expiry_options(30));
+    connect_client(&mut client, session_expiry_options(30));
 
     let outbound = message("replay/failure", ProtoQos::AtLeastOnce, &[0; 64]);
     assert_eq!(
@@ -2637,7 +2662,7 @@ fn resumed_session_replay_failure_does_not_emit_connected_and_closes() {
     );
     assert!(matches!(client.poll_read(), Some(Event::Disconnected(_))));
 
-    let _ = open_connecting(&mut client, session_expiry_options(30));
+    open_connecting(&mut client, session_expiry_options(30));
 
     let resumed_connack = ControlPacket::ConnAck(
         ConnAck::builder()
@@ -2663,7 +2688,7 @@ fn resumed_session_replay_failure_does_not_emit_connected_and_closes() {
 #[test]
 fn resumed_session_replays_unacknowledged_pubrel() {
     let mut client = Client::<Duration>::default();
-    let _ = connect_client(&mut client, session_expiry_options(30));
+    connect_client(&mut client, session_expiry_options(30));
 
     let outbound = message("resume/qos2", ProtoQos::ExactlyOnce, b"qos2");
     assert_eq!(
@@ -2713,7 +2738,7 @@ fn resumed_session_replays_unacknowledged_pubrel() {
     );
     assert!(matches!(client.poll_read(), Some(Event::Disconnected(_))));
 
-    let _ = open_connecting(&mut client, session_expiry_options(30));
+    open_connecting(&mut client, session_expiry_options(30));
     assert_eq!(read(&mut client, &resume_connack()), Ok(()));
     assert!(matches!(client.poll_read(), Some(Event::Connected)));
     assert_eq!(
@@ -2743,9 +2768,13 @@ fn resumed_session_replays_unacknowledged_pubrel() {
 }
 
 #[test]
+#[expect(
+    clippy::too_many_lines,
+    reason = "one end-to-end scenario: QoS 1 and QoS 2 in-flight messages dropped on a non-resumed session"
+)]
 fn non_resumed_session_drops_inflight_and_emits_publish_dropped_events() {
     let mut client = Client::<Duration>::default();
-    let _ = connect_client(&mut client, session_expiry_options(30));
+    connect_client(&mut client, session_expiry_options(30));
 
     let qos1_topic = "drop/topic";
     assert_eq!(
@@ -2807,7 +2836,7 @@ fn non_resumed_session_drops_inflight_and_emits_publish_dropped_events() {
             .build(),
     );
     assert_eq!(read(&mut client, &inbound_publish), Ok(()));
-    let _ = client.poll_read();
+    client.poll_read();
     assert_eq!(client.poll_write(), None);
 
     assert_eq!(
@@ -2816,7 +2845,7 @@ fn non_resumed_session_drops_inflight_and_emits_publish_dropped_events() {
     );
     assert!(matches!(client.poll_read(), Some(Event::Disconnected(_))));
 
-    let _ = open_connecting(&mut client, session_expiry_options(30));
+    open_connecting(&mut client, session_expiry_options(30));
     assert_eq!(read(&mut client, &success_connack()), Ok(()));
     assert!(matches!(client.poll_read(), Some(Event::Connected)));
     assert_eq!(
@@ -2857,7 +2886,7 @@ fn non_resumed_session_drops_inflight_and_emits_publish_dropped_events() {
 #[test]
 fn non_resumed_connack_discards_all_local_session_state() {
     let mut client = Client::<Duration>::default();
-    let _ = connect_default(&mut client);
+    connect_default(&mut client);
 
     assert_eq!(
         client.handle_write(at_zero(Command::Publish {
@@ -2881,20 +2910,20 @@ fn non_resumed_connack_discards_all_local_session_state() {
             .build(),
     );
     assert_eq!(read(&mut client, &inbound_publish), Ok(()));
-    let _ = client.poll_read();
+    client.poll_read();
     assert_eq!(client.poll_write(), None);
 
     assert_eq!(
         client.handle_write(at_zero(subscribe_one(app_subscription("state/sub")))),
         Ok(())
     );
-    let _ = client.poll_write().expect("subscribe frame expected");
+    client.poll_write().expect("subscribe frame expected");
 
     assert_eq!(
         client.handle_write(at_zero(unsubscribe_one("state/sub"))),
         Ok(())
     );
-    let _ = client.poll_write().expect("unsubscribe frame expected");
+    client.poll_write().expect("unsubscribe frame expected");
 
     assert_eq!(
         client.handle_event(at_zero(DriverEvent::SocketClosed)),
@@ -2902,7 +2931,7 @@ fn non_resumed_connack_discards_all_local_session_state() {
     );
     assert!(matches!(client.poll_read(), Some(Event::Disconnected(_))));
 
-    let _ = open_connecting(&mut client, connect_options());
+    open_connecting(&mut client, connect_options());
     assert_eq!(read(&mut client, &success_connack()), Ok(()));
     assert!(matches!(client.poll_read(), Some(Event::Connected)));
 
@@ -2936,20 +2965,20 @@ fn non_resumed_connack_discards_all_local_session_state() {
     ));
 
     let mut client = Client::<Duration>::default();
-    let _ = connect_default(&mut client);
+    connect_default(&mut client);
 
     assert_eq!(
         client.handle_write(at_zero(unsubscribe_one("state/unsub"))),
         Ok(())
     );
-    let _ = client.poll_write().expect("unsubscribe frame expected");
+    client.poll_write().expect("unsubscribe frame expected");
 
     assert_eq!(
         client.handle_event(at_zero(DriverEvent::SocketClosed)),
         Ok(())
     );
     assert!(matches!(client.poll_read(), Some(Event::Disconnected(_))));
-    let _ = open_connecting(&mut client, connect_options());
+    open_connecting(&mut client, connect_options());
     assert_eq!(read(&mut client, &success_connack()), Ok(()));
     assert!(matches!(client.poll_read(), Some(Event::Connected)));
 
@@ -2969,7 +2998,7 @@ fn non_resumed_connack_discards_all_local_session_state() {
 #[test]
 fn stale_read_buffer_is_cleared_on_socket_closed() {
     let mut client = Client::<Duration>::default();
-    let _ = open_connecting(&mut client, connect_options());
+    open_connecting(&mut client, connect_options());
 
     assert_eq!(
         client.handle_read(IncomingData {
@@ -2985,7 +3014,7 @@ fn stale_read_buffer_is_cleared_on_socket_closed() {
     );
     assert!(matches!(client.poll_read(), Some(Event::Disconnected(_))));
 
-    let _ = open_connecting(&mut client, connect_options());
+    open_connecting(&mut client, connect_options());
     assert_eq!(read(&mut client, &success_connack()), Ok(()));
     assert!(matches!(client.poll_read(), Some(Event::Connected)));
 }
@@ -2993,7 +3022,7 @@ fn stale_read_buffer_is_cleared_on_socket_closed() {
 #[test]
 fn stale_read_buffer_is_cleared_on_socket_error() {
     let mut client = Client::<Duration>::default();
-    let _ = open_connecting(&mut client, connect_options());
+    open_connecting(&mut client, connect_options());
 
     assert_eq!(
         client.handle_read(IncomingData {
@@ -3014,7 +3043,7 @@ fn stale_read_buffer_is_cleared_on_socket_error() {
         Some(Event::Disconnected(None))
     ));
 
-    let _ = open_connecting(&mut client, connect_options());
+    open_connecting(&mut client, connect_options());
     assert_eq!(read(&mut client, &success_connack()), Ok(()));
     assert!(matches!(client.poll_read(), Some(Event::Connected)));
 }
@@ -3022,7 +3051,7 @@ fn stale_read_buffer_is_cleared_on_socket_error() {
 #[test]
 fn stale_read_buffer_is_cleared_on_user_disconnect() {
     let mut client = Client::<Duration>::default();
-    let _ = open_connecting(&mut client, connect_options());
+    open_connecting(&mut client, connect_options());
 
     assert_eq!(
         client.handle_read(IncomingData {
@@ -3039,7 +3068,7 @@ fn stale_read_buffer_is_cleared_on_user_disconnect() {
         Some(DriverAction::CloseSocket)
     ));
 
-    let _ = open_connecting(&mut client, connect_options());
+    open_connecting(&mut client, connect_options());
     assert_eq!(read(&mut client, &success_connack()), Ok(()));
     assert!(matches!(client.poll_read(), Some(Event::Connected)));
 }
@@ -3047,7 +3076,7 @@ fn stale_read_buffer_is_cleared_on_user_disconnect() {
 #[test]
 fn stale_read_buffer_is_cleared_on_close() {
     let mut client = Client::<Duration>::default();
-    let _ = open_connecting(&mut client, connect_options());
+    open_connecting(&mut client, connect_options());
 
     assert_eq!(
         client.handle_read(IncomingData {
@@ -3064,7 +3093,7 @@ fn stale_read_buffer_is_cleared_on_close() {
         Some(DriverAction::CloseSocket)
     ));
 
-    let _ = open_connecting(&mut client, connect_options());
+    open_connecting(&mut client, connect_options());
     assert_eq!(read(&mut client, &success_connack()), Ok(()));
     assert!(matches!(client.poll_read(), Some(Event::Connected)));
 }
@@ -3079,7 +3108,7 @@ fn timeout_in_connected_state_enqueues_pingreq() {
     let options = ConnectOptions::builder()
         .client_id(ByteString::from_static("test-client"))
         .build();
-    let _ = connect_client(&mut client, options);
+    connect_client(&mut client, options);
 
     assert_eq!(client.handle_timeout(Duration::from_secs(42)), Ok(()));
     assert_eq!(client.poll_write(), Some(Bytes::from_static(&[0xC0, 0x00])));
@@ -3092,7 +3121,7 @@ fn timeout_in_connected_state_enqueues_pingreq() {
 #[test]
 fn close_enqueues_disconnect_and_close_socket() {
     let mut client = Client::<Duration>::default();
-    let _ = connect_default(&mut client);
+    connect_default(&mut client);
 
     assert_eq!(client.close(), Ok(()));
     assert_eq!(client.poll_write(), Some(Bytes::from_static(&[0xE0, 0x00])));
@@ -3113,7 +3142,7 @@ fn close_enqueues_disconnect_and_close_socket() {
 #[test]
 fn close_succeeds_even_when_disconnect_packet_exceeds_maximum_packet_size() {
     let mut client = Client::<Duration>::default();
-    let _ = open_connecting(&mut client, connect_options());
+    open_connecting(&mut client, connect_options());
     assert_eq!(
         read(
             &mut client,
@@ -3146,7 +3175,7 @@ fn close_succeeds_even_when_disconnect_packet_exceeds_maximum_packet_size() {
 #[test]
 fn user_disconnect_succeeds_even_when_disconnect_packet_exceeds_maximum_packet_size() {
     let mut client = Client::<Duration>::default();
-    let _ = open_connecting(&mut client, connect_options());
+    open_connecting(&mut client, connect_options());
     assert_eq!(
         read(
             &mut client,
@@ -3188,7 +3217,7 @@ fn timeout_is_cleared_on_close() {
             .client_id(ByteString::from_static("test-client"))
             .build()
     };
-    let _ = connect_client(&mut close_client, options());
+    connect_client(&mut close_client, options());
 
     assert_eq!(close_client.handle_timeout(Duration::from_secs(42)), Ok(()));
     // [MQTT-3.1.2-24] After PINGREQ the next deadline is now + interval/2 (= 42
@@ -3203,7 +3232,7 @@ fn timeout_is_cleared_on_close() {
             .keep_alive(NonZero::new(10))
             .build(),
     );
-    let _ = connect_client(&mut socket_closed_client, options());
+    connect_client(&mut socket_closed_client, options());
 
     assert_eq!(
         socket_closed_client.handle_timeout(Duration::from_secs(99)),
@@ -3254,7 +3283,7 @@ fn connect_options_with_auth() -> ConnectOptions {
 #[test]
 fn connecting_accepts_auth_and_stays_open() {
     let mut client = Client::<Duration>::default();
-    let _ = open_connecting(&mut client, connect_options_with_auth());
+    open_connecting(&mut client, connect_options_with_auth());
 
     assert_eq!(
         read(
@@ -3269,7 +3298,7 @@ fn connecting_accepts_auth_and_stays_open() {
 #[test]
 fn connecting_auth_then_connack_success_transitions_connected() {
     let mut client = Client::<Duration>::default();
-    let _ = open_connecting(&mut client, connect_options_with_auth());
+    open_connecting(&mut client, connect_options_with_auth());
 
     assert_eq!(
         read(
@@ -3285,7 +3314,7 @@ fn connecting_auth_then_connack_success_transitions_connected() {
 #[test]
 fn connecting_auth_without_configured_authentication_is_protocol_error() {
     let mut client = Client::<Duration>::default();
-    let _ = open_connecting(&mut client, connect_options());
+    open_connecting(&mut client, connect_options());
 
     assert_eq!(
         read(
@@ -3303,7 +3332,7 @@ fn connecting_auth_without_configured_authentication_is_protocol_error() {
 #[test]
 fn connecting_auth_with_reason_other_than_continue_is_protocol_error() {
     let mut client = Client::<Duration>::default();
-    let _ = open_connecting(&mut client, connect_options_with_auth());
+    open_connecting(&mut client, connect_options_with_auth());
 
     assert_eq!(
         read(&mut client, &scram_auth_packet(AuthReasonCode::Success)),
@@ -3318,7 +3347,7 @@ fn connecting_auth_with_reason_other_than_continue_is_protocol_error() {
 #[test]
 fn publish_qos_above_server_maximum_qos_is_rejected() {
     let mut client = Client::<Duration>::default();
-    let _ = open_connecting(&mut client, connect_options());
+    open_connecting(&mut client, connect_options());
     assert_eq!(
         read(
             &mut client,
@@ -3345,7 +3374,7 @@ fn publish_qos_above_server_maximum_qos_is_rejected() {
 #[test]
 fn publish_retain_when_server_retain_not_available_is_rejected() {
     let mut client = Client::<Duration>::default();
-    let _ = open_connecting(&mut client, connect_options());
+    open_connecting(&mut client, connect_options());
     assert_eq!(
         read(
             &mut client,
@@ -3370,7 +3399,7 @@ fn publish_retain_when_server_retain_not_available_is_rejected() {
 #[test]
 fn subscribe_shared_with_no_local_is_rejected() {
     let mut client = Client::<Duration>::default();
-    let _ = connect_default(&mut client);
+    connect_default(&mut client);
 
     let mut shared = app_subscription("$share/group/topic");
     shared.no_local = true;
@@ -3384,7 +3413,7 @@ fn subscribe_shared_with_no_local_is_rejected() {
 #[test]
 fn subscribe_wildcard_when_server_disallows_is_rejected() {
     let mut client = Client::<Duration>::default();
-    let _ = open_connecting(&mut client, connect_options());
+    open_connecting(&mut client, connect_options());
     assert_eq!(
         read(
             &mut client,
@@ -3410,7 +3439,7 @@ fn subscribe_wildcard_when_server_disallows_is_rejected() {
 #[test]
 fn subscribe_shared_when_server_disallows_is_rejected() {
     let mut client = Client::<Duration>::default();
-    let _ = open_connecting(&mut client, connect_options());
+    open_connecting(&mut client, connect_options());
     assert_eq!(
         read(
             &mut client,
@@ -3436,7 +3465,7 @@ fn subscribe_shared_when_server_disallows_is_rejected() {
 #[test]
 fn subscribe_identifier_when_server_disallows_is_rejected() {
     let mut client = Client::<Duration>::default();
-    let _ = open_connecting(&mut client, connect_options());
+    open_connecting(&mut client, connect_options());
     assert_eq!(
         read(
             &mut client,
@@ -3467,7 +3496,7 @@ fn subscribe_identifier_when_server_disallows_is_rejected() {
 #[test]
 fn connecting_auth_continue_then_connack_success_connects() {
     let mut client = Client::<Duration>::default();
-    let _ = open_connecting(&mut client, connect_options_with_auth());
+    open_connecting(&mut client, connect_options_with_auth());
 
     assert_eq!(
         read(
@@ -3486,7 +3515,7 @@ fn connecting_auth_continue_then_connack_success_connects() {
 #[test]
 fn auth_in_connected_state_is_forwarded_not_protocol_error() {
     let mut client = Client::<Duration>::default();
-    let _ = connect_default(&mut client);
+    connect_default(&mut client);
 
     let auth = ControlPacket::Auth(
         Auth::builder()
@@ -3508,7 +3537,7 @@ fn auth_in_connected_state_is_forwarded_not_protocol_error() {
 #[test]
 fn keepalive_disabled_without_interval_no_pingreq() {
     let mut client = Client::<Duration>::new(ClientSettings::builder().keep_alive(None).build());
-    let _ = connect_default(&mut client);
+    connect_default(&mut client);
 
     assert_eq!(client.handle_timeout(Duration::from_secs(1)), Ok(()));
     assert_eq!(client.poll_write(), None);
@@ -3525,7 +3554,7 @@ fn connack_server_keep_alive_zero_disables_keepalive_without_panic() {
     let options = ConnectOptions::builder()
         .client_id(ByteString::from_static("test-client"))
         .build();
-    let _ = open_connecting(&mut client, options);
+    open_connecting(&mut client, options);
     assert_eq!(
         read(
             &mut client,
@@ -3550,7 +3579,7 @@ fn keepalive_timeout_without_pingresp_closes_connection() {
     let options = ConnectOptions::builder()
         .client_id(ByteString::from_static("test-client"))
         .build();
-    let _ = connect_client(&mut client, options);
+    connect_client(&mut client, options);
 
     assert_eq!(client.handle_timeout(Duration::from_secs(1)), Ok(()));
     assert_eq!(client.poll_write(), Some(Bytes::from_static(&[0xC0, 0x00])));
@@ -3587,7 +3616,7 @@ fn timeout_before_first_connect_is_a_no_op() {
 #[test]
 fn timeout_in_connecting_state_closes_connection_and_reports_disconnected() {
     let mut client = Client::<Duration>::default();
-    let _ = open_connecting(&mut client, connect_options());
+    open_connecting(&mut client, connect_options());
 
     assert_eq!(
         client.handle_timeout(Duration::from_secs(100)),
@@ -3611,9 +3640,9 @@ fn connack_session_expiry_zero_overrides_client_session_should_persist() {
     let options = ConnectOptions::builder()
         .client_id(ByteString::from_static("test-client"))
         .clean_start(false)
-        .session_expiry(Duration::from_secs(60))
+        .session_expiry(Duration::from_mins(1))
         .build();
-    let _ = open_connecting(&mut client, options.clone());
+    open_connecting(&mut client, options.clone());
 
     let connack_no_persist = connack_with_properties(
         ConnAckProperties::builder()
@@ -3639,7 +3668,7 @@ fn connack_session_expiry_zero_overrides_client_session_should_persist() {
     assert!(matches!(client.poll_read(), Some(Event::Disconnected(_))));
     assert!(client.poll_read().is_none(), "no drop event at disconnect");
 
-    let _ = open_connecting(&mut client, options);
+    open_connecting(&mut client, options);
     assert_eq!(read(&mut client, &connack_no_persist), Ok(()));
     let first = client.poll_read();
     assert!(
@@ -3664,7 +3693,7 @@ fn connack_session_expiry_nonzero_sets_session_should_persist() {
         .clean_start(false)
         .session_expiry(Duration::ZERO)
         .build();
-    let _ = open_connecting(&mut client, options.clone());
+    open_connecting(&mut client, options.clone());
 
     let connack_persist = connack_with_properties(
         ConnAckProperties::builder()
@@ -3690,7 +3719,7 @@ fn connack_session_expiry_nonzero_sets_session_should_persist() {
     assert!(matches!(client.poll_read(), Some(Event::Disconnected(_))));
     assert!(client.poll_read().is_none(), "no extra events");
 
-    let _ = open_connecting(&mut client, options);
+    open_connecting(&mut client, options);
     assert_eq!(read(&mut client, &connack_persist), Ok(()));
 
     let first = client.poll_read();
@@ -3722,7 +3751,7 @@ fn clean_start_true_clears_local_session_before_connect() {
         .client_id(ByteString::from_static("test-client"))
         .session_expiry(Duration::from_secs(30))
         .build();
-    let _ = connect_client(&mut client, first_options);
+    connect_client(&mut client, first_options);
 
     assert_eq!(
         client.handle_write(at_zero(Command::Publish {
@@ -3746,7 +3775,7 @@ fn clean_start_true_clears_local_session_before_connect() {
         .clean_start(true)
         .session_expiry(Duration::from_secs(30))
         .build();
-    let _ = open_connecting(&mut client, clean_start_options);
+    open_connecting(&mut client, clean_start_options);
 
     assert_eq!(read(&mut client, &resume_connack()), Ok(()));
     assert!(matches!(
@@ -3762,7 +3791,7 @@ fn clean_start_true_clears_local_session_before_connect() {
 #[test]
 fn session_with_expiry_keeps_inflight_across_graceful_disconnect() {
     let mut client = Client::<Duration>::default();
-    let _ = connect_client(&mut client, session_expiry_options(30));
+    connect_client(&mut client, session_expiry_options(30));
 
     assert_eq!(
         client.handle_write(at_zero(Command::Publish {
@@ -3781,7 +3810,7 @@ fn session_with_expiry_keeps_inflight_across_graceful_disconnect() {
     ));
     assert!(matches!(client.poll_read(), Some(Event::Disconnected(_))));
 
-    let _ = open_connecting(&mut client, session_expiry_options(30));
+    open_connecting(&mut client, session_expiry_options(30));
     assert_eq!(read(&mut client, &resume_connack()), Ok(()));
     assert!(matches!(client.poll_read(), Some(Event::Connected)));
 
@@ -3794,7 +3823,7 @@ fn session_with_expiry_keeps_inflight_across_graceful_disconnect() {
 #[test]
 fn zero_session_expiry_clears_inflight_on_disconnect() {
     let mut client = Client::<Duration>::default();
-    let _ = connect_client(&mut client, session_expiry_options(0));
+    connect_client(&mut client, session_expiry_options(0));
 
     assert_eq!(
         client.handle_write(at_zero(Command::Publish {
@@ -3813,7 +3842,7 @@ fn zero_session_expiry_clears_inflight_on_disconnect() {
     ));
     assert!(matches!(client.poll_read(), Some(Event::Disconnected(_))));
 
-    let _ = open_connecting(&mut client, session_expiry_options(0));
+    open_connecting(&mut client, session_expiry_options(0));
     assert_eq!(read(&mut client, &resume_connack()), Ok(()));
     assert!(matches!(client.poll_read(), Some(Event::Connected)));
     assert_eq!(client.poll_write(), None);
@@ -3823,7 +3852,7 @@ fn zero_session_expiry_clears_inflight_on_disconnect() {
 #[test]
 fn zero_session_expiry_clears_inflight_on_socket_closed() {
     let mut client = Client::<Duration>::default();
-    let _ = connect_client(&mut client, session_expiry_options(0));
+    connect_client(&mut client, session_expiry_options(0));
 
     assert_eq!(
         client.handle_write(at_zero(Command::Publish {
@@ -3840,7 +3869,7 @@ fn zero_session_expiry_clears_inflight_on_socket_closed() {
     );
     assert!(matches!(client.poll_read(), Some(Event::Disconnected(_))));
 
-    let _ = open_connecting(&mut client, session_expiry_options(0));
+    open_connecting(&mut client, session_expiry_options(0));
     assert_eq!(read(&mut client, &resume_connack()), Ok(()));
     assert!(matches!(client.poll_read(), Some(Event::Connected)));
 
@@ -3860,7 +3889,7 @@ fn keepalive_timeout_with_session_expiry_preserves_inflight_for_resume() {
         .client_id(ByteString::from_static("test-client"))
         .session_expiry(Duration::from_secs(30))
         .build();
-    let _ = connect_client(&mut client, options.clone());
+    connect_client(&mut client, options.clone());
 
     assert_eq!(
         client.handle_write(at_zero(Command::Publish {
@@ -3891,7 +3920,7 @@ fn keepalive_timeout_with_session_expiry_preserves_inflight_for_resume() {
         client.poll_read(),
         Some(Event::Disconnected(Some(ReasonCode::KeepAliveTimeout)))
     );
-    let _ = open_connecting(&mut client, options);
+    open_connecting(&mut client, options);
     assert_eq!(read(&mut client, &resume_connack()), Ok(()));
     assert!(matches!(client.poll_read(), Some(Event::Connected)));
 
@@ -3904,7 +3933,7 @@ fn keepalive_timeout_with_session_expiry_preserves_inflight_for_resume() {
 #[test]
 fn subscribe_tracks_packet_id_until_suback() {
     let mut client = Client::<Duration>::default();
-    let _ = connect_default(&mut client);
+    connect_default(&mut client);
 
     assert_eq!(
         client.handle_write(at_zero(subscribe_one(app_subscription("topic/a")))),
@@ -3934,7 +3963,7 @@ fn subscribe_tracks_packet_id_until_suback() {
 #[test]
 fn unsubscribe_tracks_packet_id_until_unsuback() {
     let mut client = Client::<Duration>::default();
-    let _ = connect_default(&mut client);
+    connect_default(&mut client);
 
     assert_eq!(
         client.handle_write(at_zero(unsubscribe_one("topic/a"))),
@@ -3964,7 +3993,7 @@ fn unsubscribe_tracks_packet_id_until_unsuback() {
 #[test]
 fn unknown_suback_or_unsuback_is_protocol_error() {
     let mut client = Client::<Duration>::default();
-    let _ = connect_default(&mut client);
+    connect_default(&mut client);
 
     let suback = ControlPacket::SubAck(
         SubAck::builder()
@@ -3979,7 +4008,7 @@ fn unknown_suback_or_unsuback_is_protocol_error() {
     ));
 
     let mut client = Client::<Duration>::default();
-    let _ = connect_default(&mut client);
+    connect_default(&mut client);
 
     let unsuback = ControlPacket::UnsubAck(
         UnsubAck::builder()
@@ -4000,7 +4029,7 @@ fn unknown_suback_or_unsuback_is_protocol_error() {
 #[test]
 fn server_disconnect_with_reason_code_forwarded_to_application() {
     let mut client = Client::<Duration>::default();
-    let _ = connect_default(&mut client);
+    connect_default(&mut client);
 
     let server_disconnect = ControlPacket::Disconnect(
         Disconnect::builder()
@@ -4026,11 +4055,11 @@ fn server_disconnect_with_reason_code_forwarded_to_application() {
     );
 }
 
-/// Normal server DISCONNECT (NormalDisconnection) is also forwarded.
+/// Normal server DISCONNECT (`NormalDisconnection`) is also forwarded.
 #[test]
 fn server_normal_disconnect_reason_code_forwarded() {
     let mut client = Client::<Duration>::default();
-    let _ = connect_default(&mut client);
+    connect_default(&mut client);
 
     let server_disconnect = ControlPacket::Disconnect(
         Disconnect::builder()
@@ -4053,7 +4082,7 @@ fn server_normal_disconnect_reason_code_forwarded() {
 #[test]
 fn client_initiated_disconnect_emits_disconnected_none() {
     let mut client = Client::<Duration>::default();
-    let _ = connect_default(&mut client);
+    connect_default(&mut client);
 
     assert_eq!(client.handle_write(at_zero(Command::Disconnect)), Ok(()));
     let event = client.poll_read();
@@ -4069,7 +4098,7 @@ fn client_initiated_disconnect_emits_disconnected_none() {
 #[test]
 fn auth_packet_in_connected_state_forwarded_to_application() {
     let mut client = Client::<Duration>::default();
-    let _ = connect_default(&mut client);
+    connect_default(&mut client);
 
     let auth_packet = ControlPacket::Auth(
         Auth::builder()
@@ -4097,7 +4126,7 @@ fn auth_packet_in_connected_state_forwarded_to_application() {
 /// `Duration::from_secs(keep_alive)`.
 fn make_connected_client_with_keep_alive(keep_alive_secs: Option<u16>) -> Client<Duration> {
     let mut client = Client::<Duration>::default();
-    let _ = open_connecting(&mut client, connect_options());
+    open_connecting(&mut client, connect_options());
 
     assert_eq!(
         read(
@@ -4124,7 +4153,7 @@ fn keep_alive_timer_armed_after_connack_when_keep_alive_configured() {
 #[test]
 fn keep_alive_timer_armed_after_connack_uses_received_at_timestamp() {
     let mut client = Client::<Duration>::default();
-    let _ = open_connecting(&mut client, connect_options());
+    open_connecting(&mut client, connect_options());
 
     assert_eq!(
         read_at(
@@ -4142,7 +4171,7 @@ fn keep_alive_timer_armed_after_connack_uses_received_at_timestamp() {
 #[test]
 fn keep_alive_timer_not_armed_when_no_keep_alive_configured() {
     let mut client = Client::<Duration>::new(ClientSettings::builder().keep_alive(None).build());
-    let _ = open_connecting(&mut client, connect_options());
+    open_connecting(&mut client, connect_options());
     assert_eq!(read(&mut client, &success_connack()), Ok(()));
     assert!(matches!(client.poll_read(), Some(Event::Connected)));
 
@@ -4155,7 +4184,7 @@ fn keep_alive_timer_not_armed_when_no_keep_alive_configured() {
 #[test]
 fn keep_alive_from_settings_arms_the_timer_after_connack() {
     let mut client = Client::<Duration>::default();
-    let _ = open_connecting(&mut client, connect_options());
+    open_connecting(&mut client, connect_options());
     assert_eq!(read(&mut client, &success_connack()), Ok(()));
     assert!(matches!(client.poll_read(), Some(Event::Connected)));
 
@@ -4173,7 +4202,9 @@ fn keep_alive_from_settings_arms_the_timer_after_connack() {
 #[test]
 fn handle_timeout_reschedules_deadline_to_now_plus_interval_when_outgoing_packet_sent() {
     let interval_secs: u64 = 30;
-    let mut client = make_connected_client_with_keep_alive(Some(interval_secs as u16));
+    let mut client = make_connected_client_with_keep_alive(Some(
+        u16::try_from(interval_secs).expect("keep-alive interval fits in a u16"),
+    ));
     assert_eq!(client.poll_timeout(), Some(Duration::from_secs(30)));
 
     assert_eq!(
@@ -4183,7 +4214,7 @@ fn handle_timeout_reschedules_deadline_to_now_plus_interval_when_outgoing_packet
         })),
         Ok(())
     );
-    let _ = client.poll_write();
+    client.poll_write();
 
     assert_eq!(client.handle_timeout(Duration::from_secs(30)), Ok(()));
     assert_eq!(
@@ -4191,7 +4222,7 @@ fn handle_timeout_reschedules_deadline_to_now_plus_interval_when_outgoing_packet
         None,
         "no PINGREQ when outgoing packet was sent"
     );
-    assert_eq!(client.poll_timeout(), Some(Duration::from_secs(60)));
+    assert_eq!(client.poll_timeout(), Some(Duration::from_mins(1)));
 }
 
 /// [MQTT-3.1.2-24] The server MUST close the connection if it receives no
@@ -4199,7 +4230,9 @@ fn handle_timeout_reschedules_deadline_to_now_plus_interval_when_outgoing_packet
 #[test]
 fn handle_timeout_sends_pingreq_and_reschedules_at_half_interval_per_mqtt_3_1_2_24() {
     let interval_secs: u64 = 10;
-    let mut client = make_connected_client_with_keep_alive(Some(interval_secs as u16));
+    let mut client = make_connected_client_with_keep_alive(Some(
+        u16::try_from(interval_secs).expect("keep-alive interval fits in a u16"),
+    ));
     assert_eq!(client.poll_timeout(), Some(Duration::from_secs(10)));
 
     assert_eq!(client.handle_timeout(Duration::from_secs(10)), Ok(()));
@@ -4227,7 +4260,9 @@ fn handle_timeout_sends_pingreq_and_reschedules_at_half_interval_per_mqtt_3_1_2_
 #[test]
 fn handle_timeout_pingresp_before_half_interval_deadline_resets_ping_outstanding() {
     let interval_secs: u64 = 10;
-    let mut client = make_connected_client_with_keep_alive(Some(interval_secs as u16));
+    let mut client = make_connected_client_with_keep_alive(Some(
+        u16::try_from(interval_secs).expect("keep-alive interval fits in a u16"),
+    ));
     assert_eq!(client.poll_timeout(), Some(Duration::from_secs(10)));
 
     assert_eq!(client.handle_timeout(Duration::from_secs(10)), Ok(()));
@@ -4267,7 +4302,7 @@ fn socket_connected_preserves_connect_options_for_effective_limit_recomputation(
         topic_alias_maximum: Some(10),
         ..Default::default()
     }));
-    let _ = connect_default(&mut client);
+    connect_default(&mut client);
 
     let alias = NonZero::new(5).expect("non-zero alias");
     let publish_with_alias = ControlPacket::Publish(
@@ -4296,7 +4331,7 @@ fn reconnect_from_disconnected_preserves_connect_options_for_effective_limit_rec
         topic_alias_maximum: Some(10),
         ..Default::default()
     }));
-    let _ = connect_default(&mut client);
+    connect_default(&mut client);
 
     assert_eq!(
         client.handle_event(at_zero(DriverEvent::SocketClosed)),
@@ -4316,7 +4351,7 @@ fn reconnect_from_disconnected_preserves_connect_options_for_effective_limit_rec
         client.handle_event(at_zero(DriverEvent::SocketConnected)),
         Ok(())
     );
-    let _ = client
+    client
         .poll_write()
         .expect("reconnect CONNECT frame expected");
     assert_eq!(read(&mut client, &success_connack()), Ok(()));

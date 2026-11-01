@@ -1,9 +1,53 @@
-use super::*;
+use super::BytesSource;
+use super::ParserSettings;
+use super::basic::two_byte_integer;
+use super::basic::variable_byte_integer;
+use super::properties::push_capped;
+use crate::BinaryDataError;
+use crate::InvalidPropertyTypeError;
+use crate::InvalidQosError;
+use crate::PropertiesError;
+use crate::Property;
+use crate::PropertyType;
+use crate::TooManyUserPropertiesError;
+use crate::TopicError;
+use crate::UnknownFormatIndicatorError;
+use crate::Unsubscribe;
+use crate::UnsubscribeHeaderFlags;
+use crate::UnsubscribeProperties;
+use crate::UnsupportedPropertyError;
+use crate::Utf8String;
+use crate::Utf8StringError;
+use alloc::vec::Vec;
+use core::any::type_name;
+use core::num::TryFromIntError;
+use core::str::Utf8Error;
+use winnow::Parser;
+use winnow::binary;
+use winnow::binary::bits;
+use winnow::binary::bits::Bits;
+use winnow::combinator;
+use winnow::error::AddContext;
+use winnow::error::ErrorConvert;
+use winnow::error::FromExternalError;
+use winnow::error::ParserError;
+use winnow::error::Result;
+use winnow::error::StrContext;
+use winnow::error::StrContextValue;
+use winnow::stream::Stream;
+use winnow::stream::StreamIsPartial;
+use winnow::stream::UpdateSlice;
 
 impl UnsubscribeHeaderFlags {
     /// Parses the 4-bit Fixed Header flags for `UNSUBSCRIBE`
     /// ([§3.10.1](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901180),
     /// [MQTT-3.10.1-1]). The bit pattern `0b0010` is required.
+    ///
+    /// # Errors
+    ///
+    /// Fails when fewer than four bits remain or the flags are not the reserved
+    /// value `0b0010` required for `UNSUBSCRIBE`; the caller treats that as a
+    /// Malformed Packet.
     #[inline]
     pub fn parser<Input, Error>(input: &mut Bits<Input>) -> Result<Self, Error>
     where
@@ -58,25 +102,25 @@ impl Unsubscribe {
                 combinator::trace(
                     "topics",
                     combinator::repeat_till(
-                        1..=parser_settings.max_subscriptions_len as usize,
+                        1..=usize::try_from(parser_settings.max_subscriptions_len)
+                            .unwrap_or(usize::MAX),
                         Utf8String::parser(parser_settings),
                         combinator::eof,
                     ),
                 ),
             )
-                .map(move |(packet_id, properties, (topics, _))| {
-                    let mut topics: Vec<Utf8String> = topics;
-                    let filter = topics
-                        .drain(..1)
-                        .next()
-                        .expect("topics length is guaranteed to be at least 1");
+                .verify_map(move |(packet_id, properties, (topics, _eof))| {
+                    // `repeat_till(1..=..)` yields at least one topic filter,
+                    // so `next()` always succeeds [MQTT-3.10.3-2].
+                    let mut topics = Vec::<Utf8String>::into_iter(topics);
+                    let filter = topics.next()?;
 
-                    Unsubscribe {
+                    Some(Self {
                         packet_id,
                         properties,
                         filter,
-                        extra_filters: topics,
-                    }
+                        extra_filters: topics.collect(),
+                    })
                 }),
         )
     }
@@ -123,12 +167,37 @@ impl UnsubscribeProperties {
                                     parser_settings.max_user_properties_len,
                                     PropertiesError::from(TooManyUserPropertiesError),
                                 )?,
-                                _ => {
+                                Property::PayloadFormatIndicator(_)
+                                | Property::MessageExpiryInterval(_)
+                                | Property::ContentType(_)
+                                | Property::ResponseTopic(_)
+                                | Property::CorrelationData(_)
+                                | Property::SubscriptionIdentifier(_)
+                                | Property::SessionExpiryInterval(_)
+                                | Property::AssignedClientIdentifier(_)
+                                | Property::ServerKeepAlive(_)
+                                | Property::AuthenticationMethod(_)
+                                | Property::AuthenticationData(_)
+                                | Property::RequestProblemInformation(_)
+                                | Property::WillDelayInterval(_)
+                                | Property::RequestResponseInformation(_)
+                                | Property::ResponseInformation(_)
+                                | Property::ServerReference(_)
+                                | Property::ReasonString(_)
+                                | Property::ReceiveMaximum(_)
+                                | Property::TopicAliasMaximum(_)
+                                | Property::TopicAlias(_)
+                                | Property::MaximumQoS(_)
+                                | Property::RetainAvailable(_)
+                                | Property::MaximumPacketSize(_)
+                                | Property::WildcardSubscriptionAvailable(_)
+                                | Property::SubscriptionIdentifiersAvailable(_)
+                                | Property::SharedSubscriptionAvailable(_) => {
                                     return Err(PropertiesError::from(UnsupportedPropertyError {
                                         property_type,
                                     }));
                                 }
-                            };
+                            }
                             Ok(properties)
                         },
                     ),

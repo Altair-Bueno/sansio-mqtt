@@ -18,8 +18,4 @@ mod subscribe;
 mod unsuback;
 mod unsubscribe;
 
-use super::types::*;
-use basic::*;
-use encode::ByteEncoder;
-use encode::Encodable;
 pub use error::EncodeError;

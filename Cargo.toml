@@ -7,6 +7,8 @@ resolver = "2"
 version = "0.1.0"
 edition = "2024"
 rust-version = "1.97.0"
+repository = "https://github.com/Altair-Bueno/sansio-mqtt"
+keywords = ["mqtt", "sans-io", "iot", "protocol"]
 
 [workspace.dependencies]
 sansio-mqtt-protocol = { path = "crates/sansio-mqtt-protocol", default-features = false }
@@ -36,3 +38,62 @@ rustls-platform-verifier = { version = "0.7", default-features = false }
 tracing = { version = "0.1.41", default-features = false }
 tracing-subscriber = { version = "0.3.23", default-features = false }
 winnow = { version = "1.0.0", default-features = false }
+
+[workspace.lints.rust]
+unsafe_code = "warn"
+unsafe_op_in_unsafe_fn = "warn"
+missing_docs = "warn"
+missing_debug_implementations = "warn"
+unreachable_pub = "warn"
+unused_qualifications = "warn"
+trivial_casts = "warn"
+trivial_numeric_casts = "warn"
+unused_import_braces = "warn"
+unused_lifetimes = "warn"
+unused_macro_rules = "warn"
+single_use_lifetimes = "warn"
+elided_lifetimes_in_paths = "warn"
+explicit_outlives_requirements = "warn"
+meta_variable_misuse = "warn"
+unnameable_types = "warn"
+redundant_lifetimes = "warn"
+let_underscore_drop = "warn"
+non_ascii_idents = "warn"
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+cargo = { level = "warn", priority = -1 }
+multiple_crate_versions = "allow"
+# The crates have no license yet; re-enable once one is chosen.
+cargo_common_metadata = "allow"
+std_instead_of_core = "warn"
+std_instead_of_alloc = "warn"
+alloc_instead_of_core = "warn"
+use_self = "warn"
+unused_trait_names = "warn"
+pub_without_shorthand = "warn"
+mod_module_files = "warn"
+unnecessary_self_imports = "warn"
+rest_pat_in_fully_bound_structs = "warn"
+unneeded_field_pattern = "warn"
+str_to_string = "warn"
+rc_buffer = "warn"
+clone_on_ref_ptr = "warn"
+wildcard_enum_match_arm = "warn"
+unwrap_used = "warn"
+expect_used = "warn"
+panic = "warn"
+todo = "warn"
+unimplemented = "warn"
+dbg_macro = "warn"
+print_stdout = "warn"
+print_stderr = "warn"
+exit = "warn"
+mem_forget = "warn"
+as_conversions = "warn"
+undocumented_unsafe_blocks = "warn"
+multiple_unsafe_ops_per_block = "warn"
+unnecessary_safety_doc = "warn"
+allow_attributes = "warn"
+allow_attributes_without_reason = "warn"

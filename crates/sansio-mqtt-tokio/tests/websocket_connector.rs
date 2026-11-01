@@ -1,10 +1,17 @@
 //! [`WebSocketConnector`] against a WebSocket server on the loopback
 //! interface (MQTT v5.0 §6).
 
-use std::time::Duration;
+#![expect(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    reason = "test helpers fail the test on setup errors by design"
+)]
 
-use futures_util::SinkExt;
-use futures_util::StreamExt;
+use core::time::Duration;
+
+use futures_util::SinkExt as _;
+use futures_util::StreamExt as _;
 use sansio_mqtt_protocol::ByteString;
 use sansio_mqtt_protocol::Command;
 use sansio_mqtt_protocol::ConnectOptions;
@@ -13,7 +20,7 @@ use sansio_mqtt_tokio::Driver;
 use sansio_mqtt_tokio::TcpConnector;
 use sansio_mqtt_tokio::WebSocketConnector;
 use sansio_mqtt_v5_protocol::Client;
-use tokio::io::AsyncWriteExt;
+use tokio::io::AsyncWriteExt as _;
 use tokio::net::TcpListener;
 use tokio::net::TcpStream;
 use tokio::time::Instant;
@@ -43,9 +50,10 @@ fn connect_command() -> Command {
 
 /// Checks the client asked for the `mqtt` subprotocol [MQTT-6.0.0-3] and
 /// selects it.
-#[allow(
+#[expect(
     clippy::result_large_err,
-    reason = "tungstenite dictates the callback's error type"
+    clippy::unnecessary_wraps,
+    reason = "tungstenite's handshake `Callback` dictates this signature and its error type"
 )]
 fn select_mqtt(request: &Request, mut response: Response) -> Result<Response, ErrorResponse> {
     let protocols = request
@@ -66,6 +74,10 @@ async fn accept_mqtt(listener: &TcpListener) -> WebSocketStream<TcpStream> {
     let mut broker = accept_hdr_async(tcp, select_mqtt)
         .await
         .expect("WebSocket handshake failed");
+    #[expect(
+        clippy::wildcard_enum_match_arm,
+        reason = "tungstenite's `Message` is foreign; any non-binary message fails the test"
+    )]
     match broker.next().await.unwrap().unwrap() {
         // MQTT Control Packets travel in binary messages [MQTT-6.0.0-1];
         // this one is a CONNECT.
@@ -77,7 +89,7 @@ async fn accept_mqtt(listener: &TcpListener) -> WebSocketStream<TcpStream> {
 
 fn websocket_connector(
     listener: &TcpListener,
-) -> WebSocketConnector<TcpConnector<std::net::SocketAddr>> {
+) -> WebSocketConnector<TcpConnector<core::net::SocketAddr>> {
     let address = listener.local_addr().unwrap();
     let uri = format!("ws://{address}/mqtt").parse().unwrap();
     WebSocketConnector::new(TcpConnector::new(address), uri).unwrap()
@@ -114,7 +126,7 @@ async fn websocket_connector_carries_mqtt_in_binary_messages() {
             .send(Message::binary(CONNACK.to_vec()))
             .await
             .unwrap();
-        std::future::pending().await
+        core::future::pending::<()>().await;
     })
     .await;
 
@@ -136,7 +148,7 @@ async fn websocket_connector_reassembles_packets_split_across_messages() {
             .send(Message::binary(CONNACK[2..].to_vec()))
             .await
             .unwrap();
-        std::future::pending().await
+        core::future::pending::<()>().await;
     })
     .await;
 
@@ -154,7 +166,7 @@ async fn websocket_connector_ignores_pings_between_mqtt_packets() {
             .send(Message::binary(CONNACK.to_vec()))
             .await
             .unwrap();
-        std::future::pending().await
+        core::future::pending::<()>().await;
     })
     .await;
 
@@ -172,7 +184,7 @@ async fn websocket_connector_text_message_closes_the_connection() {
             .await
             .unwrap();
         broker.send(Message::text("not mqtt")).await.unwrap();
-        std::future::pending().await
+        core::future::pending::<()>().await;
     })
     .await;
 
@@ -188,7 +200,7 @@ async fn websocket_connector_close_message_reports_disconnected() {
             .await
             .unwrap();
         broker.close(None).await.unwrap();
-        std::future::pending().await
+        core::future::pending::<()>().await;
     })
     .await;
 
@@ -202,7 +214,7 @@ async fn websocket_connector_failed_handshake_reports_disconnected() {
         tcp.write_all(b"HTTP/1.1 404 Not Found\r\ncontent-length: 0\r\n\r\n")
             .await
             .unwrap();
-        std::future::pending().await
+        core::future::pending::<()>().await;
     })
     .await;
 
@@ -237,7 +249,7 @@ async fn websocket_connector_dropped_connection_reports_disconnected() {
             .await
             .unwrap();
         drop(broker);
-        std::future::pending().await
+        core::future::pending::<()>().await;
     })
     .await;
 
@@ -269,6 +281,10 @@ async fn websocket_connector_disconnect_sends_disconnect_then_closes_the_websock
         .await
         .expect("the disconnect did not complete within the timeout");
 
+    #[expect(
+        clippy::wildcard_enum_match_arm,
+        reason = "tungstenite's `Message` is foreign; any non-binary message fails the test"
+    )]
     match disconnect {
         Message::Binary(data) => assert_eq!(data[0], 0xE0, "expected a DISCONNECT"),
         other => panic!("expected a binary DISCONNECT, got {other:?}"),

@@ -10,12 +10,18 @@
 //! These tests assert on *pointer identity*, because that is the only
 //! way to distinguish a shared view from an equal copy.
 
+#![expect(
+    clippy::expect_used,
+    clippy::panic,
+    reason = "test helpers fail the test on setup errors by design"
+)]
+
 use bytes::Bytes;
 use sansio_mqtt_v5_types::*;
-use winnow::Parser;
+use winnow::Parser as _;
 use winnow::stream::Stateful;
 
-/// A QoS 0 PUBLISH to topic `a/b` carrying the payload `hello`.
+/// A `QoS` 0 PUBLISH to topic `a/b` carrying the payload `hello`.
 fn publish_frame() -> Bytes {
     Bytes::from_static(&[
         0x30, // PUBLISH, QoS 0
@@ -42,10 +48,10 @@ where
         .parse(input)
         .expect("frame is a valid PUBLISH");
 
-    match packet {
-        ControlPacket::Publish(publish) => publish,
-        other => panic!("expected PUBLISH, got {other:?}"),
-    }
+    let ControlPacket::Publish(publish) = packet else {
+        panic!("expected PUBLISH, got {packet:?}");
+    };
+    publish
 }
 
 /// With the owning [`Bytes`] supplied as parser state, the decoded
@@ -61,7 +67,7 @@ fn payload_shares_the_callers_buffer() {
     let payload = publish.payload.into_inner();
     assert_eq!(&payload[..], b"hello");
 
-    let expected = unsafe { frame.as_ptr().add(PAYLOAD_OFFSET) };
+    let expected = frame[PAYLOAD_OFFSET..].as_ptr();
     assert_eq!(
         payload.as_ptr(),
         expected,
@@ -81,7 +87,7 @@ fn topic_shares_the_callers_buffer() {
     let topic_bytes = publish.topic.as_bytes();
     assert_eq!(topic_bytes, b"a/b");
 
-    let expected = unsafe { frame.as_ptr().add(4) };
+    let expected = frame[4..].as_ptr();
     assert_eq!(
         topic_bytes.as_ptr(),
         expected,
@@ -99,7 +105,7 @@ fn plain_slice_still_copies_and_still_parses() {
     let payload = publish.payload.into_inner();
     assert_eq!(&payload[..], b"hello");
 
-    let borrowed = unsafe { frame.as_ptr().add(PAYLOAD_OFFSET) };
+    let borrowed = frame[PAYLOAD_OFFSET..].as_ptr();
     assert_ne!(
         payload.as_ptr(),
         borrowed,
@@ -165,10 +171,10 @@ fn partial_input_is_supported() {
                 .parse_next(&mut input)
                 .expect("frame is a complete, valid PUBLISH");
 
-        match packet {
-            ControlPacket::Publish(publish) => publish,
-            other => panic!("expected PUBLISH, got {other:?}"),
-        }
+        let ControlPacket::Publish(publish) = packet else {
+            panic!("expected PUBLISH, got {packet:?}");
+        };
+        publish
     }
 
     let frame = publish_frame();
@@ -184,7 +190,7 @@ fn partial_input_is_supported() {
     });
     assert_eq!(
         shared.payload.into_inner().as_ptr(),
-        unsafe { frame.as_ptr().add(PAYLOAD_OFFSET) },
+        frame[PAYLOAD_OFFSET..].as_ptr(),
         "Stateful<Partial<_>, &Bytes> should still share the frame"
     );
 }

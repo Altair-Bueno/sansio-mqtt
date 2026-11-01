@@ -35,7 +35,7 @@ pub struct UnsubAck {
 pub struct UnsubAckHeaderFlags;
 
 impl From<UnsubAckHeaderFlags> for u8 {
-    fn from(_: UnsubAckHeaderFlags) -> u8 {
+    fn from(_: UnsubAckHeaderFlags) -> Self {
         0
     }
 }

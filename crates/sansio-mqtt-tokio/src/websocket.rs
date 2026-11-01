@@ -1,12 +1,12 @@
-use bytes::Buf;
+use bytes::Buf as _;
 use bytes::Bytes;
-use futures_core::Stream;
-use futures_sink::Sink;
-use std::future::Future;
+use core::future::Future;
+use core::pin::Pin;
+use core::task::Context;
+use core::task::Poll;
+use futures_core::Stream as _;
+use futures_sink::Sink as _;
 use std::io;
-use std::pin::Pin;
-use std::task::Context;
-use std::task::Poll;
 use std::task::ready;
 use tokio::io::AsyncRead;
 use tokio::io::AsyncWrite;
@@ -15,7 +15,7 @@ use tokio_tungstenite::WebSocketStream;
 use tokio_tungstenite::client_async;
 use tokio_tungstenite::tungstenite;
 use tokio_tungstenite::tungstenite::Message;
-use tokio_tungstenite::tungstenite::client::IntoClientRequest;
+use tokio_tungstenite::tungstenite::client::IntoClientRequest as _;
 use tokio_tungstenite::tungstenite::error::UrlError;
 use tokio_tungstenite::tungstenite::http::HeaderValue;
 use tokio_tungstenite::tungstenite::http::Uri;
@@ -145,7 +145,7 @@ where
                 // sends it when flushed, and the peer waits for it before
                 // ending the connection. The WebSocket is over either way, so
                 // a reply that cannot be delivered changes nothing.
-                let _ = ready!(Pin::new(&mut self.stream).poll_flush(cx));
+                drop(ready!(Pin::new(&mut self.stream).poll_flush(cx)));
                 return Poll::Ready(Ok(()));
             }
             match ready!(Pin::new(&mut self.stream).poll_next(cx)) {

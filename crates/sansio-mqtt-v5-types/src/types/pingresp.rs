@@ -22,7 +22,7 @@ pub struct PingResp {}
 pub struct PingRespHeaderFlags;
 
 impl From<PingRespHeaderFlags> for u8 {
-    fn from(_: PingRespHeaderFlags) -> u8 {
+    fn from(_: PingRespHeaderFlags) -> Self {
         0
     }
 }

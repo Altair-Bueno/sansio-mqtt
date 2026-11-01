@@ -1,11 +1,61 @@
-use super::*;
+use super::BytesSource;
+use super::ParserSettings;
+use super::basic::two_byte_integer;
+use super::basic::variable_byte_integer;
+use super::properties::push_capped;
+use super::properties::set_once;
+use crate::BinaryDataError;
+use crate::GuaranteedQoS;
+use crate::InvalidPropertyTypeError;
+use crate::InvalidQosError;
+use crate::Payload;
+use crate::PropertiesError;
+use crate::Property;
+use crate::PropertyType;
+use crate::Publish;
+use crate::PublishHeaderFlags;
+use crate::PublishHeaderFlagsKind;
+use crate::PublishKind;
+use crate::PublishProperties;
+use crate::Qos;
+use crate::TooManySubscriptionIdentifiersError;
+use crate::TooManyUserPropertiesError;
+use crate::Topic;
+use crate::TopicError;
+use crate::UnknownFormatIndicatorError;
+use crate::UnsupportedPropertyError;
+use crate::Utf8StringError;
+use core::any::type_name;
+use core::num::TryFromIntError;
+use core::str::Utf8Error;
+use winnow::Parser;
+use winnow::binary;
+use winnow::binary::bits;
+use winnow::binary::bits::Bits;
+use winnow::combinator;
+use winnow::error::AddContext;
+use winnow::error::ErrorConvert;
+use winnow::error::FromExternalError;
+use winnow::error::ParserError;
+use winnow::error::Result;
+use winnow::error::StrContext;
+use winnow::error::StrContextValue;
+use winnow::stream::Stream;
+use winnow::stream::StreamIsPartial;
+use winnow::stream::UpdateSlice;
 
 impl PublishHeaderFlags {
     /// Parses the 4-bit Fixed Header flags for `PUBLISH`
     /// ([§3.3.1](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901101)),
-    /// including DUP, QoS level, and RETAIN.
+    /// including DUP, `QoS` level, and RETAIN.
     ///
-    /// Enforces [MQTT-3.3.1-2]: the DUP flag MUST be `0` for QoS 0 packets.
+    /// Enforces [MQTT-3.3.1-2]: the DUP flag MUST be `0` for `QoS` 0 packets.
+    ///
+    /// # Errors
+    ///
+    /// Fails when fewer than four bits remain, the `QoS` bits are `3`
+    /// ([`InvalidQosError`](crate::InvalidQosError), [MQTT-3.3.1-4]), or DUP is
+    /// set on a `QoS 0` message ([MQTT-3.3.1-2]).
     #[inline]
     pub fn parser<Input, Error>(input: &mut Bits<Input>) -> Result<Self, Error>
     where
@@ -28,7 +78,7 @@ impl PublishHeaderFlags {
                         (dup, Ok(qos)) => PublishHeaderFlagsKind::Advanced { qos, dup },
                         _ => return None,
                     };
-                    Some(PublishHeaderFlags { kind, retain })
+                    Some(Self { kind, retain })
                 }),
         )
         .context(StrContext::Label(type_name::<Self>()))
@@ -44,8 +94,9 @@ impl Publish {
     /// ([§3.3](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901100)).
     ///
     /// The pre-parsed `header_flags` disambiguates whether a Packet
-    /// Identifier is present (QoS > 0).
+    /// Identifier is present (`QoS` > 0).
     #[inline]
+    #[must_use]
     pub fn parser<'input, 'settings, ByteInput, ByteError, BitError>(
         parser_settings: &'settings ParserSettings,
         header_flags: PublishHeaderFlags,
@@ -87,12 +138,12 @@ impl Publish {
             };
             let properties = PublishProperties::parser(parser_settings).parse_next(input)?;
             let payload = Payload::parser(parser_settings).parse_next(input)?;
-            Ok(Publish {
+            Ok(Self {
                 kind,
                 retain,
+                payload,
                 topic,
                 properties,
-                payload,
             })
         })
     }
@@ -144,10 +195,10 @@ impl PublishProperties {
                                     property_type,
                                 )?,
                                 Property::TopicAlias(value) => {
-                                    set_once(&mut properties.topic_alias, value, property_type)?
+                                    set_once(&mut properties.topic_alias, value, property_type)?;
                                 }
                                 Property::ResponseTopic(value) => {
-                                    set_once(&mut properties.response_topic, value, property_type)?
+                                    set_once(&mut properties.response_topic, value, property_type)?;
                                 }
                                 Property::CorrelationData(value) => set_once(
                                     &mut properties.correlation_data,
@@ -161,7 +212,7 @@ impl PublishProperties {
                                     PropertiesError::from(TooManySubscriptionIdentifiersError),
                                 )?,
                                 Property::ContentType(value) => {
-                                    set_once(&mut properties.content_type, value, property_type)?
+                                    set_once(&mut properties.content_type, value, property_type)?;
                                 }
                                 Property::UserProperty(key, value) => push_capped(
                                     &mut properties.user_properties,
@@ -169,12 +220,30 @@ impl PublishProperties {
                                     parser_settings.max_user_properties_len,
                                     PropertiesError::from(TooManyUserPropertiesError),
                                 )?,
-                                _ => {
+                                Property::SessionExpiryInterval(_)
+                                | Property::AssignedClientIdentifier(_)
+                                | Property::ServerKeepAlive(_)
+                                | Property::AuthenticationMethod(_)
+                                | Property::AuthenticationData(_)
+                                | Property::RequestProblemInformation(_)
+                                | Property::WillDelayInterval(_)
+                                | Property::RequestResponseInformation(_)
+                                | Property::ResponseInformation(_)
+                                | Property::ServerReference(_)
+                                | Property::ReasonString(_)
+                                | Property::ReceiveMaximum(_)
+                                | Property::TopicAliasMaximum(_)
+                                | Property::MaximumQoS(_)
+                                | Property::RetainAvailable(_)
+                                | Property::MaximumPacketSize(_)
+                                | Property::WildcardSubscriptionAvailable(_)
+                                | Property::SubscriptionIdentifiersAvailable(_)
+                                | Property::SharedSubscriptionAvailable(_) => {
                                     return Err(PropertiesError::from(UnsupportedPropertyError {
                                         property_type,
                                     }));
                                 }
-                            };
+                            }
                             Ok(properties)
                         },
                     ),

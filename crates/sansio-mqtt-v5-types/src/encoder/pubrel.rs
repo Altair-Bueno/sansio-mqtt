@@ -1,4 +1,13 @@
-use super::*;
+use super::EncodeError;
+use super::basic::TwoByteInteger;
+use super::basic::VariableByteInteger;
+use super::basic::fixed_header;
+use crate::ControlPacketType;
+use crate::PubRel;
+use crate::PubRelHeaderFlags;
+use crate::PubRelReasonCode;
+use encode::ByteEncoder;
+use encode::Encodable;
 
 impl<E> Encodable<E> for PubRel
 where

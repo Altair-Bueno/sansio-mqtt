@@ -1,10 +1,10 @@
-use crate::client::ClientSettings;
 use crate::scratchpad::ClientScratchpad;
 use crate::session::ClientSession;
+use crate::settings::ClientSettings;
 use alloc::vec::Vec;
 use bytes::Bytes;
 use core::num::NonZero;
-use encode::Encodable;
+use encode::Encodable as _;
 use sansio_mqtt_protocol::DriverAction;
 use sansio_mqtt_protocol::Error;
 use sansio_mqtt_protocol::Event;
@@ -25,8 +25,10 @@ use sansio_mqtt_v5_types::PubRelReasonCode;
 pub(crate) fn encode_control_packet(packet: &ControlPacket) -> Result<Bytes, Error> {
     let mut encoded = Vec::new();
     packet.encode(&mut encoded).map_err(|err| match err {
-        EncodeError::PacketTooLarge(_) => Error::PacketTooLarge,
-        _ => Error::EncodeFailure,
+        EncodeError::PacketTooLarge(_) | EncodeError::VariableByteIntegerTooLarge(_) => {
+            Error::PacketTooLarge
+        }
+        EncodeError::InsufficientSpace(_) | _ => Error::EncodeFailure,
     })?;
     Ok(Bytes::from(encoded))
 }
@@ -189,7 +191,7 @@ pub(crate) fn on_socket_lost<T>(
 /// be sent.
 ///
 /// An acknowledgement that cannot be encoded or exceeds the broker's maximum
-/// packet size leaves the QoS exchange unresolvable, so the only correct
+/// packet size leaves the `QoS` exchange unresolvable, so the only correct
 /// response is to fail the connection.
 pub(crate) fn enqueue_ack_or_fail_protocol<T>(
     settings: &ClientSettings,

@@ -5,16 +5,6 @@
 //! [§1.5 — Data representation](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901007).
 use super::*;
 
-/// Error returned when constructing a [`Payload`] from invalid data.
-///
-/// In practice the only way a [`Payload`] can be rejected is if it
-/// exceeds the theoretical addressable length (a [`u64`] worth of
-/// bytes); this error exists to keep the API symmetric with other wire
-/// types.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
-#[error("invalid MQTT payload")]
-pub struct PayloadError;
-
 /// Application message payload carried inside a [`Publish`] packet
 /// ([§3.3.3 — PUBLISH Payload](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901119)).
 ///
@@ -95,39 +85,12 @@ impl Payload {
     /// Constructs a [`Payload`] from any value convertible into
     /// [`bytes::Bytes`].
     ///
-    /// This constructor is infallible and always returns `Ok`.
-    #[inline]
-    pub fn try_new(value: impl Into<bytes::Bytes>) -> Result<Self, PayloadError> {
-        let value = value.into();
-        if value.len() > u64::MAX as usize {
-            // This check should never fail in practice since sizeof(u64) ==
-            // sizeof(usize) on basically all platforms, but we
-            // include it for completeness.
-            return Err(PayloadError);
-        }
-
-        // SAFETY: Invariants have been checked above.
-        Ok(unsafe { Self::new_unchecked(value) })
-    }
-
-    /// Constructs a [`Payload`] from any value convertible into
-    /// [`bytes::Bytes`].
-    ///
-    /// This constructor is infallible and never panics.
+    /// Any byte sequence is a valid payload, so this never fails. The
+    /// packet that carries it is bounded by the Remaining Length, which
+    /// the encoder enforces ([MQTT-1.5.5-1]).
     #[inline]
     pub fn new(value: impl Into<bytes::Bytes>) -> Self {
-        Self::try_new(value).expect("Payload::new received an invalid MQTT payload")
-    }
-
-    /// Creates a [`Payload`] without applying additional checks.
-    ///
-    /// # Safety
-    ///
-    /// Callers must ensure `value` satisfies all invariants expected by
-    /// downstream protocol logic that consumes `Payload`.
-    #[inline]
-    pub unsafe fn new_unchecked(value: bytes::Bytes) -> Self {
-        Self(value)
+        Self(value.into())
     }
 
     /// Consumes the [`Payload`] and returns the underlying bytes.
@@ -141,26 +104,25 @@ impl BinaryData {
     /// Constructs a [`BinaryData`] from any value convertible into
     /// [`bytes::Bytes`].
     ///
-    /// Returns an error when the payload exceeds MQTT's 2-byte length limit.
+    /// # Errors
+    ///
+    /// Returns [`BinaryDataError`] when the payload is longer than
+    /// `u16::MAX` bytes, the limit of the 2-byte length prefix
+    /// ([§1.5.6](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901012)).
     #[inline]
+    #[expect(
+        unsafe_code,
+        reason = "calls the matching `new_unchecked` after validating its invariant, so the check is not repeated"
+    )]
     pub fn try_new(value: impl Into<bytes::Bytes>) -> Result<Self, BinaryDataError> {
         let value = value.into();
-        if value.len() > u16::MAX as usize {
+        if value.len() > usize::from(u16::MAX) {
             return Err(BinaryDataError);
         }
 
-        // SAFETY: Invariants have been checked above.
+        // SAFETY: `new_unchecked` requires `value.len() <= u16::MAX`, and
+        // the early return above rejects every longer value.
         Ok(unsafe { Self::new_unchecked(value) })
-    }
-
-    /// Constructs a [`BinaryData`] from any value convertible into
-    /// [`bytes::Bytes`].
-    ///
-    /// Panics with `"BinaryData::new received invalid MQTT binary data"` when
-    /// validation fails.
-    #[inline]
-    pub fn new(value: impl Into<bytes::Bytes>) -> Self {
-        Self::try_new(value).expect("BinaryData::new received an invalid MQTT binary data")
     }
 
     /// Creates a [`BinaryData`] without enforcing the MQTT length limit.
@@ -169,6 +131,10 @@ impl BinaryData {
     ///
     /// Callers must ensure `value.len() <= u16::MAX as usize`.
     #[inline]
+    #[expect(
+        unsafe_code,
+        reason = "AGENTS.md allows `*_unchecked` constructors that skip invariant validation for callers that already validated"
+    )]
     pub unsafe fn new_unchecked(value: bytes::Bytes) -> Self {
         Self(value)
     }
@@ -184,14 +150,20 @@ impl Utf8String {
     /// Constructs a [`Utf8String`] from any value convertible into
     /// [`bytestring::ByteString`].
     ///
-    /// Returns an error when the string exceeds MQTT's 2-byte length limit or
-    /// contains MQTT-disallowed characters. To build one from unvalidated
+    /// To build one from unvalidated
     /// bytes, use the [`TryFrom<bytes::Bytes>`](Utf8String) implementation,
     /// which additionally checks that the bytes are well-formed UTF-8.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Utf8StringError`] when the string is longer than
+    /// `u16::MAX` bytes or contains characters MQTT disallows
+    /// ([§1.5.4](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901010),
+    /// `[MQTT-1.5.4-1]`, `[MQTT-1.5.4-2]`).
     #[inline]
     pub fn try_new(value: impl Into<bytestring::ByteString>) -> Result<Self, Utf8StringError> {
         let value = value.into();
-        if value.len() > u16::MAX as usize {
+        if value.len() > usize::from(u16::MAX) {
             return Err(Utf8StringError);
         }
 
@@ -202,16 +174,6 @@ impl Utf8String {
         Ok(Self(value))
     }
 
-    /// Constructs a [`Utf8String`] from any value convertible into
-    /// [`bytestring::ByteString`].
-    ///
-    /// Panics with `"Utf8String::new received invalid MQTT utf8 string"` when
-    /// validation fails.
-    #[inline]
-    pub fn new(value: impl Into<bytestring::ByteString>) -> Self {
-        Self::try_new(value).expect("Utf8String::new received an invalid MQTT utf8 string")
-    }
-
     /// Creates a [`Utf8String`] without MQTT length or character validation.
     ///
     /// # Safety
@@ -219,6 +181,10 @@ impl Utf8String {
     /// Callers must ensure `value` has length at most `u16::MAX` and does not
     /// contain MQTT-disallowed characters.
     #[inline]
+    #[expect(
+        unsafe_code,
+        reason = "AGENTS.md allows `*_unchecked` constructors that skip invariant validation for callers that already validated"
+    )]
     pub unsafe fn new_unchecked(value: bytestring::ByteString) -> Self {
         Self(value)
     }
@@ -234,22 +200,15 @@ impl Topic {
     /// Constructs a [`Topic`] from any value convertible into
     /// [`bytestring::ByteString`].
     ///
-    /// Returns an error when the topic is not a valid MQTT UTF-8 string or
-    /// contains wildcard characters (`#` or `+`).
+    /// # Errors
+    ///
+    /// Returns [`TopicError`] when the value is not a valid MQTT UTF-8
+    /// string or contains the wildcard characters `#` or `+`
+    /// ([§4.7](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901241)).
     #[inline]
     pub fn try_new(value: impl Into<bytestring::ByteString>) -> Result<Self, TopicError> {
         let utf8 = Utf8String::try_new(value).map_err(|_| TopicError)?;
         Self::try_from(utf8)
-    }
-
-    /// Constructs a [`Topic`] from any value convertible into
-    /// [`bytestring::ByteString`].
-    ///
-    /// Panics with `"Topic::new received invalid MQTT topic"` when validation
-    /// fails.
-    #[inline]
-    pub fn new(value: impl Into<bytestring::ByteString>) -> Self {
-        Self::try_new(value).expect("Topic::new received an invalid MQTT topic")
     }
 
     /// Creates a [`Topic`] without validating wildcard constraints.
@@ -259,6 +218,10 @@ impl Topic {
     /// Callers must ensure the inner value is a valid MQTT topic string and
     /// does not contain `#` or `+` wildcard characters.
     #[inline]
+    #[expect(
+        unsafe_code,
+        reason = "AGENTS.md allows `*_unchecked` constructors that skip invariant validation for callers that already validated"
+    )]
     pub unsafe fn new_unchecked(value: Utf8String) -> Self {
         Self(value)
     }
@@ -271,7 +234,7 @@ impl Topic {
     }
 }
 
-impl core::convert::AsRef<bytes::Bytes> for Payload {
+impl AsRef<bytes::Bytes> for Payload {
     #[inline]
     fn as_ref(&self) -> &bytes::Bytes {
         &self.0
@@ -301,7 +264,7 @@ impl From<Payload> for bytes::Bytes {
     }
 }
 
-impl core::convert::AsRef<bytes::Bytes> for BinaryData {
+impl AsRef<bytes::Bytes> for BinaryData {
     #[inline]
     fn as_ref(&self) -> &bytes::Bytes {
         &self.0
@@ -340,7 +303,7 @@ impl From<BinaryData> for bytes::Bytes {
     }
 }
 
-impl core::convert::AsRef<bytes::Bytes> for Utf8String {
+impl AsRef<bytes::Bytes> for Utf8String {
     #[inline]
     fn as_ref(&self) -> &bytes::Bytes {
         self.0.as_bytes()
@@ -364,7 +327,7 @@ impl From<Utf8String> for bytes::Bytes {
     }
 }
 
-impl core::convert::AsRef<Utf8String> for Topic {
+impl AsRef<Utf8String> for Topic {
     #[inline]
     fn as_ref(&self) -> &Utf8String {
         &self.0
@@ -391,11 +354,18 @@ impl TryFrom<Utf8String> for Topic {
     type Error = TopicError;
 
     #[inline]
+    #[expect(
+        unsafe_code,
+        reason = "calls the matching `new_unchecked` after validating its invariant, so the check is not repeated"
+    )]
     fn try_from(value: Utf8String) -> Result<Self, Self::Error> {
         if value.contains(['#', '+']) {
             return Err(TopicError);
         }
-        // SAFETY: Invariants have been checked above.
+        // SAFETY: `new_unchecked` requires a valid MQTT UTF-8 string without
+        // the `#` and `+` wildcards. `value` is a `Utf8String`, so it is
+        // valid by construction, and the early return above rejects both
+        // wildcards.
         Ok(unsafe { Self::new_unchecked(value) })
     }
 }
@@ -413,7 +383,7 @@ impl core::fmt::Display for Topic {
     }
 }
 
-impl core::convert::AsRef<str> for Utf8String {
+impl AsRef<str> for Utf8String {
     #[inline]
     fn as_ref(&self) -> &str {
         &self.0
@@ -465,6 +435,13 @@ impl Utf8String {
     }
 }
 
+impl From<bytes::Bytes> for Payload {
+    #[inline]
+    fn from(value: bytes::Bytes) -> Self {
+        Self(value)
+    }
+}
+
 impl From<Vec<u8>> for Payload {
     #[inline]
     fn from(value: Vec<u8>) -> Self {
@@ -482,7 +459,7 @@ impl<'a> From<&'a [u8]> for Payload {
 impl<'a, const SIZE: usize> From<&'a [u8; SIZE]> for Payload {
     #[inline]
     fn from(value: &'a [u8; SIZE]) -> Self {
-        Self::from(&value[..] as &[u8])
+        Self::from(value.as_slice())
     }
 }
 
@@ -509,7 +486,7 @@ impl<'a, const SIZE: usize> TryFrom<&'a [u8; SIZE]> for BinaryData {
 
     #[inline]
     fn try_from(value: &'a [u8; SIZE]) -> Result<Self, Self::Error> {
-        (&value[..] as &[u8]).try_into()
+        value.as_slice().try_into()
     }
 }
 
@@ -590,13 +567,13 @@ pub enum Qos {
     ExactlyOnce = 2,
 }
 
-/// Subset of [`Qos`] used by the Maximum QoS property
+/// Subset of [`Qos`] used by the Maximum `QoS` property
 /// ([§3.2.2.3.4](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901084))
 /// advertised by the Server in `CONNACK`.
 ///
-/// Excludes [`Qos::ExactlyOnce`]: if a Server advertises Maximum QoS
+/// Excludes [`Qos::ExactlyOnce`]: if a Server advertises Maximum `QoS`
 /// it MUST be `0` or `1` ([MQTT-3.2.2-12]). A Client receiving this
-/// property MUST NOT send PUBLISH packets at a higher QoS
+/// property MUST NOT send PUBLISH packets at a higher `QoS`
 /// ([MQTT-3.2.2-11]).
 #[derive(Debug, PartialEq, Clone, Copy, EnumIter, Hash, PartialOrd, Eq, Ord)]
 pub enum MaximumQoS {
@@ -622,7 +599,11 @@ pub enum GuaranteedQoS {
 impl From<RetainHandling> for u8 {
     #[inline]
     fn from(value: RetainHandling) -> Self {
-        value as u8
+        match value {
+            RetainHandling::SendRetained => 0,
+            RetainHandling::SendRetainedIfSubscriptionDoesNotExist => 1,
+            RetainHandling::DoNotSend => 2,
+        }
     }
 }
 
@@ -645,14 +626,17 @@ impl TryFrom<u8> for RetainHandling {
     #[inline]
     fn try_from(value: u8) -> Result<Self, Self::Error> {
         Self::iter()
-            .find(|v| *v as u8 == value)
+            .find(|v| u8::from(*v) == value)
             .ok_or(InvalidRetainHandlingError { value })
     }
 }
 impl From<FormatIndicator> for u8 {
     #[inline]
     fn from(value: FormatIndicator) -> Self {
-        value as u8
+        match value {
+            FormatIndicator::Unspecified => 0,
+            FormatIndicator::Utf8 => 1,
+        }
     }
 }
 
@@ -675,7 +659,7 @@ impl TryFrom<u8> for FormatIndicator {
     #[inline]
     fn try_from(value: u8) -> Result<Self, Self::Error> {
         Self::iter()
-            .find(|v| *v as u8 == value)
+            .find(|v| u8::from(*v) == value)
             .ok_or(UnknownFormatIndicatorError {
                 format_indicator: value,
             })
@@ -685,7 +669,11 @@ impl TryFrom<u8> for FormatIndicator {
 impl From<Qos> for u8 {
     #[inline]
     fn from(value: Qos) -> Self {
-        value as u8
+        match value {
+            Qos::AtMostOnce => 0,
+            Qos::AtLeastOnce => 1,
+            Qos::ExactlyOnce => 2,
+        }
     }
 }
 
@@ -699,7 +687,7 @@ impl From<Qos> for u8 {
 #[non_exhaustive]
 pub struct InvalidQosError {
     /// Offending byte value that could not be mapped onto a valid
-    /// QoS variant.
+    /// `QoS` variant.
     pub qos: u8,
 }
 
@@ -709,7 +697,7 @@ impl TryFrom<u8> for Qos {
     #[inline]
     fn try_from(value: u8) -> Result<Self, Self::Error> {
         Self::iter()
-            .find(|v| *v as u8 == value)
+            .find(|v| u8::from(*v) == value)
             .ok_or(InvalidQosError { qos: value })
     }
 }
@@ -717,7 +705,10 @@ impl TryFrom<u8> for Qos {
 impl From<MaximumQoS> for u8 {
     #[inline]
     fn from(value: MaximumQoS) -> Self {
-        value as u8
+        match value {
+            MaximumQoS::AtMostOnce => 0,
+            MaximumQoS::AtLeastOnce => 1,
+        }
     }
 }
 
@@ -727,7 +718,7 @@ impl TryFrom<u8> for MaximumQoS {
     #[inline]
     fn try_from(value: u8) -> Result<Self, Self::Error> {
         Self::iter()
-            .find(|v| *v as u8 == value)
+            .find(|v| u8::from(*v) == value)
             .ok_or(InvalidQosError { qos: value })
     }
 }
@@ -754,7 +745,10 @@ impl TryFrom<Qos> for MaximumQoS {
 impl From<GuaranteedQoS> for u8 {
     #[inline]
     fn from(value: GuaranteedQoS) -> Self {
-        value as u8
+        match value {
+            GuaranteedQoS::AtLeastOnce => 1,
+            GuaranteedQoS::ExactlyOnce => 2,
+        }
     }
 }
 
@@ -764,7 +758,7 @@ impl TryFrom<u8> for GuaranteedQoS {
     #[inline]
     fn try_from(value: u8) -> Result<Self, Self::Error> {
         Self::iter()
-            .find(|v| *v as u8 == value)
+            .find(|v| u8::from(*v) == value)
             .ok_or(InvalidQosError { qos: value })
     }
 }
@@ -801,10 +795,6 @@ mod marker_trait_guards {
     trait MustNotImplementPartialOrd {}
     impl<T: PartialOrd> MustNotImplementPartialOrd for T {}
 
-    impl MustNotImplementHash for PayloadError {}
-    impl MustNotImplementOrd for PayloadError {}
-    impl MustNotImplementPartialOrd for PayloadError {}
-
     impl MustNotImplementHash for BinaryDataError {}
     impl MustNotImplementOrd for BinaryDataError {}
     impl MustNotImplementPartialOrd for BinaryDataError {}
@@ -823,10 +813,6 @@ mod marker_trait_guards {
 
     #[test]
     fn marker_errors_are_not_ordered_or_hashed() {
-        assert_not_hash::<PayloadError>();
-        assert_not_ord::<PayloadError>();
-        assert_not_partial_ord::<PayloadError>();
-
         assert_not_hash::<BinaryDataError>();
         assert_not_ord::<BinaryDataError>();
         assert_not_partial_ord::<BinaryDataError>();

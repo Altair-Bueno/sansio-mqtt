@@ -1,5 +1,7 @@
 use crate::Connector;
 use bytes::Bytes;
+use core::future::pending;
+use core::pin::Pin;
 use sansio_mqtt_protocol::Command;
 use sansio_mqtt_protocol::CommandDiscriminants;
 use sansio_mqtt_protocol::DriverAction;
@@ -9,12 +11,10 @@ use sansio_mqtt_protocol::Event;
 use sansio_mqtt_protocol::IncomingData;
 use sansio_mqtt_protocol::MqttProtocol;
 use sansio_mqtt_protocol::Timestamped;
-use std::future::pending;
 use std::io;
-use std::pin::Pin;
 use tokio::io::AsyncBufRead;
-use tokio::io::AsyncBufReadExt;
-use tokio::io::AsyncWriteExt;
+use tokio::io::AsyncBufReadExt as _;
+use tokio::io::AsyncWriteExt as _;
 use tokio::io::BufReader;
 use tokio::time::Instant;
 use tokio::time::sleep_until;
@@ -273,7 +273,7 @@ where
             }
             DriverAction::CloseSocket => {
                 if let Connection::Open(socket) =
-                    std::mem::replace(&mut self.connection, Connection::Closed)
+                    core::mem::replace(&mut self.connection, Connection::Closed)
                 {
                     self.connection = Connection::Closing(socket);
                 }
@@ -332,10 +332,8 @@ where
                 }
             }
             Input::Connected(Err(error)) => {
-                tracing::warn!(
-                    error = &error as &dyn core::error::Error,
-                    "failed to open socket"
-                );
+                let error: &(dyn core::error::Error + 'static) = &error;
+                tracing::warn!(error, "failed to open socket");
                 self.lose_socket(DriverEvent::SocketError);
             }
         }
@@ -354,12 +352,12 @@ where
     }
 }
 
-impl<Protocol, C> std::fmt::Debug for Driver<Protocol, C>
+impl<Protocol, C> core::fmt::Debug for Driver<Protocol, C>
 where
-    Protocol: std::fmt::Debug,
+    Protocol: core::fmt::Debug,
     C: Connector,
 {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let connection = match self.connection {
             Connection::Closed => "closed",
             Connection::Opening(_) => "opening",

@@ -1,9 +1,11 @@
 use super::*;
-pub use binary::be_u16 as two_byte_integer;
-pub use binary::be_u32 as four_byte_integer;
+pub(super) use binary::be_u16 as two_byte_integer;
+pub(super) use binary::be_u32 as four_byte_integer;
 
 #[inline]
-pub fn two_byte_integer_len_with_limits<Input, Error>(limit: u16) -> impl Parser<Input, u16, Error>
+pub(super) fn two_byte_integer_len_with_limits<Input, Error>(
+    limit: u16,
+) -> impl Parser<Input, u16, Error>
 where
     Input: StreamIsPartial + Stream<Token = u8>,
     Error: ParserError<Input> + AddContext<Input, StrContext>,
@@ -14,9 +16,9 @@ where
 }
 
 #[inline]
-pub fn variable_byte_integer_len_with_limits<Input, Error>(
-    limit: u64,
-) -> impl Parser<Input, u64, Error>
+pub(super) fn variable_byte_integer_len_with_limits<Input, Error>(
+    limit: u32,
+) -> impl Parser<Input, u32, Error>
 where
     Input: StreamIsPartial + Stream<Token = u8>,
     Error: ParserError<Input> + AddContext<Input, StrContext>,
@@ -36,26 +38,24 @@ where
 /// reports incomplete input on a [`Partial`](winnow::stream::Partial) stream
 /// that ends mid-integer.
 #[inline]
-pub fn variable_byte_integer<Input, Error>(input: &mut Input) -> Result<u64, Error>
+pub fn variable_byte_integer<Input, Error>(input: &mut Input) -> Result<u32, Error>
 where
     Input: StreamIsPartial + Stream<Token = u8>,
     Error: ParserError<Input> + AddContext<Input, StrContext>,
 {
     combinator::trace("variable_byte_integer", move |input: &mut Input| {
-        let mut multiplier = 1;
         let mut value = 0;
-        loop {
+        for shift in [0, 7, 14, 21] {
             let encoded_byte = token::any.parse_next(input)?;
-            value += (encoded_byte & 127) as u64 * multiplier;
-            if multiplier > 128 * 128 * 128 {
-                return Err(Error::from_input(input));
-            }
-            multiplier *= 128;
-            if encoded_byte & 128 == 0 {
-                break;
+            value |= u32::from(encoded_byte & 0x7F) << shift;
+            if encoded_byte & 0x80 == 0 {
+                return Ok(value);
             }
         }
-        Ok(value)
+        // [MQTT-1.5.5-1] A fifth byte is never valid. Consuming it keeps the
+        // error position where the previous implementation reported it.
+        token::any.parse_next(input)?;
+        Err(Error::from_input(input))
     })
     .context(StrContext::Label("variable_byte_integer"))
     .context(StrContext::Expected(StrContextValue::Description(
@@ -69,6 +69,7 @@ impl Payload {
     /// current frame as the PUBLISH payload
     /// ([§3.3.3](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901119)).
     #[inline]
+    #[must_use]
     pub fn parser<'input, Input, Error>(
         _: &ParserSettings,
     ) -> impl Parser<Input, Self, Error> + use<'input, Input, Error>
@@ -93,6 +94,7 @@ impl BinaryData {
     /// [MQTT-1.5.6-1]). The length is capped by
     /// [`ParserSettings::max_bytes_binary_data`].
     #[inline]
+    #[must_use]
     pub fn parser<'input, Input, Error>(
         parser_settings: &ParserSettings,
     ) -> impl Parser<Input, Self, Error> + use<'input, Input, Error>
@@ -117,7 +119,7 @@ impl BinaryData {
 }
 
 #[inline]
-pub fn string_pair<'input, 'settings, Input, Error>(
+pub(super) fn string_pair<'input, 'settings, Input, Error>(
     parser_settings: &'settings ParserSettings,
 ) -> impl Parser<Input, (Utf8String, Utf8String), Error> + use<'input, 'settings, Input, Error>
 where
@@ -143,6 +145,7 @@ impl Utf8String {
     /// [MQTT-1.5.4-1]). The length is capped by
     /// [`ParserSettings::max_bytes_string`].
     #[inline]
+    #[must_use]
     pub fn parser<'input, Input, Error>(
         parser_settings: &ParserSettings,
     ) -> impl Parser<Input, Self, Error> + use<'input, Input, Error>
@@ -197,6 +200,12 @@ impl Topic {
 impl ControlPacketType {
     /// Parses the 4-bit Control Packet Type nibble from the Fixed
     /// Header ([§2.1.2](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901022)).
+    ///
+    /// # Errors
+    ///
+    /// Fails when fewer than four bits remain or the nibble does not name a
+    /// Control Packet Type (reserved value `0`), reported through
+    /// [`InvalidControlPacketTypeError`](crate::InvalidControlPacketTypeError).
     #[inline]
     pub fn parser<Input, Error>(input: &mut Bits<Input>) -> Result<Self, Error>
     where
@@ -218,8 +227,13 @@ impl ControlPacketType {
 }
 
 impl Qos {
-    /// Parses a 2-bit QoS field ([§4.3](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901234),
+    /// Parses a 2-bit `QoS` field ([§4.3](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901234),
     /// [MQTT-3.3.1-4]). A value of 3 yields Malformed Packet.
+    ///
+    /// # Errors
+    ///
+    /// Fails when fewer than two bits remain or the value is `3`, reported
+    /// through [`InvalidQosError`](crate::InvalidQosError).
     #[inline]
     pub fn parser<Input, Error>(input: &mut Bits<Input>) -> Result<Self, Error>
     where
@@ -243,6 +257,12 @@ impl FormatIndicator {
     /// Parses the one-byte Payload Format Indicator value
     /// ([§3.3.2.3.2](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901111),
     /// [MQTT-3.3.2-5]).
+    ///
+    /// # Errors
+    ///
+    /// Fails when the input is empty or the byte is neither `0` nor `1`,
+    /// reported through
+    /// [`UnknownFormatIndicatorError`](crate::UnknownFormatIndicatorError).
     #[inline]
     pub fn parser<'input, Input, Error>(input: &mut Input) -> Result<Self, Error>
     where
@@ -263,6 +283,12 @@ impl RetainHandling {
     /// Parses the 2-bit Retain Handling field of the Subscription
     /// Options byte ([§3.8.3.1](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901169),
     /// [MQTT-3.8.3-4]).
+    ///
+    /// # Errors
+    ///
+    /// Fails when fewer than two bits remain or the value is `3`, reported
+    /// through
+    /// [`InvalidRetainHandlingError`](crate::InvalidRetainHandlingError).
     #[inline]
     pub fn parser<Input, Error>(input: &mut Bits<Input>) -> Result<Self, Error>
     where
@@ -289,6 +315,7 @@ impl Subscription {
     /// ([§3.8.3](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901168),
     /// [§3.8.3.1](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901169)).
     #[inline]
+    #[must_use]
     pub fn parser<'input, 'settings, ByteInput, ByteError, BitError>(
         parser_settings: &'settings ParserSettings,
     ) -> impl Parser<ByteInput, Self, ByteError> + use<'input, 'settings, ByteInput, ByteError, BitError>
@@ -318,7 +345,7 @@ impl Subscription {
             )
                 .map(
                     |(topic_filter, (_, retain_handling, retain_as_published, no_local, qos))| {
-                        Subscription {
+                        Self {
                             topic_filter,
                             qos,
                             no_local,
@@ -340,6 +367,12 @@ macro_rules! impl_parser_for_reason_code {
         impl $name {
             /// Parses this Reason Code from a single byte
             /// ([§2.4](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901031)).
+            ///
+            /// # Errors
+            ///
+            /// Fails when the input is empty or the byte is not a Reason Code defined
+            /// for this packet, reported through
+            /// [`InvalidReasonCode`](crate::InvalidReasonCode).
             #[inline]
             pub fn parser<Input, Error>(input: &mut Input) -> Result<Self, Error>
             where

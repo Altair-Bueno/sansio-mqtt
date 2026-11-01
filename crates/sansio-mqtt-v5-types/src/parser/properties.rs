@@ -5,7 +5,7 @@ use super::*;
 /// ([§2.2.2.1](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901028),
 /// [MQTT-2.2.2-2]).
 #[inline]
-pub(crate) fn set_once<T>(
+pub(super) fn set_once<T>(
     slot: &mut Option<T>,
     value: T,
     property_type: PropertyType,
@@ -22,7 +22,7 @@ pub(crate) fn set_once<T>(
 /// Appends `value` to `dst` unless that would exceed `max_len`,
 /// guarding against resource-exhaustion from a repeated property.
 #[inline]
-pub(crate) fn push_capped<T>(
+pub(super) fn push_capped<T>(
     dst: &mut Vec<T>,
     value: T,
     max_len: usize,
@@ -39,6 +39,12 @@ impl PropertyType {
     /// Parses a property identifier (Variable Byte Integer)
     /// ([§2.2.2.2](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901029),
     /// [MQTT-2.2.2-1]).
+    ///
+    /// # Errors
+    ///
+    /// Fails when the identifier is not a valid Variable Byte Integer or does
+    /// not name a property defined by the spec, reported through
+    /// [`InvalidPropertyTypeError`](crate::InvalidPropertyTypeError).
     #[inline]
     pub fn parser<Input, Error>(input: &mut Input) -> Result<Self, Error>
     where
@@ -49,7 +55,7 @@ impl PropertyType {
     {
         combinator::trace(
             type_name::<Self>(),
-            self::variable_byte_integer.try_map(TryInto::try_into),
+            variable_byte_integer.try_map(TryInto::try_into),
         )
         .context(StrContext::Label(type_name::<Self>()))
         .context(StrContext::Expected(StrContextValue::Description(
@@ -62,7 +68,12 @@ impl PropertyType {
 impl Property {
     /// Returns a parser for a single MQTT v5.0 [`Property`]
     /// ([§2.2.2.2](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901029)).
+    #[expect(
+        clippy::too_many_lines,
+        reason = "exhaustive dispatch with one arm per Property Identifier (§2.2.2.2); splitting it would scatter the property table"
+    )]
     #[inline]
+    #[must_use]
     pub fn parser<'input, 'settings, Input, Error>(
         parser_settings: &'settings ParserSettings,
     ) -> impl Parser<Input, Self, Error> + use<'input, 'settings, Input, Error>
@@ -131,9 +142,9 @@ impl Property {
                 .parse_next(input),
                 PropertyType::SubscriptionIdentifier => combinator::trace(
                     "SubscriptionIdentifier",
-                    self::variable_byte_integer
-                        .try_map(TryInto::try_into)
-                        .map(Property::SubscriptionIdentifier),
+                    variable_byte_integer
+                        .try_map(core::num::NonZero::<u32>::try_from)
+                        .map(|identifier| Self::SubscriptionIdentifier(identifier.into())),
                 )
                 .context(StrContext::Label("SubscriptionIdentifier"))
                 .context(StrContext::Expected(StrContextValue::Description(
@@ -298,8 +309,7 @@ impl Property {
                 .parse_next(input),
                 PropertyType::UserProperty => combinator::trace(
                     "UserProperty",
-                    self::string_pair(parser_settings)
-                        .map(|(key, value)| Property::UserProperty(key, value)),
+                    string_pair(parser_settings).map(|(key, value)| Self::UserProperty(key, value)),
                 )
                 .context(StrContext::Label("UserProperty"))
                 .context(StrContext::Expected(StrContextValue::Description(

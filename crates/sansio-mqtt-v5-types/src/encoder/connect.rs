@@ -1,4 +1,17 @@
-use super::*;
+use super::EncodeError;
+use super::basic::TwoByteInteger;
+use super::basic::VariableByteInteger;
+use super::basic::fixed_header;
+use super::basic::user_properties_iter;
+use crate::AuthenticationKind;
+use crate::Connect;
+use crate::ConnectHeaderFlags;
+use crate::ConnectProperties;
+use crate::ControlPacketType;
+use crate::Property;
+use crate::WillProperties;
+use encode::ByteEncoder;
+use encode::Encodable;
 
 impl<E> Encodable<E> for ConnectProperties
 where
@@ -102,7 +115,9 @@ where
             encode::combinators::FromError::new(self.protocol_version),
             encode::combinators::FromError::new(flags),
             encode::combinators::FromError::new(TwoByteInteger::new(
-                self.keep_alive.map(|x| x.get()).unwrap_or_default(),
+                self.keep_alive
+                    .map(core::num::NonZero::get)
+                    .unwrap_or_default(),
             )),
             &self.properties,
             &self.client_identifier,

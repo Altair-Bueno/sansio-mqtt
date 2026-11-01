@@ -41,7 +41,8 @@
 
 ## Build and Tooling
 
-- Toolchain: **stable** (pinned in `rust-toolchain.toml`).
+- Toolchain: **stable**. The MSRV is `rust-version` in the root `Cargo.toml`; CI
+  runs clippy and the `no_std` target check on it.
 - **rust-analyzer is REQUIRED**: at session start, verify rust-analyzer is
   available by running `rust-analyzer --version`. If the command fails, STOP all
   work and ask the user whether you should install it by running

@@ -1,17 +1,17 @@
-pub(crate) mod connected;
-pub(crate) mod connecting;
-pub(crate) mod disconnected;
-pub(crate) use connected::Connected;
-pub(crate) use connecting::Connecting;
+mod connected;
+mod connecting;
+mod disconnected;
+use connected::Connected;
+use connecting::Connecting;
 pub(crate) use disconnected::Disconnected;
 
 use sansio_mqtt_v5_types::ControlPacket;
 use sansio_mqtt_v5_types::DisconnectReasonCode;
 
-use crate::client::ClientSettings;
 use crate::queues;
 use crate::scratchpad::ClientScratchpad;
 use crate::session::ClientSession;
+use crate::settings::ClientSettings;
 use sansio_mqtt_protocol::Command;
 use sansio_mqtt_protocol::DriverAction;
 use sansio_mqtt_protocol::DriverEvent;
@@ -79,9 +79,9 @@ impl ClientState {
     /// legitimate.
     pub(crate) fn has_open_socket(&self) -> bool {
         match self {
-            ClientState::Connecting(connecting) => connecting.has_open_socket(),
-            ClientState::Connected(_) => true,
-            ClientState::Transitioning | ClientState::Disconnected(_) => false,
+            Self::Connecting(connecting) => connecting.has_open_socket(),
+            Self::Connected(_) => true,
+            Self::Transitioning | Self::Disconnected(_) => false,
         }
     }
 
@@ -98,18 +98,20 @@ impl ClientState {
         scratchpad: &mut ClientScratchpad<T>,
         packet: ControlPacket,
         received_at: T,
-    ) -> (ClientState, Result<(), Error>)
+    ) -> (Self, Result<(), Error>)
     where
         T: Time,
     {
         match self {
-            ClientState::Connecting(x) => {
+            Self::Connecting(x) => {
                 x.handle_control_packet(settings, session, scratchpad, packet, received_at)
             }
-            ClientState::Connected(x) => {
+            Self::Connected(x) => {
                 x.handle_control_packet(settings, session, scratchpad, packet, received_at)
             }
-            state => (state, Err(Error::InvalidStateTransition)),
+            state @ (Self::Transitioning | Self::Disconnected(_)) => {
+                (state, Err(Error::InvalidStateTransition))
+            }
         }
     }
 }

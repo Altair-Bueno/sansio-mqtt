@@ -39,7 +39,7 @@ pub struct Unsubscribe {
 pub struct UnsubscribeHeaderFlags;
 
 impl From<UnsubscribeHeaderFlags> for u8 {
-    fn from(_: UnsubscribeHeaderFlags) -> u8 {
+    fn from(_: UnsubscribeHeaderFlags) -> Self {
         0b0000_0010
     }
 }

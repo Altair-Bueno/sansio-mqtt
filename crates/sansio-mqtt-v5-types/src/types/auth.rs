@@ -33,7 +33,7 @@ pub struct Auth {
 pub struct AuthHeaderFlags;
 
 impl From<AuthHeaderFlags> for u8 {
-    fn from(_: AuthHeaderFlags) -> u8 {
+    fn from(_: AuthHeaderFlags) -> Self {
         0
     }
 }

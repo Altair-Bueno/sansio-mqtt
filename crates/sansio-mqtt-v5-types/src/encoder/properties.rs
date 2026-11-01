@@ -1,4 +1,21 @@
-use super::*;
+use super::EncodeError;
+use super::basic::FourByteInteger;
+use super::basic::TwoByteInteger;
+use super::basic::VariableByteInteger;
+use super::basic::user_properties_iter;
+use crate::FormatIndicator;
+use crate::Property;
+use crate::PropertyType;
+use crate::PubAckProperties;
+use crate::PubCompProperties;
+use crate::PubRecProperties;
+use crate::PubRelProperties;
+use crate::SubAckProperties;
+use crate::Topic;
+use crate::UnsubAckProperties;
+use crate::Utf8String;
+use encode::ByteEncoder;
+use encode::Encodable;
 
 impl<E: ByteEncoder> Encodable<E> for PropertyType
 where
@@ -7,7 +24,7 @@ where
     type Error = EncodeError;
 
     fn encode(&self, encoder: &mut E) -> Result<(), Self::Error> {
-        VariableByteInteger(u64::from(*self)).encode(encoder)
+        VariableByteInteger::from(u8::from(*self)).encode(encoder)
     }
 }
 
@@ -24,89 +41,56 @@ where
         PropertyType::from(self).encode(encoder)?;
 
         match self {
-            Property::PayloadFormatIndicator(value) => {
+            Self::PayloadFormatIndicator(value) => {
                 FormatIndicator::encode(value, encoder)?;
             }
-            Property::MessageExpiryInterval(value) => {
+            Self::MessageExpiryInterval(value)
+            | Self::SessionExpiryInterval(value)
+            | Self::WillDelayInterval(value) => {
                 FourByteInteger::new(*value).encode(encoder)?;
             }
-            Property::ContentType(value) => {
+            Self::ContentType(value)
+            | Self::AssignedClientIdentifier(value)
+            | Self::AuthenticationMethod(value)
+            | Self::ResponseInformation(value)
+            | Self::ServerReference(value)
+            | Self::ReasonString(value) => {
                 Utf8String::encode(value, encoder)?;
             }
-            Property::ResponseTopic(value) => {
+            Self::ResponseTopic(value) => {
                 Topic::encode(value, encoder)?;
             }
-            Property::CorrelationData(value) => {
+            Self::CorrelationData(value) | Self::AuthenticationData(value) => {
                 value.encode(encoder)?;
             }
-            Property::SubscriptionIdentifier(value) => {
-                VariableByteInteger(value.get()).encode(encoder)?;
+            Self::SubscriptionIdentifier(value) => {
+                VariableByteInteger::try_from(value.get())?.encode(encoder)?;
             }
-            Property::SessionExpiryInterval(value) => {
-                FourByteInteger::new(*value).encode(encoder)?;
-            }
-            Property::AssignedClientIdentifier(value) => {
-                Utf8String::encode(value, encoder)?;
-            }
-            Property::ServerKeepAlive(value) => {
+            Self::ServerKeepAlive(value) | Self::TopicAliasMaximum(value) => {
                 TwoByteInteger::new(*value).encode(encoder)?;
             }
-            Property::AuthenticationMethod(value) => {
-                Utf8String::encode(value, encoder)?;
-            }
-            Property::AuthenticationData(value) => {
-                value.encode(encoder)?;
-            }
-            Property::RequestProblemInformation(value) => {
+            Self::RequestProblemInformation(value)
+            | Self::RequestResponseInformation(value)
+            | Self::RetainAvailable(value)
+            | Self::WildcardSubscriptionAvailable(value)
+            | Self::SubscriptionIdentifiersAvailable(value)
+            | Self::SharedSubscriptionAvailable(value) => {
                 bool::encode(value, encoder)?;
             }
-            Property::WillDelayInterval(value) => {
-                FourByteInteger::new(*value).encode(encoder)?;
-            }
-            Property::RequestResponseInformation(value) => {
-                bool::encode(value, encoder)?;
-            }
-            Property::ResponseInformation(value) => {
-                Utf8String::encode(value, encoder)?;
-            }
-            Property::ServerReference(value) => {
-                Utf8String::encode(value, encoder)?;
-            }
-            Property::ReasonString(value) => {
-                Utf8String::encode(value, encoder)?;
-            }
-            Property::ReceiveMaximum(value) => {
+            Self::ReceiveMaximum(value) | Self::TopicAlias(value) => {
                 TwoByteInteger::new(value.get()).encode(encoder)?;
             }
-            Property::TopicAliasMaximum(value) => {
-                TwoByteInteger::new(*value).encode(encoder)?;
-            }
-            Property::TopicAlias(value) => {
-                TwoByteInteger::new(value.get()).encode(encoder)?;
-            }
-            Property::MaximumQoS(value) => {
+            Self::MaximumQoS(value) => {
                 u8::from(*value).encode(encoder)?;
             }
-            Property::RetainAvailable(value) => {
-                bool::encode(value, encoder)?;
-            }
-            Property::UserProperty(k, v) => {
+            Self::UserProperty(k, v) => {
                 Utf8String::encode(k, encoder)?;
                 Utf8String::encode(v, encoder)?;
             }
-            Property::MaximumPacketSize(value) => {
+            Self::MaximumPacketSize(value) => {
                 FourByteInteger::new(value.get()).encode(encoder)?;
             }
-            Property::WildcardSubscriptionAvailable(value) => {
-                bool::encode(value, encoder)?;
-            }
-            Property::SubscriptionIdentifiersAvailable(value) => {
-                bool::encode(value, encoder)?;
-            }
-            Property::SharedSubscriptionAvailable(value) => {
-                bool::encode(value, encoder)?;
-            }
-        };
+        }
         Ok(())
     }
 }

@@ -3,12 +3,16 @@ name = "sansio-mqtt-tokio"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
+description = "Tokio driver for the sansio-mqtt sans-I/O MQTT clients, with optional TLS and WebSocket transports"
+repository.workspace = true
+keywords.workspace = true
+categories = ["network-programming", "asynchronous"]
 
 [dependencies]
 bytes = { workspace = true }
 sansio-mqtt-protocol = { workspace = true }
 tokio = { workspace = true, features = ["io-util", "macros", "net", "time"] }
-tracing = { workspace = true, features = ["attributes"] }
+tracing = { workspace = true, features = ["attributes", "std"] }
 thiserror = { workspace = true, optional = true }
 tokio-rustls = { workspace = true, optional = true, features = [
   "logging",
@@ -62,3 +66,6 @@ required-features = ["rustls", "websocket"]
 [[test]]
 name = "secure_websocket_connector"
 required-features = ["rustls", "websocket"]
+
+[lints]
+workspace = true

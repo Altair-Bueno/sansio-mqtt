@@ -1,8 +1,30 @@
-use super::*;
+use super::BytesSource;
+use super::ParserSettings;
+use crate::PingResp;
+use crate::PingRespHeaderFlags;
+use core::any::type_name;
+use winnow::Parser;
+use winnow::binary::bits;
+use winnow::binary::bits::Bits;
+use winnow::combinator;
+use winnow::error::AddContext;
+use winnow::error::ErrorConvert;
+use winnow::error::ParserError;
+use winnow::error::Result;
+use winnow::error::StrContext;
+use winnow::error::StrContextValue;
+use winnow::stream::Stream;
+use winnow::stream::StreamIsPartial;
 impl PingRespHeaderFlags {
     /// Parses the 4-bit Fixed Header flags for `PINGRESP`
     /// ([§3.13.1](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901201),
     /// [MQTT-3.13.1-1]).
+    ///
+    /// # Errors
+    ///
+    /// Fails when fewer than four bits remain or the flags are not the reserved
+    /// value `0b0000` required for `PINGRESP`; the caller treats that as a
+    /// Malformed Packet.
     #[inline]
     pub fn parser<Input, Error>(input: &mut Bits<Input>) -> Result<Self, Error>
     where
@@ -33,6 +55,6 @@ impl PingResp {
         ByteError: ParserError<ByteInput>,
         BitError: ParserError<Bits<ByteInput>> + ErrorConvert<ByteError>,
     {
-        combinator::trace(type_name::<Self>(), combinator::eof.value(PingResp {}))
+        combinator::trace(type_name::<Self>(), combinator::eof.value(Self {}))
     }
 }

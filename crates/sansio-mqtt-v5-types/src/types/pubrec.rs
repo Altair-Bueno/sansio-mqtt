@@ -1,15 +1,15 @@
 //! MQTT v5.0 `PUBREC` packet
 //! ([§3.5](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901131)).
 //!
-//! First acknowledgement in the QoS 2 flow. Conformance:
+//! First acknowledgement in the `QoS` 2 flow. Conformance:
 //! `[MQTT-3.5.0-1]`.
 use super::*;
 
 /// MQTT v5.0 `PUBREC` packet
 /// ([§3.5](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901131)).
 ///
-/// Sent by the receiver of a QoS 2 `PUBLISH` as the first step of the
-/// four-packet QoS 2 flow. Conformance: `[MQTT-3.5.0-1]`,
+/// Sent by the receiver of a `QoS` 2 `PUBLISH` as the first step of the
+/// four-packet `QoS` 2 flow. Conformance: `[MQTT-3.5.0-1]`,
 /// `[MQTT-3.5.2-1]`.
 #[derive(Debug, PartialEq, Eq, Clone, bon::Builder)]
 #[non_exhaustive]
@@ -34,7 +34,7 @@ pub struct PubRec {
 pub struct PubRecHeaderFlags;
 
 impl From<PubRecHeaderFlags> for u8 {
-    fn from(_: PubRecHeaderFlags) -> u8 {
+    fn from(_: PubRecHeaderFlags) -> Self {
         0
     }
 }

@@ -20,7 +20,7 @@ pub struct PingReq {}
 pub struct PingReqHeaderFlags;
 
 impl From<PingReqHeaderFlags> for u8 {
-    fn from(_: PingReqHeaderFlags) -> u8 {
+    fn from(_: PingReqHeaderFlags) -> Self {
         0
     }
 }

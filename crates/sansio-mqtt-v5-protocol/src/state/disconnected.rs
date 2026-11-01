@@ -1,9 +1,9 @@
-use crate::client::ClientSettings;
 use crate::convert;
 use crate::limits;
 use crate::queues;
 use crate::scratchpad::ClientScratchpad;
 use crate::session::ClientSession;
+use crate::settings::ClientSettings;
 use crate::state::ClientState;
 use crate::state::StateHandler;
 use crate::state::connecting::Connecting;
@@ -92,7 +92,13 @@ where
             }
             // Nothing is connected, so there is nothing to publish on,
             // acknowledge, (un)subscribe or disconnect.
-            _ => (
+            Command::Publish { .. }
+            | Command::Acknowledge(_)
+            | Command::Reject(..)
+            | Command::Subscribe(_)
+            | Command::Unsubscribe(_)
+            | Command::Disconnect
+            | _ => (
                 ClientState::Disconnected(self),
                 Err(Error::InvalidStateTransition),
             ),
@@ -116,7 +122,7 @@ where
             // A `SocketConnected`: the protocol never asked for a socket.
             // Reject it so stored connect options are not replayed on a
             // socket the application did not request.
-            _ => (
+            DriverEvent::SocketConnected | _ => (
                 ClientState::Disconnected(self),
                 Err(Error::InvalidStateTransition),
             ),

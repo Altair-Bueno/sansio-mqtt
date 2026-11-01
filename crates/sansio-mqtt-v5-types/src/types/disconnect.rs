@@ -32,7 +32,7 @@ pub struct Disconnect {
 pub struct DisconnectHeaderFlags;
 
 impl From<DisconnectHeaderFlags> for u8 {
-    fn from(_: DisconnectHeaderFlags) -> u8 {
+    fn from(_: DisconnectHeaderFlags) -> Self {
         0
     }
 }
@@ -54,7 +54,7 @@ pub struct DisconnectProperties {
     /// ([§3.14.2.2.4](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901213)).
     #[builder(default)]
     pub user_properties: Vec<(Utf8String, Utf8String)>,
-    /// Server Reference used with UseAnotherServer / ServerMoved
+    /// Server Reference used with `UseAnotherServer` / `ServerMoved`
     /// Reason Codes
     /// ([§3.14.2.2.5](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901214),
     /// [MQTT-3.14.2-4]).

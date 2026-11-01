@@ -57,5 +57,5 @@ use core::num::NonZero;
 use strum::Display;
 use strum::EnumDiscriminants;
 use strum::EnumIter;
-use strum::IntoEnumIterator;
+use strum::IntoEnumIterator as _;
 use thiserror::Error;

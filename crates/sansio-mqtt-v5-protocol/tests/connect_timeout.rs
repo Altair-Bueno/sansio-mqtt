@@ -5,13 +5,17 @@
 //! (MQTT v5.0 §3.2). The deadline is armed by the `Command::Connect` that
 //! starts the attempt, covers both opening the socket and waiting for CONNACK,
 //! and is replaced by the keep-alive deadline once CONNACK arrives.
+#![expect(
+    clippy::expect_used,
+    reason = "test helpers fail the test on setup errors by design"
+)]
 
 use bytes::Bytes;
 use bytestring::ByteString;
 use core::num::NonZero;
 use core::time::Duration;
-use encode::Encodable;
-use sansio::Protocol;
+use encode::Encodable as _;
+use sansio::Protocol as _;
 use sansio_mqtt_protocol::Command;
 use sansio_mqtt_protocol::ConnectOptions;
 use sansio_mqtt_protocol::DriverAction;

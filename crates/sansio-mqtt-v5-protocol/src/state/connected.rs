@@ -1,4 +1,3 @@
-use crate::client::ClientSettings;
 use crate::convert;
 use crate::limits;
 use crate::queues;
@@ -8,6 +7,7 @@ use crate::session::ClientSession;
 use crate::session::InboundInflightState;
 use crate::session::OutboundInflightState;
 use crate::session_ops;
+use crate::settings::ClientSettings;
 use crate::state::ClientState;
 use crate::state::StateHandler;
 use crate::state::disconnected::Disconnected;
@@ -68,7 +68,7 @@ fn without_side_effects_on_error<T>(
     result
 }
 
-/// Which outbound QoS2 stage `packet_id` is in, plus the correlation token
+/// Which outbound `QoS` 2 stage `packet_id` is in, plus the correlation token
 /// stored with the exchange.
 ///
 /// Extracted as a `Copy` tag so the caller can release its borrow of `session`
@@ -177,7 +177,7 @@ fn handle_inbound_qos2_publish<T>(
 /// accept-or-reject decision.
 ///
 /// Acknowledging and rejecting differ only in the reason codes they carry and
-/// in the state a QoS2 exchange moves to, so both share this path.
+/// in the state a `QoS` 2 exchange moves to, so both share this path.
 fn respond_to_inbound_publish<T>(
     settings: &ClientSettings,
     session: &mut ClientSession,
@@ -291,7 +291,11 @@ fn build_outbound_publish(
 
 impl Connected {
     /// Handles a control packet read from the open socket.
-    pub(crate) fn handle_control_packet<T>(
+    #[expect(
+        clippy::too_many_lines,
+        reason = "one dispatch arm per inbound MQTT control packet type"
+    )]
+    pub(super) fn handle_control_packet<T>(
         self,
         settings: &ClientSettings,
         session: &mut ClientSession,
@@ -377,7 +381,7 @@ impl Connected {
                         // unacknowledged until matching
                         // PUBACK is received.
                         let token = *token;
-                        let _ = session.on_flight_sent.remove(&packet_id);
+                        session.on_flight_sent.remove(&packet_id);
                         scratchpad.read_queue.push_back(Event::PublishAcknowledged {
                             token,
                             reason: convert::puback_reason_to_protocol(puback.reason_code),
@@ -414,7 +418,7 @@ impl Connected {
                             }
                             stay_or_disconnect(result)
                         } else {
-                            let _ = session.on_flight_sent.remove(&packet_id);
+                            session.on_flight_sent.remove(&packet_id);
                             scratchpad.read_queue.push_back(Event::PublishDropped {
                                 token,
                                 reason: DropReason::BrokerRejected(
@@ -446,7 +450,7 @@ impl Connected {
                         // unacknowledged until matching
                         // PUBCOMP is received.
                         let token = *token;
-                        let _ = session.on_flight_sent.remove(&packet_id);
+                        session.on_flight_sent.remove(&packet_id);
                         scratchpad.read_queue.push_back(Event::PublishCompleted {
                             token,
                             reason: convert::pubcomp_reason_to_protocol(pubcomp.reason_code),
@@ -505,7 +509,14 @@ impl Connected {
                     .push_back(convert::auth_packet_to_event(auth));
                 (ClientState::Connected(self), Ok(()))
             }
-            _ => fail_with_protocol_error(settings, session, scratchpad),
+            // Packets only a server receives, or a second CONNACK, are a
+            // Protocol Error from the server.
+            ControlPacket::Connect(_)
+            | ControlPacket::ConnAck(_)
+            | ControlPacket::Subscribe(_)
+            | ControlPacket::Unsubscribe(_)
+            | ControlPacket::PingReq(_)
+            | _ => fail_with_protocol_error(settings, session, scratchpad),
         }
     }
 }
@@ -523,10 +534,6 @@ where
         _at: T,
     ) -> (ClientState, Result<(), Error>) {
         match msg {
-            Command::Connect(_) => (
-                ClientState::Connected(self),
-                Err(Error::InvalidStateTransition),
-            ),
             Command::Publish { token, message } => {
                 let result =
                     without_side_effects_on_error(session, scratchpad, |session, scratchpad| {
@@ -617,7 +624,8 @@ where
             }
             // A user-requested disconnect is the same teardown as `close`.
             Command::Disconnect => self.close(settings, session, scratchpad),
-            _ => (
+            // Already connected: a second CONNECT is not allowed.
+            Command::Connect(_) | _ => (
                 ClientState::Connected(self),
                 Err(Error::InvalidStateTransition),
             ),
@@ -633,16 +641,13 @@ where
         _at: T,
     ) -> (ClientState, Result<(), Error>) {
         match evt {
-            DriverEvent::SocketConnected => (
-                ClientState::Connected(self),
-                Err(Error::InvalidStateTransition),
-            ),
             // The driver already dropped the socket: report the loss, but do
             // not ask it to close the socket again.
             DriverEvent::SocketClosed | DriverEvent::SocketError => {
                 on_socket_lost(settings, session, scratchpad)
             }
-            _ => (
+            // The socket is already open: the protocol did not ask for another.
+            DriverEvent::SocketConnected | _ => (
                 ClientState::Connected(self),
                 Err(Error::InvalidStateTransition),
             ),

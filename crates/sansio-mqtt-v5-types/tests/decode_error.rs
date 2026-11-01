@@ -11,9 +11,14 @@
 //! 5, Clean Start, keep alive 60, empty Client Identifier — differing
 //! only in its property section.
 
+#![expect(
+    clippy::expect_used,
+    reason = "test helpers fail the test on setup errors by design"
+)]
+
 use rstest::rstest;
 use sansio_mqtt_v5_types::*;
-use winnow::Parser;
+use winnow::Parser as _;
 
 /// Decodes `bytes`, asserting it fails, and returns the [`DecodeError`].
 fn decode_err(bytes: &[u8]) -> DecodeError {

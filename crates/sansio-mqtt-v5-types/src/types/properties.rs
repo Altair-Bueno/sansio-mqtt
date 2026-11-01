@@ -5,7 +5,16 @@
 //! header introduced in v5.0. Each property is identified by a
 //! one-byte identifier and carries a typed value. Conformance:
 //! `[MQTT-2.2.2-1]`, `[MQTT-2.2.2-2]`.
-use super::*;
+use crate::BinaryData;
+use crate::FormatIndicator;
+use crate::MaximumQoS;
+use crate::Topic;
+use crate::Utf8String;
+use core::num::NonZero;
+use strum::Display;
+use strum::EnumDiscriminants;
+use strum::EnumIter;
+use thiserror::Error;
 
 /// One MQTT v5.0 property
 /// ([§2.2.2.2 — Property](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901029)).
@@ -98,7 +107,7 @@ pub enum Property {
     /// ([§3.3.2.3.4](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901113)).
     /// A value of 0 is a Protocol Error ([MQTT-3.3.2-8]).
     TopicAlias(NonZero<u16>),
-    /// `0x24` Maximum QoS
+    /// `0x24` Maximum `QoS`
     /// ([§3.2.2.3.4](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901084)).
     /// Conformance: `[MQTT-3.2.2-12]`.
     MaximumQoS(MaximumQoS),
@@ -153,6 +162,8 @@ pub enum AuthenticationKind {
 impl AuthenticationKind {
     /// Builds an [`AuthenticationKind`] from parsed properties.
     ///
+    /// # Errors
+    ///
     /// Returns [`MissingAuthenticationMethodError`] if Authentication
     /// Data is present without Authentication Method, which is a
     /// Protocol Error ([MQTT-3.1.2-21]).
@@ -161,8 +172,8 @@ impl AuthenticationKind {
     ) -> Result<Option<Self>, MissingAuthenticationMethodError> {
         match (method, data) {
             (None, None) => Ok(None),
-            (Some(method), None) => Ok(Some(AuthenticationKind::WithoutData { method })),
-            (Some(method), Some(data)) => Ok(Some(AuthenticationKind::WithData { method, data })),
+            (Some(method), None) => Ok(Some(Self::WithoutData { method })),
+            (Some(method), Some(data)) => Ok(Some(Self::WithData { method, data })),
             (None, Some(_)) => Err(MissingAuthenticationMethodError),
         }
     }
@@ -179,7 +190,7 @@ impl AuthenticationKind {
 #[non_exhaustive]
 pub struct InvalidPropertyTypeError {
     /// Offending Variable Byte Integer property identifier.
-    pub value: u64,
+    pub value: u32,
 }
 
 /// Error returned when a property that is only allowed once appears
@@ -261,45 +272,45 @@ pub enum PropertiesError {
     UnsupportedProperty(#[from] UnsupportedPropertyError),
 }
 
-impl TryFrom<u64> for PropertyType {
+impl TryFrom<u32> for PropertyType {
     type Error = InvalidPropertyTypeError;
 
     #[inline]
-    fn try_from(value: u64) -> Result<Self, Self::Error> {
+    fn try_from(value: u32) -> Result<Self, Self::Error> {
         match value {
-            0x01 => Ok(PropertyType::PayloadFormatIndicator),
-            0x02 => Ok(PropertyType::MessageExpiryInterval),
-            0x03 => Ok(PropertyType::ContentType),
-            0x08 => Ok(PropertyType::ResponseTopic),
-            0x09 => Ok(PropertyType::CorrelationData),
-            0x0B => Ok(PropertyType::SubscriptionIdentifier),
-            0x11 => Ok(PropertyType::SessionExpiryInterval),
-            0x12 => Ok(PropertyType::AssignedClientIdentifier),
-            0x13 => Ok(PropertyType::ServerKeepAlive),
-            0x15 => Ok(PropertyType::AuthenticationMethod),
-            0x16 => Ok(PropertyType::AuthenticationData),
-            0x17 => Ok(PropertyType::RequestProblemInformation),
-            0x18 => Ok(PropertyType::WillDelayInterval),
-            0x19 => Ok(PropertyType::RequestResponseInformation),
-            0x1A => Ok(PropertyType::ResponseInformation),
-            0x1C => Ok(PropertyType::ServerReference),
-            0x1F => Ok(PropertyType::ReasonString),
-            0x21 => Ok(PropertyType::ReceiveMaximum),
-            0x22 => Ok(PropertyType::TopicAliasMaximum),
-            0x23 => Ok(PropertyType::TopicAlias),
-            0x24 => Ok(PropertyType::MaximumQoS),
-            0x25 => Ok(PropertyType::RetainAvailable),
-            0x26 => Ok(PropertyType::UserProperty),
-            0x27 => Ok(PropertyType::MaximumPacketSize),
-            0x28 => Ok(PropertyType::WildcardSubscriptionAvailable),
-            0x29 => Ok(PropertyType::SubscriptionIdentifiersAvailable),
-            0x2A => Ok(PropertyType::SharedSubscriptionAvailable),
+            0x01 => Ok(Self::PayloadFormatIndicator),
+            0x02 => Ok(Self::MessageExpiryInterval),
+            0x03 => Ok(Self::ContentType),
+            0x08 => Ok(Self::ResponseTopic),
+            0x09 => Ok(Self::CorrelationData),
+            0x0B => Ok(Self::SubscriptionIdentifier),
+            0x11 => Ok(Self::SessionExpiryInterval),
+            0x12 => Ok(Self::AssignedClientIdentifier),
+            0x13 => Ok(Self::ServerKeepAlive),
+            0x15 => Ok(Self::AuthenticationMethod),
+            0x16 => Ok(Self::AuthenticationData),
+            0x17 => Ok(Self::RequestProblemInformation),
+            0x18 => Ok(Self::WillDelayInterval),
+            0x19 => Ok(Self::RequestResponseInformation),
+            0x1A => Ok(Self::ResponseInformation),
+            0x1C => Ok(Self::ServerReference),
+            0x1F => Ok(Self::ReasonString),
+            0x21 => Ok(Self::ReceiveMaximum),
+            0x22 => Ok(Self::TopicAliasMaximum),
+            0x23 => Ok(Self::TopicAlias),
+            0x24 => Ok(Self::MaximumQoS),
+            0x25 => Ok(Self::RetainAvailable),
+            0x26 => Ok(Self::UserProperty),
+            0x27 => Ok(Self::MaximumPacketSize),
+            0x28 => Ok(Self::WildcardSubscriptionAvailable),
+            0x29 => Ok(Self::SubscriptionIdentifiersAvailable),
+            0x2A => Ok(Self::SharedSubscriptionAvailable),
             value => Err(InvalidPropertyTypeError { value }),
         }
     }
 }
 
-impl From<PropertyType> for u64 {
+impl From<PropertyType> for u8 {
     fn from(value: PropertyType) -> Self {
         match value {
             PropertyType::PayloadFormatIndicator => 0x01,

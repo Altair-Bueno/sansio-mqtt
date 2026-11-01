@@ -1,3 +1,8 @@
+//! Tests for the validated constructors of the basic wire types
+//! ([§1.5](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901007)):
+//! [`Payload`], [`BinaryData`], [`Utf8String`] and [`Topic`], including
+//! their `u16::MAX` length boundaries.
+
 use bytes::Bytes;
 use bytestring::ByteString;
 use rstest::rstest;
@@ -6,14 +11,6 @@ use sansio_mqtt_v5_types::Payload;
 use sansio_mqtt_v5_types::Topic;
 use sansio_mqtt_v5_types::Utf8String;
 use sansio_mqtt_v5_types::Utf8StringError;
-
-#[rstest]
-#[case(vec![1_u8, 2, 3], vec![1_u8, 2, 3])]
-#[case(Vec::<u8>::new(), Vec::<u8>::new())]
-fn payload_try_new_accepts_into_bytes(#[case] input: Vec<u8>, #[case] expected: Vec<u8>) {
-    let payload = Payload::try_new(input).expect("payload construction must be infallible");
-    assert_eq!(&payload[..], expected.as_slice());
-}
 
 #[rstest]
 #[case(vec![4_u8, 5, 6], vec![4_u8, 5, 6])]
@@ -25,7 +22,7 @@ fn payload_new_accepts_into_bytes(#[case] input: Vec<u8>, #[case] expected: Vec<
 
 #[rstest]
 #[case(vec![7_u8, 8, 9], true)]
-#[case(vec![0_u8; (u16::MAX as usize) + 1], false)]
+#[case(vec![0_u8; (usize::from(u16::MAX)) + 1], false)]
 fn binary_data_try_new_validates_input(#[case] input: Vec<u8>, #[case] is_valid: bool) {
     let result = BinaryData::try_new(input);
     assert_eq!(result.is_ok(), is_valid);
@@ -33,7 +30,7 @@ fn binary_data_try_new_validates_input(#[case] input: Vec<u8>, #[case] is_valid:
 
 #[rstest]
 #[case(vec![b'h', b'e', b'l', b'l', b'o'], Ok("hello"))]
-#[case(vec![b'a'; (u16::MAX as usize) + 1], Err(Utf8StringError))]
+#[case(vec![b'a'; (usize::from(u16::MAX)) + 1], Err(Utf8StringError))]
 #[case(vec![0xFF_u8], Err(Utf8StringError))]
 #[case("hello\u{0001}world".as_bytes().to_vec(), Err(Utf8StringError))]
 fn utf8_string_try_from_bytes_validates_input(
@@ -50,7 +47,7 @@ fn utf8_string_try_from_bytes_validates_input(
 
 #[rstest]
 #[case("hello", Ok("hello"))]
-#[case(&"a".repeat((u16::MAX as usize) + 1), Err(Utf8StringError))]
+#[case(&"a".repeat((usize::from(u16::MAX)) + 1), Err(Utf8StringError))]
 #[case("hello\u{0001}world", Err(Utf8StringError))]
 fn utf8_string_try_new_validates_byte_string(
     #[case] input: &str,
@@ -65,22 +62,22 @@ fn utf8_string_try_new_validates_byte_string(
 }
 
 #[test]
-#[should_panic]
+#[should_panic(expected = "called `Result::unwrap()` on an `Err` value")]
 fn binary_data_new_panics_on_invalid_input() {
-    let invalid = vec![0_u8; (u16::MAX as usize) + 1];
-    let _ = BinaryData::new(invalid);
+    let invalid = vec![0_u8; (usize::from(u16::MAX)) + 1];
+    BinaryData::try_new(invalid).unwrap();
 }
 
 #[test]
-#[should_panic]
+#[should_panic(expected = "called `Result::unwrap()` on an `Err` value")]
 fn utf8_string_new_panics_on_invalid_input() {
-    let _ = Utf8String::new("hello\u{0001}world");
+    Utf8String::try_new("hello\u{0001}world").unwrap();
 }
 
 #[test]
-#[should_panic]
+#[should_panic(expected = "called `Result::unwrap()` on an `Err` value")]
 fn topic_new_panics_on_invalid_input() {
-    let _ = Topic::new("home/+");
+    Topic::try_new("home/+").unwrap();
 }
 
 #[test]
@@ -126,22 +123,22 @@ fn topic_try_new_validates_input(#[case] input: &str, #[case] is_valid: bool) {
 
 #[test]
 fn utf8_string_boundary_lengths() {
-    let max = ByteString::from("a".repeat(u16::MAX as usize));
-    let max_plus_one = ByteString::from("a".repeat((u16::MAX as usize) + 1));
+    let max = ByteString::from("a".repeat(usize::from(u16::MAX)));
+    let max_plus_one = ByteString::from("a".repeat((usize::from(u16::MAX)) + 1));
 
     let utf8 = Utf8String::try_new(max).expect("u16::MAX bytes should be accepted");
-    assert_eq!(utf8.as_bytes().len(), u16::MAX as usize);
+    assert_eq!(utf8.as_bytes().len(), usize::from(u16::MAX));
     assert_eq!(Utf8String::try_new(max_plus_one), Err(Utf8StringError));
 }
 
 #[test]
 fn topic_boundary_lengths() {
-    let max = ByteString::from("a".repeat(u16::MAX as usize));
-    let max_plus_one = ByteString::from("a".repeat((u16::MAX as usize) + 1));
+    let max = ByteString::from("a".repeat(usize::from(u16::MAX)));
+    let max_plus_one = ByteString::from("a".repeat((usize::from(u16::MAX)) + 1));
 
     let topic = Topic::try_new(max).expect("u16::MAX-byte topic should be accepted");
     let topic_inner: &Utf8String = &topic;
-    assert_eq!(topic_inner.as_bytes().len(), u16::MAX as usize);
+    assert_eq!(topic_inner.as_bytes().len(), usize::from(u16::MAX));
     assert!(Topic::try_new(max_plus_one).is_err());
 }
 

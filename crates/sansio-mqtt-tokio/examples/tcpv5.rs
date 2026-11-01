@@ -1,3 +1,7 @@
+//! Connects over plain TCP, subscribes to `test/topic`, publishes to it and
+//! logs every message it receives until Ctrl-C. Uses
+//! `test.mosquitto.org:1883` unless `MQTT_BROKER` says otherwise.
+
 use sansio_mqtt_protocol::Command;
 use sansio_mqtt_protocol::ConnectOptions;
 use sansio_mqtt_protocol::Event;
@@ -11,7 +15,7 @@ use tracing::level_filters::LevelFilter;
 use tracing_subscriber::EnvFilter;
 
 #[tokio::main(flavor = "current_thread")]
-async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+async fn main() -> Result<(), Box<dyn core::error::Error + Send + Sync>> {
     tracing_subscriber::fmt()
         .with_env_filter(
             EnvFilter::builder()
@@ -27,7 +31,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     tracing::info!("connecting to broker");
     driver.submit(Command::Connect(ConnectOptions::builder().build()))?;
 
-    let mut shutdown = std::pin::pin!(tokio::signal::ctrl_c());
+    let mut shutdown = core::pin::pin!(tokio::signal::ctrl_c());
     let mut shutting_down = false;
     loop {
         let event = tokio::select! {
@@ -40,6 +44,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                 continue;
             }
         };
+        #[expect(
+            clippy::wildcard_enum_match_arm,
+            reason = "`Event` is `#[non_exhaustive]`; the example logs every event it does not act on"
+        )]
         match event {
             Event::Disconnected(_) => break,
             Event::Connected => {

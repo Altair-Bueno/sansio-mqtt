@@ -2,12 +2,16 @@
 //! token-based publish acknowledgement, outbound validation errors, the
 //! never-alias outbound PUBLISH invariant, and a compile-time
 //! `MqttProtocol` conformance check.
+#![expect(
+    clippy::expect_used,
+    reason = "test helpers fail the test on setup errors by design"
+)]
 
 use bytes::Bytes;
 use bytestring::ByteString;
 use core::time::Duration;
-use encode::Encodable;
-use sansio::Protocol;
+use encode::Encodable as _;
+use sansio::Protocol as _;
 use sansio_mqtt_protocol::Command;
 use sansio_mqtt_protocol::ConnectOptions;
 use sansio_mqtt_protocol::DriverAction;
@@ -31,7 +35,7 @@ use sansio_mqtt_v5_types::PubComp;
 use sansio_mqtt_v5_types::PubCompReasonCode;
 use sansio_mqtt_v5_types::PubRec;
 use sansio_mqtt_v5_types::PubRecReasonCode;
-use winnow::Parser;
+use winnow::Parser as _;
 use winnow::error::ContextError;
 
 /// Stamps a protocol input with `Duration::ZERO`, the instant these tests
@@ -97,9 +101,13 @@ fn connect(client: &mut Client<Duration>) {
     assert!(matches!(client.poll_read(), Some(Event::Connected)));
 }
 
-/// QoS 1 publish with an app-chosen token: PUBACK echoes back that same token,
-/// not the wire Packet Identifier.
+/// `QoS` 1 publish with an app-chosen token: PUBACK echoes back that same
+/// token, not the wire Packet Identifier.
 #[test]
+#[expect(
+    clippy::wildcard_enum_match_arm,
+    reason = "`ControlPacket` is `#[non_exhaustive]`; every packet but PUBLISH fails the test"
+)]
 fn qos1_publish_acknowledged_event_carries_the_app_token() {
     let mut client = Client::<Duration>::default();
     connect(&mut client);
@@ -120,7 +128,9 @@ fn qos1_publish_acknowledged_event_carries_the_app_token() {
     {
         ControlPacket::Publish(publish) => match publish.kind {
             sansio_mqtt_v5_types::PublishKind::Repetible { packet_id, .. } => packet_id,
-            other => panic!("expected a Packet Identifier, got {other:?}"),
+            other @ sansio_mqtt_v5_types::PublishKind::FireAndForget => {
+                panic!("expected a Packet Identifier, got {other:?}")
+            }
         },
         other => panic!("expected PUBLISH, got {other:?}"),
     };
@@ -141,9 +151,13 @@ fn qos1_publish_acknowledged_event_carries_the_app_token() {
     );
 }
 
-/// QoS 2 publish with an app-chosen token: PUBCOMP echoes back that token via
+/// `QoS` 2 publish with an app-chosen token: PUBCOMP echoes back that token via
 /// `PublishCompleted`.
 #[test]
+#[expect(
+    clippy::wildcard_enum_match_arm,
+    reason = "`ControlPacket` is `#[non_exhaustive]`; every packet but PUBLISH fails the test"
+)]
 fn qos2_publish_completed_event_carries_the_app_token() {
     let mut client = Client::<Duration>::default();
     connect(&mut client);
@@ -164,7 +178,9 @@ fn qos2_publish_completed_event_carries_the_app_token() {
     {
         ControlPacket::Publish(publish) => match publish.kind {
             sansio_mqtt_v5_types::PublishKind::Repetible { packet_id, .. } => packet_id,
-            other => panic!("expected a Packet Identifier, got {other:?}"),
+            other @ sansio_mqtt_v5_types::PublishKind::FireAndForget => {
+                panic!("expected a Packet Identifier, got {other:?}")
+            }
         },
         other => panic!("expected PUBLISH, got {other:?}"),
     };
@@ -194,9 +210,13 @@ fn qos2_publish_completed_event_carries_the_app_token() {
     );
 }
 
-/// Two in-flight QoS 1 publishes with different app tokens, acknowledged out
+/// Two in-flight `QoS` 1 publishes with different app tokens, acknowledged out
 /// of order, must each report their own token.
 #[test]
+#[expect(
+    clippy::wildcard_enum_match_arm,
+    reason = "`ControlPacket` is `#[non_exhaustive]`; every packet but PUBLISH fails the test"
+)]
 fn two_in_flight_publishes_acknowledged_out_of_order_report_the_right_tokens() {
     let mut client = Client::<Duration>::default();
     connect(&mut client);
@@ -228,7 +248,9 @@ fn two_in_flight_publishes_acknowledged_out_of_order_report_the_right_tokens() {
     {
         ControlPacket::Publish(publish) => match publish.kind {
             sansio_mqtt_v5_types::PublishKind::Repetible { packet_id, .. } => packet_id,
-            other => panic!("expected a Packet Identifier, got {other:?}"),
+            other @ sansio_mqtt_v5_types::PublishKind::FireAndForget => {
+                panic!("expected a Packet Identifier, got {other:?}")
+            }
         },
         other => panic!("expected PUBLISH, got {other:?}"),
     };
@@ -331,6 +353,10 @@ fn subscribe_with_empty_subscriptions_is_empty_subscribe() {
 /// property is never set, regardless of how many times the same topic is
 /// published.
 #[test]
+#[expect(
+    clippy::wildcard_enum_match_arm,
+    reason = "`ControlPacket` is `#[non_exhaustive]`; every packet but PUBLISH fails the test"
+)]
 fn outbound_publish_never_carries_a_topic_alias() {
     let mut client = Client::<Duration>::default();
     connect(&mut client);

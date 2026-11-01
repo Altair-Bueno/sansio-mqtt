@@ -15,7 +15,7 @@ use super::*;
 #[derive(Debug, PartialEq, Eq, Clone, bon::Builder)]
 #[non_exhaustive]
 pub struct Publish {
-    /// QoS-dependent delivery metadata (packet identifier, QoS,
+    /// QoS-dependent delivery metadata (packet identifier, `QoS`,
     /// duplicate flag).
     pub kind: PublishKind,
     /// Retain flag; when true the Server stores the message as the
@@ -39,20 +39,20 @@ pub struct Publish {
     pub properties: PublishProperties,
 }
 
-/// Discriminates between QoS 0 (no acknowledgement) and QoS 1/2
+/// Discriminates between `QoS` 0 (no acknowledgement) and `QoS` 1/2
 /// (identified, guaranteed-delivery) `PUBLISH` packets
 /// ([§3.3.1.2](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901103)).
 ///
-/// The Packet Identifier is only present for QoS > 0
+/// The Packet Identifier is only present for `QoS` > 0
 /// ([MQTT-2.2.1-2], [MQTT-2.2.1-3]). Models the two flavours with
 /// distinct variants to keep the invariant at the type level.
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum PublishKind {
-    /// QoS 0 PUBLISH: no Packet Identifier, no acknowledgement
+    /// `QoS` 0 PUBLISH: no Packet Identifier, no acknowledgement
     /// ([§4.3.1](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901235),
     /// [MQTT-3.3.1-2]).
     FireAndForget,
-    /// QoS 1 or 2 PUBLISH: carries a Packet Identifier and may be a
+    /// `QoS` 1 or 2 PUBLISH: carries a Packet Identifier and may be a
     /// duplicate retransmission
     /// ([§4.3.2](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901236),
     /// [§4.3.3](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901237),
@@ -60,7 +60,7 @@ pub enum PublishKind {
     Repetible {
         /// Packet Identifier; non-zero per [MQTT-2.2.1-3].
         packet_id: NonZero<u16>,
-        /// Delivery QoS (1 or 2 only; QoS 0 uses
+        /// Delivery `QoS` (1 or 2 only; `QoS` 0 uses
         /// [`PublishKind::FireAndForget`]).
         qos: GuaranteedQoS,
         /// Duplicate delivery flag
@@ -74,12 +74,12 @@ pub enum PublishKind {
 /// ([§3.3.1](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901101)).
 ///
 /// Unlike other packets, `PUBLISH` header flags are not fixed: they
-/// carry DUP, QoS and RETAIN. Conformance: `[MQTT-3.3.1-1]`,
+/// carry DUP, `QoS` and RETAIN. Conformance: `[MQTT-3.3.1-1]`,
 /// `[MQTT-3.3.1-2]`, `[MQTT-3.3.1-3]`, `[MQTT-3.3.1-4]`.
 #[derive(Debug, PartialEq, Eq, Clone, Copy, bon::Builder)]
 #[non_exhaustive]
 pub struct PublishHeaderFlags {
-    /// Split-out DUP and QoS fields.
+    /// Split-out DUP and `QoS` fields.
     pub kind: PublishHeaderFlagsKind,
     /// RETAIN flag; see [`Publish::retain`].
     #[builder(default)]
@@ -87,34 +87,34 @@ pub struct PublishHeaderFlags {
 }
 
 impl From<PublishHeaderFlags> for u8 {
-    fn from(flags: PublishHeaderFlags) -> u8 {
+    fn from(flags: PublishHeaderFlags) -> Self {
         let mut byte = 0u8;
 
-        byte |= u8::from(flags.retain);
+        byte |= Self::from(flags.retain);
         match flags.kind {
             PublishHeaderFlagsKind::Simple => (),
             PublishHeaderFlagsKind::Advanced { qos, dup } => {
-                byte |= u8::from(qos) << 1;
-                byte |= u8::from(dup) << 3;
+                byte |= Self::from(qos) << 1;
+                byte |= Self::from(dup) << 3;
             }
-        };
+        }
 
         byte
     }
 }
 
-/// DUP and QoS portion of the `PUBLISH` fixed-header flag byte
+/// DUP and `QoS` portion of the `PUBLISH` fixed-header flag byte
 /// ([§3.3.1](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901101)).
 ///
-/// DUP MUST be 0 for QoS 0 messages ([MQTT-3.3.1-2]); modelled with
+/// DUP MUST be 0 for `QoS` 0 messages ([MQTT-3.3.1-2]); modelled with
 /// separate `Simple` / `Advanced` variants.
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum PublishHeaderFlagsKind {
-    /// QoS 0 PUBLISH; DUP MUST be 0 ([MQTT-3.3.1-2]).
+    /// `QoS` 0 PUBLISH; DUP MUST be 0 ([MQTT-3.3.1-2]).
     Simple,
-    /// QoS 1 or 2 PUBLISH; carries DUP and QoS ([MQTT-3.3.1-1]).
+    /// `QoS` 1 or 2 PUBLISH; carries DUP and `QoS` ([MQTT-3.3.1-1]).
     Advanced {
-        /// Delivery QoS (1 or 2 only).
+        /// Delivery `QoS` (1 or 2 only).
         qos: GuaranteedQoS,
         /// DUP flag.
         dup: bool,

@@ -1,9 +1,54 @@
 use core::num::NonZero;
 
-use super::*;
+use super::BytesSource;
+use super::ParserSettings;
+use super::basic::two_byte_integer;
+use super::basic::variable_byte_integer;
+use super::properties::push_capped;
+use super::properties::set_once;
+use crate::AuthenticationKind;
+use crate::BinaryData;
+use crate::BinaryDataError;
+use crate::Connect;
+use crate::ConnectHeaderFlags;
+use crate::ConnectProperties;
+use crate::InvalidPropertyTypeError;
+use crate::InvalidQosError;
+use crate::PropertiesError;
+use crate::Property;
+use crate::PropertyType;
+use crate::Qos;
+use crate::TooManyUserPropertiesError;
+use crate::Topic;
+use crate::TopicError;
+use crate::UnknownFormatIndicatorError;
+use crate::UnsupportedPropertyError;
+use crate::Utf8String;
+use crate::Utf8StringError;
+use crate::Will;
+use crate::WillProperties;
+use core::any::type_name;
+use core::num::TryFromIntError;
+use core::str::Utf8Error;
+use winnow::Parser;
+use winnow::binary;
+use winnow::binary::bits;
+use winnow::binary::bits::Bits;
+use winnow::combinator;
+use winnow::error::AddContext;
+use winnow::error::ErrorConvert;
+use winnow::error::FromExternalError;
+use winnow::error::ParserError;
+use winnow::error::Result;
+use winnow::error::StrContext;
+use winnow::error::StrContextValue;
+use winnow::stream::Stream;
+use winnow::stream::StreamIsPartial;
+use winnow::stream::UpdateSlice;
+use winnow::token;
 
 #[inline]
-pub fn flags<Input, BitError, ByteError>(
+pub(super) fn flags<Input, BitError, ByteError>(
     input: &mut Input,
 ) -> Result<(bool, bool, bool, Qos, bool, bool), ByteError>
 where
@@ -40,6 +85,7 @@ impl Connect {
     /// Returns a parser for the body of a `CONNECT` packet
     /// ([§3.1](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901033)).
     #[inline]
+    #[must_use]
     pub fn parser<'input, 'settings, ByteInput, ByteError, BitError>(
         parser_settings: &'settings ParserSettings,
     ) -> impl Parser<ByteInput, Self, ByteError> + use<'input, 'settings, ByteInput, ByteError, BitError>
@@ -76,16 +122,14 @@ impl Connect {
             ) = (
                 combinator::trace("Protocol name", Utf8String::parser(parser_settings)),
                 combinator::trace("Protocol version", token::any),
-                self::flags::<_, BitError, _>.verify(
-                    |(_, _, will_retain, will_qos, will_flag, _)| {
-                        if *will_flag {
-                            true
-                        } else {
-                            !will_retain && *will_qos == Qos::AtMostOnce
-                        }
-                    },
-                ),
-                combinator::trace("Keep alive", self::two_byte_integer.map(NonZero::new)),
+                flags::<_, BitError, _>.verify(|(_, _, will_retain, will_qos, will_flag, _)| {
+                    if *will_flag {
+                        true
+                    } else {
+                        !will_retain && *will_qos == Qos::AtMostOnce
+                    }
+                }),
+                combinator::trace("Keep alive", two_byte_integer.map(NonZero::new)),
                 ConnectProperties::parser(parser_settings),
                 combinator::trace("Client identifier", Utf8String::parser(parser_settings)),
             )
@@ -128,16 +172,16 @@ impl Connect {
             )
                 .parse_next(input)?;
 
-            Ok(Connect {
+            Ok(Self {
                 protocol_name,
                 protocol_version,
                 clean_start,
                 client_identifier,
-                properties,
                 will,
                 user_name,
                 password,
                 keep_alive,
+                properties,
             })
         })
     }
@@ -147,6 +191,12 @@ impl ConnectHeaderFlags {
     /// Parses the 4-bit Fixed Header flags for `CONNECT`
     /// ([§3.1.1](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901034),
     /// [MQTT-3.1.1-1]).
+    ///
+    /// # Errors
+    ///
+    /// Fails when fewer than four bits remain or the flags are not the reserved
+    /// value `0b0000` required for `CONNECT`; the caller treats that as a
+    /// Malformed Packet.
     #[inline]
     pub fn parser<Input, Error>(input: &mut Bits<Input>) -> Result<Self, Error>
     where
@@ -203,12 +253,38 @@ impl ConnectProperties {
                              property| {
                                 let property_type = PropertyType::from(&property);
                                 match property {
-                                    Property::SessionExpiryInterval(value) => set_once(&mut properties.session_expiry_interval, value, property_type)?,Property::ReceiveMaximum(value) => set_once(&mut properties.receive_maximum, value, property_type)?,Property::MaximumPacketSize(value) => set_once(&mut properties.maximum_packet_size, value, property_type)?,Property::TopicAliasMaximum(value) => set_once(&mut properties.topic_alias_maximum, value, property_type)?,Property::RequestResponseInformation(value) => set_once(&mut properties.request_response_information, value, property_type)?,Property::RequestProblemInformation(value) => set_once(&mut properties.request_problem_information, value, property_type)?,Property::UserProperty(key, value) => push_capped(&mut properties.user_properties, (key, value), parser_settings.max_user_properties_len, PropertiesError::from(TooManyUserPropertiesError))?,Property::AuthenticationMethod(value) => set_once(&mut authentication_method, value, property_type)?,Property::AuthenticationData(value) => set_once(&mut authentication_data, value, property_type)?,_ => {
+                                    Property::SessionExpiryInterval(value) => set_once(&mut properties.session_expiry_interval, value, property_type)?,
+                                    Property::ReceiveMaximum(value) => set_once(&mut properties.receive_maximum, value, property_type)?,
+                                    Property::MaximumPacketSize(value) => set_once(&mut properties.maximum_packet_size, value, property_type)?,
+                                    Property::TopicAliasMaximum(value) => set_once(&mut properties.topic_alias_maximum, value, property_type)?,
+                                    Property::RequestResponseInformation(value) => set_once(&mut properties.request_response_information, value, property_type)?,
+                                    Property::RequestProblemInformation(value) => set_once(&mut properties.request_problem_information, value, property_type)?,
+                                    Property::UserProperty(key, value) => push_capped(&mut properties.user_properties, (key, value), parser_settings.max_user_properties_len, PropertiesError::from(TooManyUserPropertiesError))?,
+                                    Property::AuthenticationMethod(value) => set_once(&mut authentication_method, value, property_type)?,
+                                    Property::AuthenticationData(value) => set_once(&mut authentication_data, value, property_type)?,
+                                    Property::PayloadFormatIndicator(_)
+                                    | Property::MessageExpiryInterval(_)
+                                    | Property::ContentType(_)
+                                    | Property::ResponseTopic(_)
+                                    | Property::CorrelationData(_)
+                                    | Property::SubscriptionIdentifier(_)
+                                    | Property::AssignedClientIdentifier(_)
+                                    | Property::ServerKeepAlive(_)
+                                    | Property::WillDelayInterval(_)
+                                    | Property::ResponseInformation(_)
+                                    | Property::ServerReference(_)
+                                    | Property::ReasonString(_)
+                                    | Property::TopicAlias(_)
+                                    | Property::MaximumQoS(_)
+                                    | Property::RetainAvailable(_)
+                                    | Property::WildcardSubscriptionAvailable(_)
+                                    | Property::SubscriptionIdentifiersAvailable(_)
+                                    | Property::SharedSubscriptionAvailable(_) => {
                                         return Err(PropertiesError::from(
                                             UnsupportedPropertyError { property_type },
                                         ))
                                     }
-                                };
+                                }
                                 Ok((properties, authentication_data, authentication_method))
                             },
                         )
@@ -282,10 +358,10 @@ impl WillProperties {
                                     property_type,
                                 )?,
                                 Property::ContentType(value) => {
-                                    set_once(&mut properties.content_type, value, property_type)?
+                                    set_once(&mut properties.content_type, value, property_type)?;
                                 }
                                 Property::ResponseTopic(value) => {
-                                    set_once(&mut properties.response_topic, value, property_type)?
+                                    set_once(&mut properties.response_topic, value, property_type)?;
                                 }
                                 Property::CorrelationData(value) => set_once(
                                     &mut properties.correlation_data,
@@ -298,12 +374,31 @@ impl WillProperties {
                                     parser_settings.max_user_properties_len,
                                     PropertiesError::from(TooManyUserPropertiesError),
                                 )?,
-                                _ => {
+                                Property::SubscriptionIdentifier(_)
+                                | Property::SessionExpiryInterval(_)
+                                | Property::AssignedClientIdentifier(_)
+                                | Property::ServerKeepAlive(_)
+                                | Property::AuthenticationMethod(_)
+                                | Property::AuthenticationData(_)
+                                | Property::RequestProblemInformation(_)
+                                | Property::RequestResponseInformation(_)
+                                | Property::ResponseInformation(_)
+                                | Property::ServerReference(_)
+                                | Property::ReasonString(_)
+                                | Property::ReceiveMaximum(_)
+                                | Property::TopicAliasMaximum(_)
+                                | Property::TopicAlias(_)
+                                | Property::MaximumQoS(_)
+                                | Property::RetainAvailable(_)
+                                | Property::MaximumPacketSize(_)
+                                | Property::WildcardSubscriptionAvailable(_)
+                                | Property::SubscriptionIdentifiersAvailable(_)
+                                | Property::SharedSubscriptionAvailable(_) => {
                                     return Err(PropertiesError::from(UnsupportedPropertyError {
                                         property_type,
                                     }));
                                 }
-                            };
+                            }
                             Ok(properties)
                         },
                     ),
