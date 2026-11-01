@@ -289,18 +289,19 @@ fn build_outbound_publish(
     Ok((publish, inflight_state))
 }
 
-impl<T> StateHandler<T> for Connected
-where
-    T: Time,
-{
-    fn handle_control_packet(
+impl Connected {
+    /// Handles a control packet read from the open socket.
+    pub(crate) fn handle_control_packet<T>(
         self,
         settings: &ClientSettings,
         session: &mut ClientSession,
         scratchpad: &mut ClientScratchpad<T>,
         packet: ControlPacket,
         _received_at: T,
-    ) -> (ClientState, Result<(), Error>) {
+    ) -> (ClientState, Result<(), Error>)
+    where
+        T: Time,
+    {
         match packet {
             ControlPacket::Publish(mut publish) => {
                 if let Err(reason) =
@@ -507,7 +508,12 @@ where
             _ => fail_with_protocol_error(settings, session, scratchpad),
         }
     }
+}
 
+impl<T> StateHandler<T> for Connected
+where
+    T: Time,
+{
     fn handle_write(
         self,
         settings: &ClientSettings,

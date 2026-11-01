@@ -210,25 +210,22 @@ where
     (ClientState::Connected(Connected), Ok(()))
 }
 
-impl<T> StateHandler<T> for Connecting
-where
-    T: Time,
-{
-    fn handle_control_packet(
+impl Connecting {
+    /// Handles a control packet read from the open socket.
+    ///
+    /// Only called while CONNACK is awaited: `Client::handle_read` parses no
+    /// packet unless [`has_open_socket`](Self::has_open_socket) holds.
+    pub(crate) fn handle_control_packet<T>(
         self,
         settings: &ClientSettings,
         session: &mut ClientSession,
         scratchpad: &mut ClientScratchpad<T>,
         packet: ControlPacket,
         received_at: T,
-    ) -> (ClientState, Result<(), Error>) {
-        if !self.has_open_socket() {
-            // No socket yet, so no packet can legitimately have arrived.
-            return (
-                ClientState::Connecting(self),
-                Err(Error::InvalidStateTransition),
-            );
-        }
+    ) -> (ClientState, Result<(), Error>)
+    where
+        T: Time,
+    {
         match packet {
             ControlPacket::ConnAck(connack) => {
                 on_connack(settings, session, scratchpad, connack, received_at)
@@ -247,7 +244,12 @@ where
             _ => fail_with_protocol_error(settings, session, scratchpad),
         }
     }
+}
 
+impl<T> StateHandler<T> for Connecting
+where
+    T: Time,
+{
     fn handle_write(
         self,
         settings: &ClientSettings,
@@ -278,16 +280,12 @@ where
             (ConnectingPhase::AwaitingSocket { connect }, DriverEvent::SocketConnected) => {
                 on_socket_connected(settings, session, scratchpad, connect)
             }
-            // The socket is already open: the protocol did not ask for
-            // another one.
-            (phase @ ConnectingPhase::AwaitingConnAck, DriverEvent::SocketConnected) => (
-                ClientState::Connecting(Connecting { phase }),
-                Err(Error::InvalidStateTransition),
-            ),
             // `OpenSocket` failed, or the open socket was lost before CONNACK.
             (_, DriverEvent::SocketClosed | DriverEvent::SocketError) => {
                 on_socket_lost(settings, session, scratchpad)
             }
+            // A `SocketConnected` while awaiting CONNACK: the socket is
+            // already open and the protocol did not ask for another one.
             (phase, _) => (
                 ClientState::Connecting(Connecting { phase }),
                 Err(Error::InvalidStateTransition),
