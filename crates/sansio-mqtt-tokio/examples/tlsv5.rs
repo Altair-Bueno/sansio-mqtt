@@ -1,11 +1,12 @@
 //! Connects over TLS, publishes to a topic it is subscribed to and prints
 //! what it receives. Uses `test.mosquitto.org:8886` (publicly trusted
 //! certificate) unless `MQTT_TLS_HOST` / `MQTT_TLS_PORT` say otherwise;
-//! `MQTT_TLS_CA` names a PEM file of certificates to trust instead of the
-//! public roots.
+//! the broker's certificate is checked with the operating system's verifier,
+//! or against the PEM file of certificates `MQTT_TLS_CA` names.
 
 use std::sync::Arc;
 
+use rustls_platform_verifier::BuilderVerifierExt;
 use sansio_mqtt_protocol::Command;
 use sansio_mqtt_protocol::ConnectOptions;
 use sansio_mqtt_protocol::Event;
@@ -20,6 +21,7 @@ use sansio_mqtt_tokio::rustls::RootCertStore;
 use sansio_mqtt_tokio::rustls::pki_types::CertificateDer;
 use sansio_mqtt_tokio::rustls::pki_types::ServerName;
 use sansio_mqtt_tokio::rustls::pki_types::pem::PemObject;
+use sansio_mqtt_tokio::tokio_rustls;
 use sansio_mqtt_v5_protocol::Client;
 use tracing::level_filters::LevelFilter;
 use tracing_subscriber::EnvFilter;
@@ -37,23 +39,27 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let host = std::env::var("MQTT_TLS_HOST").unwrap_or_else(|_| "test.mosquitto.org".to_owned());
     let port: u16 = std::env::var("MQTT_TLS_PORT").map_or(Ok(8886), |port| port.parse())?;
 
-    // Trust the certificates in the PEM file `MQTT_TLS_CA` names, or the
-    // usual public roots.
-    let mut roots = RootCertStore::empty();
-    match std::env::var("MQTT_TLS_CA") {
+    // Verify the broker with the operating system's certificate verifier,
+    // like a browser would, or trust only the PEM file `MQTT_TLS_CA` names.
+    let config = match std::env::var("MQTT_TLS_CA") {
         Ok(path) => {
+            let mut roots = RootCertStore::empty();
             for certificate in CertificateDer::pem_file_iter(path)? {
                 roots.add(certificate?)?;
             }
+            ClientConfig::builder()
+                .with_root_certificates(roots)
+                .with_no_client_auth()
         }
-        Err(_) => roots.extend(webpki_roots::TLS_SERVER_ROOTS.iter().cloned()),
-    }
-    let tls = ClientConfig::builder()
-        .with_root_certificates(roots)
-        .with_no_client_auth();
+        Err(_) => ClientConfig::builder()
+            .with_platform_verifier()?
+            .with_no_client_auth(),
+    };
+    // The TLS context: cheap to clone, shareable by every connector.
+    let tls = tokio_rustls::TlsConnector::from(Arc::new(config));
     let connector = TlsConnector::new(
         TcpConnector::new((host.clone(), port)),
-        Arc::new(tls),
+        tls,
         ServerName::try_from(host)?,
     );
     let mut driver = Driver::new(Client::default(), connector);

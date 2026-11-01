@@ -1,18 +1,19 @@
 use std::future::Future;
 use std::io;
 use std::pin::Pin;
-use std::sync::Arc;
 use tokio_rustls::client::TlsStream;
-use tokio_rustls::rustls::ClientConfig;
 use tokio_rustls::rustls::pki_types::ServerName;
 
 use crate::Connector;
 
 /// Runs TLS over the sockets another [`Connector`] opens, using rustls.
 ///
-/// The server's certificate is verified against `config` for
-/// `server_name`, e.g.
-/// `TlsConnector::new(TcpConnector::new("broker.example:8883"), config, name)`.
+/// `tls` is the shared TLS context: a [`tokio_rustls::TlsConnector`] built
+/// from a rustls `ClientConfig` (e.g. one verifying certificates with the
+/// operating system's verifier through `rustls-platform-verifier`). Cloning it
+/// is cheap and shares the configuration, so one context can serve every
+/// connector. The server's certificate is verified for `server_name`, e.g.
+/// `TlsConnector::new(TcpConnector::new("broker.example:8883"), tls, name)`.
 #[derive(Clone)]
 pub struct TlsConnector<C> {
     inner: C,
@@ -22,11 +23,15 @@ pub struct TlsConnector<C> {
 
 impl<C> TlsConnector<C> {
     /// Creates a connector that opens a socket with `inner` and runs a TLS
-    /// handshake with `server_name` over it.
-    pub fn new(inner: C, config: Arc<ClientConfig>, server_name: ServerName<'static>) -> Self {
+    /// handshake with `server_name` over it using the `tls` context.
+    pub fn new(
+        inner: C,
+        tls: tokio_rustls::TlsConnector,
+        server_name: ServerName<'static>,
+    ) -> Self {
         Self {
             inner,
-            tls: tokio_rustls::TlsConnector::from(config),
+            tls,
             server_name,
         }
     }

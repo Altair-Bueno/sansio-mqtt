@@ -22,7 +22,7 @@ rustls = ["dep:thiserror", "dep:tokio-rustls"]
 
 [dev-dependencies]
 rcgen = { workspace = true, features = ["crypto", "pem", "ring"] }
-webpki-roots = { workspace = true }
+rustls-platform-verifier = { workspace = true }
 tokio-rustls = { workspace = true, features = ["logging", "ring", "tls12"] }
 sansio = { workspace = true }
 semver = { workspace = true }
