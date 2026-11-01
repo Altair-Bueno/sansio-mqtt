@@ -57,4 +57,8 @@ required-features = ["websocket"]
 
 [[example]]
 name = "wsv5"
-required-features = ["websocket"]
+required-features = ["rustls", "websocket"]
+
+[[test]]
+name = "secure_websocket_connector"
+required-features = ["rustls", "websocket"]
