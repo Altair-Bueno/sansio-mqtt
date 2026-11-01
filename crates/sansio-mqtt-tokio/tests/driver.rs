@@ -9,6 +9,11 @@ use std::collections::VecDeque;
 use std::io;
 use std::num::NonZero;
 use std::pin::Pin;
+use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering;
+use std::task::Context;
+use std::task::Poll;
 use std::time::Duration;
 
 use bytes::Bytes;
@@ -33,10 +38,14 @@ use sansio_mqtt_v5_types::ControlPacket;
 use sansio_mqtt_v5_types::DisconnectReasonCode;
 use sansio_mqtt_v5_types::ParserSettings;
 use sansio_mqtt_v5_types::PingReq;
+use tokio::io::AsyncBufRead;
+use tokio::io::AsyncRead;
 use tokio::io::AsyncReadExt;
+use tokio::io::AsyncWrite;
 use tokio::io::AsyncWriteExt;
 use tokio::io::BufReader;
 use tokio::io::DuplexStream;
+use tokio::io::ReadBuf;
 use tokio::io::duplex;
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
@@ -99,7 +108,81 @@ enum Dial {
     Hang,
 }
 
-type Socket = BufReader<DuplexStream>;
+/// Socket operations a test makes fail on one connection.
+#[derive(Debug, Default)]
+struct Faults {
+    read: AtomicBool,
+    write: AtomicBool,
+    write_zero: AtomicBool,
+    flush: AtomicBool,
+    shutdown: AtomicBool,
+}
+
+/// The client side of a connection, failing whichever operations its
+/// [`Faults`] select.
+struct Socket {
+    inner: BufReader<DuplexStream>,
+    faults: Arc<Faults>,
+}
+
+fn injected_fault() -> io::Error {
+    io::Error::other("injected fault")
+}
+
+impl AsyncRead for Socket {
+    fn poll_read(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &mut ReadBuf<'_>,
+    ) -> Poll<io::Result<()>> {
+        Pin::new(&mut self.inner).poll_read(cx, buf)
+    }
+}
+
+impl AsyncBufRead for Socket {
+    fn poll_fill_buf(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<&[u8]>> {
+        let this = self.get_mut();
+        if this.faults.read.load(Ordering::SeqCst) {
+            return Poll::Ready(Err(injected_fault()));
+        }
+        Pin::new(&mut this.inner).poll_fill_buf(cx)
+    }
+
+    fn consume(mut self: Pin<&mut Self>, amt: usize) {
+        Pin::new(&mut self.inner).consume(amt);
+    }
+}
+
+impl AsyncWrite for Socket {
+    fn poll_write(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &[u8],
+    ) -> Poll<io::Result<usize>> {
+        if self.faults.write.load(Ordering::SeqCst) {
+            return Poll::Ready(Err(injected_fault()));
+        }
+        if self.faults.write_zero.load(Ordering::SeqCst) {
+            return Poll::Ready(Ok(0));
+        }
+        Pin::new(&mut self.inner).poll_write(cx, buf)
+    }
+
+    fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+        if self.faults.flush.load(Ordering::SeqCst) {
+            return Poll::Ready(Err(injected_fault()));
+        }
+        Pin::new(&mut self.inner).poll_flush(cx)
+    }
+
+    fn poll_shutdown(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+        if self.faults.shutdown.load(Ordering::SeqCst) {
+            return Poll::Ready(Err(injected_fault()));
+        }
+        Pin::new(&mut self.inner).poll_shutdown(cx)
+    }
+}
+
 type Dialing = Pin<Box<dyn Future<Output = io::Result<Socket>> + Send>>;
 
 /// Commands submitted back to back, with no `next` call in between.
@@ -110,6 +193,8 @@ struct Harness {
     events: mpsc::Receiver<Event>,
     /// Broker sides of the accepted connections, current one first.
     brokers: VecDeque<DuplexStream>,
+    /// Faults of the accepted connections, in the same order as `brokers`.
+    faults: VecDeque<Arc<Faults>>,
     inbound: BytesMut,
 }
 
@@ -129,14 +214,18 @@ impl Harness {
     fn spawn_with(dials: &[Dial], buffer: usize, settings: ClientSettings) -> Self {
         let mut attempts: VecDeque<Dialing> = VecDeque::new();
         let mut brokers = VecDeque::new();
+        let mut faults = VecDeque::new();
         for dial in dials {
             match dial {
                 Dial::Accept => {
                     let (client_side, broker) = duplex(buffer);
-                    attempts.push_back(Box::pin(std::future::ready(Ok(BufReader::new(
-                        client_side,
-                    )))));
+                    let socket_faults = Arc::new(Faults::default());
+                    attempts.push_back(Box::pin(std::future::ready(Ok(Socket {
+                        inner: BufReader::new(client_side),
+                        faults: Arc::clone(&socket_faults),
+                    }))));
                     brokers.push_back(broker);
+                    faults.push_back(socket_faults);
                 }
                 Dial::Refuse => attempts.push_back(Box::pin(std::future::ready(Err(
                     io::ErrorKind::ConnectionRefused.into(),
@@ -175,6 +264,7 @@ impl Harness {
             commands,
             events,
             brokers,
+            faults,
             inbound: BytesMut::new(),
         }
     }
@@ -207,6 +297,11 @@ impl Harness {
         self.brokers.front_mut().expect("no open broker connection")
     }
 
+    /// Faults of the current connection.
+    fn faults(&self) -> &Faults {
+        self.faults.front().expect("no open broker connection")
+    }
+
     async fn packet(&mut self) -> ControlPacket {
         let broker = self.brokers.front_mut().expect("no open broker connection");
         read_packet(broker, &mut self.inbound).await
@@ -226,6 +321,7 @@ impl Harness {
 
     fn next_connection(&mut self) {
         self.brokers.pop_front();
+        self.faults.pop_front();
         self.inbound.clear();
     }
 
@@ -506,5 +602,69 @@ async fn broker_that_never_sends_connack_times_out_and_the_socket_is_closed() {
     assert!(started.elapsed() >= connect_timeout);
     // No DISCONNECT: no session was ever established [MQTT-3.2.2-7].
     harness.expect_closed().await;
+    harness.connect().await;
+}
+
+#[tokio::test]
+async fn read_error_reports_disconnected_and_allows_reconnecting() {
+    let mut harness = Harness::spawn(&[Dial::Accept, Dial::Accept]);
+    harness.connect().await;
+
+    harness.faults().read.store(true, Ordering::SeqCst);
+    // Wakes the driver's pending read, which now fails.
+    harness.broker().write_all(&[0xD0]).await.unwrap();
+
+    assert_eq!(harness.event().await, Event::Disconnected(None));
+    harness.next_connection();
+    harness.connect().await;
+}
+
+/// Makes the next write of the current connection fail as selected by `fault`,
+/// then checks the driver reports the loss and can connect again.
+async fn assert_failed_write_allows_reconnecting(fault: fn(&Faults) -> &AtomicBool) {
+    let mut harness = Harness::spawn(&[Dial::Accept, Dial::Accept]);
+    harness.connect().await;
+
+    fault(harness.faults()).store(true, Ordering::SeqCst);
+    harness
+        .submit(publish_command(1, Bytes::from_static(b"lost")))
+        .await
+        .unwrap();
+
+    assert_eq!(harness.event().await, Event::Disconnected(None));
+    harness.next_connection();
+    harness.connect().await;
+}
+
+#[tokio::test]
+async fn write_error_reports_disconnected_and_allows_reconnecting() {
+    assert_failed_write_allows_reconnecting(|faults| &faults.write).await;
+}
+
+#[tokio::test]
+async fn zero_length_write_reports_disconnected_and_allows_reconnecting() {
+    assert_failed_write_allows_reconnecting(|faults| &faults.write_zero).await;
+}
+
+#[tokio::test]
+async fn flush_error_reports_disconnected_and_allows_reconnecting() {
+    assert_failed_write_allows_reconnecting(|faults| &faults.flush).await;
+}
+
+#[tokio::test]
+async fn failed_shutdown_still_releases_the_socket() {
+    let mut harness = Harness::spawn(&[Dial::Accept, Dial::Accept]);
+    harness.connect().await;
+
+    harness.faults().shutdown.store(true, Ordering::SeqCst);
+    harness.submit(Command::Disconnect).await.unwrap();
+    assert!(matches!(
+        harness.packet().await,
+        ControlPacket::Disconnect(_)
+    ));
+    // The socket is dropped even though shutting it down failed.
+    harness.expect_closed().await;
+    assert_eq!(harness.event().await, Event::Disconnected(None));
+
     harness.connect().await;
 }
