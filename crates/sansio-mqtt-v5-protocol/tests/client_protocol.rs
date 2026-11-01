@@ -32,6 +32,7 @@ use sansio_mqtt_v5_types::ConnAck;
 use sansio_mqtt_v5_types::ConnAckKind;
 use sansio_mqtt_v5_types::ConnAckProperties;
 use sansio_mqtt_v5_types::ConnackReasonCode;
+use sansio_mqtt_v5_types::Connect;
 use sansio_mqtt_v5_types::ControlPacket;
 use sansio_mqtt_v5_types::Disconnect;
 use sansio_mqtt_v5_types::DisconnectReasonCode;
@@ -207,7 +208,7 @@ fn settings(overrides: SettingsOverrides) -> ClientSettings {
         .maybe_topic_alias_maximum(overrides.topic_alias_maximum)
         .maybe_request_response_information(overrides.request_response_information)
         .maybe_request_problem_information(overrides.request_problem_information)
-        .maybe_keep_alive(overrides.keep_alive)
+        .keep_alive(overrides.keep_alive)
         .maybe_max_outgoing_qos(overrides.max_outgoing_qos)
         .allow_retain(overrides.allow_retain)
         .allow_wildcard_subscriptions(overrides.allow_wildcard_subscriptions)
@@ -246,6 +247,16 @@ fn connect_client(client: &mut Client<Duration>, options: ConnectOptions) -> Byt
 
 fn connect_default(client: &mut Client<Duration>) -> Bytes {
     connect_client(client, connect_options())
+}
+
+fn decode_connect(bytes: &Bytes) -> Connect {
+    match ControlPacket::parser::<_, ContextError, ContextError>(&ParserSettings::default())
+        .parse(bytes.as_ref())
+        .expect("connect packet should decode")
+    {
+        ControlPacket::Connect(connect) => connect,
+        other => panic!("expected CONNECT, got {other:?}"),
+    }
 }
 
 #[test]
@@ -359,7 +370,7 @@ fn client_settings_builder_defaults_match_default() {
     assert_eq!(ClientSettings::builder().build(), ClientSettings::default());
     assert!(
         ClientSettings::builder()
-            .keep_alive(NonZero::new(30).unwrap())
+            .keep_alive(NonZero::new(30))
             .build()
             .allow_retain,
         "setting an unrelated field must not disable retained messages"
@@ -383,7 +394,34 @@ fn client_settings_default_includes_permissive_negotiation_policy() {
     assert!(settings.allow_subscription_identifiers);
     assert!(settings.request_response_information.is_none());
     assert!(settings.request_problem_information.is_none());
-    assert!(settings.keep_alive.is_none());
+    assert_eq!(
+        settings.keep_alive,
+        Some(ClientSettings::DEFAULT_KEEP_ALIVE)
+    );
+}
+
+/// Keep-alive is on by default, so a connection that dies without a clean
+/// close (no FIN) is still detected [MQTT-3.1.2-22].
+#[test]
+fn default_client_sends_the_default_keep_alive_in_connect() {
+    assert_eq!(ClientSettings::DEFAULT_KEEP_ALIVE.get(), 60);
+    let mut client = Client::<Duration>::default();
+
+    let connect = decode_connect(&connect_default(&mut client));
+
+    assert_eq!(connect.keep_alive, Some(ClientSettings::DEFAULT_KEEP_ALIVE));
+}
+
+/// Keep-alive can still be turned off explicitly, which CONNECT encodes as 0.
+#[test]
+fn keep_alive_can_be_disabled_explicitly() {
+    let settings = ClientSettings::builder().keep_alive(None).build();
+    assert_eq!(settings.keep_alive, None);
+    let mut client = Client::<Duration>::new(settings);
+
+    let connect = decode_connect(&connect_default(&mut client));
+
+    assert_eq!(connect.keep_alive, None);
 }
 
 /// [Behaviour change] `DriverEvent::SocketConnected` before any

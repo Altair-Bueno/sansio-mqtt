@@ -54,8 +54,17 @@ pub struct ClientSettings {
     pub request_response_information: Option<bool>,
     /// Request Problem Information flag sent in CONNECT.
     pub request_problem_information: Option<bool>,
-    /// Keep Alive sent in CONNECT when
+    /// Keep Alive, in seconds, sent in CONNECT when
     /// [`sansio_mqtt_protocol::ConnectOptions::keep_alive`] is `None`.
+    ///
+    /// Keep-alive is what detects a connection that died without being
+    /// closed (lost network, idle NAT entry dropped, crashed peer): the client
+    /// pings when idle and gives up when no answer arrives [MQTT-3.1.2-22].
+    /// The server may still impose its own value in CONNACK. Defaults to
+    /// [`DEFAULT_KEEP_ALIVE`](Self::DEFAULT_KEEP_ALIVE); `None` turns
+    /// keep-alive off (sent as 0), which leaves such dead connections
+    /// undetected.
+    #[builder(required, default = Some(ClientSettings::DEFAULT_KEEP_ALIVE))]
     pub keep_alive: Option<NonZero<u16>>,
     /// Local cap on the QoS of outbound PUBLISH packets.
     ///
@@ -110,6 +119,8 @@ impl ClientSettings {
     pub const DEFAULT_MAXIMUM_PACKET_SIZE: NonZero<u32> = NonZero::new(1024 * 1024).unwrap();
     /// Default [`connect_timeout`](Self::connect_timeout): 30 seconds.
     pub const DEFAULT_CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
+    /// Default [`keep_alive`](Self::keep_alive): 60 seconds.
+    pub const DEFAULT_KEEP_ALIVE: NonZero<u16> = NonZero::new(60).unwrap();
 }
 
 impl Default for ClientSettings {
