@@ -84,18 +84,37 @@ impl ClientState {
             ClientState::Transitioning | ClientState::Disconnected(_) => false,
         }
     }
-}
 
-pub(crate) trait StateHandler<T>: Sized {
-    fn handle_control_packet(
+    /// Handles a control packet read from the open socket.
+    ///
+    /// `Client::handle_read` is the single place that enforces
+    /// [`has_open_socket`](Self::has_open_socket) before parsing, so only
+    /// [`Connecting`] (awaiting CONNACK) and [`Connected`] ever see a packet;
+    /// every other state rejects it unchanged.
+    pub(crate) fn handle_control_packet<T>(
         self,
         settings: &ClientSettings,
         session: &mut ClientSession,
         scratchpad: &mut ClientScratchpad<T>,
         packet: ControlPacket,
         received_at: T,
-    ) -> (ClientState, Result<(), Error>);
+    ) -> (ClientState, Result<(), Error>)
+    where
+        T: Time,
+    {
+        match self {
+            ClientState::Connecting(x) => {
+                x.handle_control_packet(settings, session, scratchpad, packet, received_at)
+            }
+            ClientState::Connected(x) => {
+                x.handle_control_packet(settings, session, scratchpad, packet, received_at)
+            }
+            state => (state, Err(Error::InvalidStateTransition)),
+        }
+    }
+}
 
+pub(crate) trait StateHandler<T>: Sized {
     fn handle_write(
         self,
         settings: &ClientSettings,
@@ -149,20 +168,6 @@ impl<T> StateHandler<T> for ClientState
 where
     T: Time,
 {
-    fn handle_control_packet(
-        self,
-        settings: &ClientSettings,
-        session: &mut ClientSession,
-        scratchpad: &mut ClientScratchpad<T>,
-        packet: ControlPacket,
-        received_at: T,
-    ) -> (ClientState, Result<(), Error>) {
-        forward_to_state!(
-            self,
-            handle_control_packet(settings, session, scratchpad, packet, received_at)
-        )
-    }
-
     fn handle_write(
         self,
         settings: &ClientSettings,

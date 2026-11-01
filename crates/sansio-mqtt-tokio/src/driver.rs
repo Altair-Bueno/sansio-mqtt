@@ -251,16 +251,13 @@ where
         if !self.needs_flush {
             return;
         }
-        let Connection::Open(socket) = &mut self.connection else {
-            self.needs_flush = false;
-            return;
-        };
-        let result = socket.flush().await;
-        self.needs_flush = false;
-        if let Err(error) = result {
+        if let Connection::Open(socket) = &mut self.connection
+            && let Err(error) = socket.flush().await
+        {
             tracing::warn!(%error, "failed to flush the socket");
             self.lose_socket(DriverEvent::SocketError);
         }
+        self.needs_flush = false;
     }
 
     fn perform_action(&mut self, action: DriverAction) {

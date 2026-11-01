@@ -75,21 +75,6 @@ impl<T> StateHandler<T> for Disconnected
 where
     T: Time,
 {
-    fn handle_control_packet(
-        self,
-        _settings: &ClientSettings,
-        _session: &mut ClientSession,
-        _scratchpad: &mut ClientScratchpad<T>,
-        _packet: ControlPacket,
-        _received_at: T,
-    ) -> (ClientState, Result<(), Error>) {
-        // No socket is open, so no packet can legitimately have arrived.
-        (
-            ClientState::Disconnected(self),
-            Err(Error::InvalidStateTransition),
-        )
-    }
-
     fn handle_write(
         self,
         settings: &ClientSettings,
@@ -123,18 +108,14 @@ where
         _at: T,
     ) -> (ClientState, Result<(), Error>) {
         match evt {
-            // The protocol never asked for a socket: reject it so stored
-            // connect options are not replayed on a socket the application did
-            // not request.
-            DriverEvent::SocketConnected => (
-                ClientState::Disconnected(self),
-                Err(Error::InvalidStateTransition),
-            ),
             // No socket is open (or it was already closed by the protocol):
             // nothing to tear down and no duplicate `Disconnected` to report.
             DriverEvent::SocketClosed | DriverEvent::SocketError => {
                 (ClientState::Disconnected(self), Ok(()))
             }
+            // A `SocketConnected`: the protocol never asked for a socket.
+            // Reject it so stored connect options are not replayed on a
+            // socket the application did not request.
             _ => (
                 ClientState::Disconnected(self),
                 Err(Error::InvalidStateTransition),
