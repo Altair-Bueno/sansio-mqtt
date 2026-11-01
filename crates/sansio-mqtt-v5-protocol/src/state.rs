@@ -224,3 +224,38 @@ where
         forward_to_state!(self, close(settings, session, scratchpad))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use core::time::Duration;
+    use sansio_mqtt_v5_types::PingResp;
+
+    /// `Client::handle_read` never parses without an open socket, so this
+    /// guard is unreachable through the public API; it must still reject the
+    /// packet and leave the state unchanged.
+    #[test]
+    fn packets_are_rejected_unchanged_without_an_open_socket() {
+        let settings = ClientSettings::default();
+        let mut session = ClientSession::default();
+        let mut scratchpad = ClientScratchpad::<Duration>::default();
+
+        for state in [
+            ClientState::Transitioning,
+            ClientState::Disconnected(Disconnected),
+        ] {
+            let (state, result) = state.handle_control_packet(
+                &settings,
+                &mut session,
+                &mut scratchpad,
+                ControlPacket::PingResp(PingResp {}),
+                Duration::ZERO,
+            );
+            assert_eq!(result, Err(Error::InvalidStateTransition));
+            assert!(matches!(
+                state,
+                ClientState::Transitioning | ClientState::Disconnected(_)
+            ));
+        }
+    }
+}

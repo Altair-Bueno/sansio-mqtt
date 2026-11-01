@@ -4374,3 +4374,101 @@ fn reconnect_from_disconnected_preserves_connect_options_for_effective_limit_rec
     );
     assert!(matches!(client.poll_read(), Some(Event::Message(_))));
 }
+
+#[test]
+fn outbound_qos1_puback_unspecified_error_is_reported() {
+    let mut client = Client::<Duration>::default();
+    connect_default(&mut client);
+
+    let qos1_message = message("test/topic", ProtoQos::AtLeastOnce, b"qos1");
+    assert_eq!(
+        client.handle_write(at_zero(Command::Publish {
+            token: 7,
+            message: qos1_message,
+        })),
+        Ok(())
+    );
+    assert!(client.poll_write().is_some());
+
+    let puback = ControlPacket::PubAck(
+        PubAck::builder()
+            .packet_id(NonZero::new(1).expect("non-zero packet id"))
+            .reason_code(PubAckReasonCode::UnspecifiedError)
+            .build(),
+    );
+    assert_eq!(read(&mut client, &puback), Ok(()));
+    assert_eq!(
+        client.poll_read(),
+        Some(Event::PublishAcknowledged {
+            token: 7,
+            reason: ReasonCode::UnspecifiedError,
+        })
+    );
+}
+
+#[test]
+fn outbound_qos2_pubrec_unspecified_error_drops_the_publish() {
+    let mut client = Client::<Duration>::default();
+    connect_default(&mut client);
+
+    let qos2_message = message("test/topic", ProtoQos::ExactlyOnce, b"qos2");
+    assert_eq!(
+        client.handle_write(at_zero(Command::Publish {
+            token: 8,
+            message: qos2_message,
+        })),
+        Ok(())
+    );
+    assert!(client.poll_write().is_some());
+
+    let pubrec = ControlPacket::PubRec(
+        PubRec::builder()
+            .packet_id(NonZero::new(1).expect("non-zero packet id"))
+            .reason_code(PubRecReasonCode::UnspecifiedError)
+            .build(),
+    );
+    assert_eq!(read(&mut client, &pubrec), Ok(()));
+    assert_eq!(
+        client.poll_read(),
+        Some(Event::PublishDropped {
+            token: 8,
+            reason: DropReason::BrokerRejected(ReasonCode::UnspecifiedError),
+        })
+    );
+}
+
+#[test]
+fn server_disconnect_with_unspecified_error_is_forwarded() {
+    let mut client = Client::<Duration>::default();
+    connect_default(&mut client);
+
+    let server_disconnect = ControlPacket::Disconnect(
+        Disconnect::builder()
+            .reason_code(DisconnectReasonCode::UnspecifiedError)
+            .build(),
+    );
+    assert_eq!(read(&mut client, &server_disconnect), Ok(()));
+    assert_eq!(
+        client.poll_read(),
+        Some(Event::Disconnected(Some(ReasonCode::UnspecifiedError)))
+    );
+}
+
+/// [MQTT-1.5.5-1] A Subscription Identifier above `268_435_455` has no Variable
+/// Byte Integer encoding, so the SUBSCRIBE cannot be sent.
+#[test]
+fn subscribe_identifier_above_variable_byte_integer_maximum_is_rejected() {
+    let mut client = Client::<Duration>::default();
+    connect_default(&mut client);
+
+    assert_eq!(
+        client.handle_write(at_zero(Command::Subscribe(
+            SubscribeOptions::builder()
+                .subscriptions(vec![app_subscription("topic/a")])
+                .identifier(NonZero::new(268_435_456_u64).expect("non-zero identifier"))
+                .build(),
+        ))),
+        Err(Error::PacketTooLarge)
+    );
+    assert_eq!(client.poll_write(), None);
+}
