@@ -14,12 +14,12 @@ use sansio_mqtt_v5_types::Topic;
 /// `Event::PublishAcknowledged`/`PublishCompleted`/`PublishDropped`.
 #[derive(Debug)]
 pub(crate) enum OutboundInflightState {
-    /// QoS1: sent, awaiting PUBACK ([MQTT-4.3.2-3]).
+    /// `QoS` 1: sent, awaiting PUBACK ([MQTT-4.3.2-3]).
     Qos1AwaitPubAck { token: u64, publish: Publish },
-    /// QoS2: sent, awaiting PUBREC ([MQTT-4.3.3-3]).
+    /// `QoS` 2: sent, awaiting PUBREC ([MQTT-4.3.3-3]).
     Qos2AwaitPubRec { token: u64, publish: Publish },
-    /// QoS2: PUBREL sent, awaiting PUBCOMP ([MQTT-4.3.3-5]). The PUBLISH is no
-    /// longer retained, since only the PUBREL is retransmitted from here.
+    /// `QoS` 2: PUBREL sent, awaiting PUBCOMP ([MQTT-4.3.3-5]). The PUBLISH is
+    /// no longer retained, since only the PUBREL is retransmitted from here.
     Qos2AwaitPubComp { token: u64 },
 }
 
@@ -37,14 +37,16 @@ impl OutboundInflightState {
 /// Where an inbound QoS1/QoS2 PUBLISH is in its acknowledgement exchange.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum InboundInflightState {
-    /// QoS1: delivered to the application, awaiting its accept/reject decision.
+    /// `QoS` 1: delivered to the application, awaiting its accept/reject
+    /// decision.
     Qos1AwaitAppDecision,
-    /// QoS2: delivered to the application, awaiting its accept/reject decision.
+    /// `QoS` 2: delivered to the application, awaiting its accept/reject
+    /// decision.
     Qos2AwaitAppDecision,
-    /// QoS2: PUBREC sent, awaiting PUBREL ([MQTT-4.3.3-2]).
+    /// `QoS` 2: PUBREC sent, awaiting PUBREL ([MQTT-4.3.3-2]).
     Qos2AwaitPubRel,
-    /// QoS2: the application rejected the message with this Reason Code, which
-    /// is repeated if the server redelivers the PUBLISH.
+    /// `QoS` 2: the application rejected the message with this Reason Code,
+    /// which is repeated if the server redelivers the PUBLISH.
     Qos2Rejected(PubRecReasonCode),
 }
 
@@ -56,7 +58,7 @@ pub(crate) enum InboundInflightState {
 /// single-threaded FSM: messages on the same topic are processed in the order
 /// they arrive from the network. Cross-topic ordering is intentionally not
 /// guaranteed and is not required by the spec; the `on_flight_sent` map
-/// preserves per-stream QoS ordering but makes no promises across distinct
+/// preserves per-stream `QoS` ordering but makes no promises across distinct
 /// topics.
 #[derive(Debug)]
 pub(crate) struct ClientSession {

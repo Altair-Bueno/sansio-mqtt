@@ -1,9 +1,15 @@
 //! [`TlsConnector`] against a rustls server on the loopback interface, using
 //! a throwaway self-signed certificate for `localhost`.
 #![cfg(feature = "rustls")]
+#![expect(
+    clippy::unwrap_used,
+    reason = "test helpers fail the test on setup errors by design"
+)]
 
-use std::sync::Arc;
-use std::time::Duration;
+extern crate alloc;
+
+use alloc::sync::Arc;
+use core::time::Duration;
 
 use sansio_mqtt_protocol::ByteString;
 use sansio_mqtt_protocol::Command;
@@ -17,7 +23,7 @@ use sansio_mqtt_tokio::rustls::RootCertStore;
 use sansio_mqtt_tokio::rustls::ServerConfig;
 use sansio_mqtt_tokio::rustls::pki_types::ServerName;
 use sansio_mqtt_v5_protocol::Client;
-use tokio::io::AsyncReadExt;
+use tokio::io::AsyncReadExt as _;
 use tokio::net::TcpListener;
 use tokio::time::Instant;
 use tokio::time::timeout;
@@ -98,8 +104,8 @@ async fn tls_connector_untrusted_certificate_reports_disconnected() {
     let server = async {
         let (tcp, _) = listener.accept().await.unwrap();
         // The client aborts the handshake; the server side just fails.
-        let _ = acceptor.accept(tcp).await;
-        std::future::pending::<()>().await;
+        drop(acceptor.accept(tcp).await);
+        core::future::pending::<()>().await;
     };
     tokio::select! {
         () = server => unreachable!(),

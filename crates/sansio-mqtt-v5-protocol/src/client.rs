@@ -1,11 +1,10 @@
 use crate::limits;
 use crate::scratchpad::ClientScratchpad;
 use crate::session::ClientSession;
+use crate::settings::ClientSettings;
 use crate::state::ClientState;
-use crate::state::StateHandler;
-use bytes::Buf;
-use core::num::NonZero;
-use core::time::Duration;
+use crate::state::StateHandler as _;
+use bytes::Buf as _;
 use sansio::Protocol;
 use sansio_mqtt_protocol::Command;
 use sansio_mqtt_protocol::DriverAction;
@@ -14,120 +13,15 @@ use sansio_mqtt_protocol::Error;
 use sansio_mqtt_protocol::Event;
 use sansio_mqtt_protocol::IncomingData;
 use sansio_mqtt_protocol::MqttProtocol;
-use sansio_mqtt_protocol::Qos;
 use sansio_mqtt_protocol::Time;
 use sansio_mqtt_protocol::Timestamped;
 use sansio_mqtt_v5_types::ControlPacket;
 use sansio_mqtt_v5_types::DisconnectReasonCode;
 use sansio_mqtt_v5_types::ParserSettings;
 use sansio_mqtt_v5_types::variable_byte_integer;
-use winnow::Parser;
+use winnow::Parser as _;
 use winnow::error::ErrMode;
 use winnow::stream::Partial;
-
-/// Configuration for a [`Client`].
-///
-/// Every limit here is the single source of truth: the values that end up in
-/// the CONNECT packet, the caps enforced on outbound traffic, and the caps fed
-/// to the inbound parser are all derived from this struct alone (there is no
-/// longer a separate per-connect override).
-#[derive(Debug, Clone, PartialEq, Eq, bon::Builder)]
-#[non_exhaustive]
-pub struct ClientSettings {
-    /// Receive Maximum advertised in CONNECT
-    /// ([MQTT-3.1.2-23]).
-    pub receive_maximum: Option<NonZero<u16>>,
-    /// Maximum Packet Size, counting the whole packet, that the client
-    /// accepts from the server.
-    ///
-    /// Always advertised in CONNECT and enforced on every inbound packet, so
-    /// a compliant server never sends a packet the client cannot process
-    /// [MQTT-3.1.2-24]. A larger packet is answered with DISCONNECT 0x95
-    /// (Packet too large). Defaults to
-    /// [`DEFAULT_MAXIMUM_PACKET_SIZE`](Self::DEFAULT_MAXIMUM_PACKET_SIZE).
-    #[builder(default = ClientSettings::DEFAULT_MAXIMUM_PACKET_SIZE)]
-    pub maximum_packet_size: NonZero<u32>,
-    /// Topic Alias Maximum advertised in CONNECT, bounding the Topic Aliases
-    /// the client will accept from the server.
-    pub topic_alias_maximum: Option<u16>,
-    /// Request Response Information flag sent in CONNECT.
-    pub request_response_information: Option<bool>,
-    /// Request Problem Information flag sent in CONNECT.
-    pub request_problem_information: Option<bool>,
-    /// Keep Alive, in seconds, sent in every CONNECT and enforced by the
-    /// client for the whole connection.
-    ///
-    /// Keep-alive is what detects a connection that died without being
-    /// closed (lost network, idle NAT entry dropped, crashed peer): the client
-    /// pings when idle and gives up when no answer arrives [MQTT-3.1.2-22].
-    /// The server may still impose its own value in CONNACK. Defaults to
-    /// [`DEFAULT_KEEP_ALIVE`](Self::DEFAULT_KEEP_ALIVE); `None` turns
-    /// keep-alive off (sent as 0), which leaves such dead connections
-    /// undetected.
-    #[builder(required, default = Some(ClientSettings::DEFAULT_KEEP_ALIVE))]
-    pub keep_alive: Option<NonZero<u16>>,
-    /// Local cap on the QoS of outbound PUBLISH packets.
-    ///
-    /// `Some(Qos::ExactlyOnce)` and `None` both mean "no local cap"; the
-    /// server-advertised Maximum QoS is still enforced regardless.
-    pub max_outgoing_qos: Option<Qos>,
-    /// Whether outbound PUBLISH may set the RETAIN flag.
-    #[builder(default = true)]
-    pub allow_retain: bool,
-    /// Whether outbound SUBSCRIBE may use wildcard Topic Filters.
-    #[builder(default = true)]
-    pub allow_wildcard_subscriptions: bool,
-    /// Whether outbound SUBSCRIBE may use `$share/` Topic Filters.
-    #[builder(default = true)]
-    pub allow_shared_subscriptions: bool,
-    /// Whether outbound SUBSCRIBE may carry a Subscription Identifier.
-    #[builder(default = true)]
-    pub allow_subscription_identifiers: bool,
-    /// Maximum number of User Property entries accepted in any inbound
-    /// property section.
-    #[builder(default = 32)]
-    pub max_user_properties: usize,
-    /// Maximum number of Subscription Identifiers accepted in a single
-    /// inbound PUBLISH.
-    #[builder(default = 32)]
-    pub max_subscription_identifiers: usize,
-    /// Maximum number of Topic Filters accepted in a single inbound
-    /// SUBSCRIBE.
-    #[builder(default = 32)]
-    pub max_subscriptions: u32,
-    /// How long a connection attempt may take, from the
-    /// [`Command::Connect`] that starts it until CONNACK arrives.
-    ///
-    /// The deadline is measured from the instant the `Connect` command is
-    /// stamped with and covers both opening the socket (including any TLS
-    /// handshake the driver performs) and waiting for CONNACK; it is not
-    /// restarted when the socket connects. When it elapses the client gives
-    /// up on the attempt: it withdraws or cancels the socket request, or
-    /// closes the socket without sending DISCONNECT, and reports
-    /// [`Event::Disconnected(None)`](Event::Disconnected). "If the Client
-    /// does not receive a CONNACK packet from the Server within a reasonable
-    /// amount of time, the Client SHOULD close the Network Connection"
-    /// (MQTT v5.0 §3.2). Once CONNACK arrives, the keep-alive deadline (if
-    /// any) takes its place. Defaults to
-    /// [`DEFAULT_CONNECT_TIMEOUT`](Self::DEFAULT_CONNECT_TIMEOUT).
-    #[builder(default = ClientSettings::DEFAULT_CONNECT_TIMEOUT)]
-    pub connect_timeout: Duration,
-}
-
-impl ClientSettings {
-    /// Default [`maximum_packet_size`](Self::maximum_packet_size): 1 MiB.
-    pub const DEFAULT_MAXIMUM_PACKET_SIZE: NonZero<u32> = NonZero::new(1024 * 1024).unwrap();
-    /// Default [`connect_timeout`](Self::connect_timeout): 30 seconds.
-    pub const DEFAULT_CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
-    /// Default [`keep_alive`](Self::keep_alive): 60 seconds.
-    pub const DEFAULT_KEEP_ALIVE: NonZero<u16> = NonZero::new(60).unwrap();
-}
-
-impl Default for ClientSettings {
-    fn default() -> Self {
-        Self::builder().build()
-    }
-}
 
 /// MQTT v5.0 client state machine.
 ///
@@ -153,6 +47,7 @@ impl<T> Default for Client<T> {
 
 impl<T> Client<T> {
     /// Creates a new client in the initial (disconnected) state.
+    #[must_use]
     pub fn new(settings: ClientSettings) -> Self {
         let mut client = Self {
             settings,
@@ -176,14 +71,13 @@ impl<T> Client<T> {
             .max_bytes_binary_data(u16::MAX)
             // Remaining Length never exceeds the whole packet size; the exact
             // check is `exceeds_maximum_packet_size`.
-            .max_remaining_bytes(u64::from(self.settings.maximum_packet_size.get()))
+            .max_remaining_bytes(self.settings.maximum_packet_size.get())
             .max_subscriptions_len(self.settings.max_subscriptions)
             .max_user_properties_len(self.settings.max_user_properties)
             .max_subscription_identifiers_len(self.settings.max_subscription_identifiers)
             .build()
     }
 
-    #[inline(always)]
     fn dispatch<F>(&mut self, f: F) -> Result<(), Error>
     where
         F: FnOnce(
@@ -245,7 +139,7 @@ where
                     })?;
                 }
                 Err(ErrMode::Incomplete(_)) => break,
-                Err(ErrMode::Backtrack(_) | ErrMode::Cut(_)) => {
+                Err(ErrMode::Backtrack(()) | ErrMode::Cut(())) => {
                     // [MQTT-4.13.1-1] Malformed Control Packet requires
                     // DISCONNECT with Reason Code 0x81 and closing the Network
                     // Connection.
@@ -264,6 +158,10 @@ where
     /// Returns `None` while the fixed header is incomplete. A malformed
     /// Remaining Length is reported as `Some(false)` and left to the packet
     /// parser to reject.
+    #[expect(
+        clippy::expect_used,
+        reason = "the Remaining Length spans at most four bytes [MQTT-1.5.5-1], which always fits in a `u64`"
+    )]
     fn exceeds_maximum_packet_size(&self, bytes: &[u8]) -> Option<bool> {
         let mut input = Partial::new(bytes.get(1..)?);
         let before = input.len();
@@ -272,10 +170,11 @@ where
             Err(ErrMode::Incomplete(_)) => return None,
             Err(ErrMode::Backtrack(()) | ErrMode::Cut(())) => return Some(false),
         };
-        let fixed_header_len = 1 + (before - input.len()) as u64;
+        let fixed_header_len = 1 + u64::try_from(before - input.len())
+            .expect("a Remaining Length is at most four bytes long [MQTT-1.5.5-1]");
 
         Some(
-            fixed_header_len + remaining_length
+            fixed_header_len + u64::from(remaining_length)
                 > u64::from(self.settings.maximum_packet_size.get()),
         )
     }
@@ -353,7 +252,7 @@ where
 
     #[tracing::instrument(skip_all)]
     fn close(&mut self) -> Result<(), Self::Error> {
-        self.dispatch(|s, set, ses, sp| s.close(set, ses, sp))
+        self.dispatch(ClientState::close)
     }
 
     fn poll_read(&mut self) -> Option<Self::Rout> {
@@ -373,12 +272,14 @@ where
     }
 }
 
-impl<'bytes, T> MqttProtocol<'bytes, T> for Client<T>
+impl<T> MqttProtocol<'_, T> for Client<T>
 where
     T: Time,
 {
     fn version(&self) -> semver::Version {
-        use semver::*;
+        use semver::BuildMetadata;
+        use semver::Prerelease;
+        use semver::Version;
 
         Version {
             major: 5,

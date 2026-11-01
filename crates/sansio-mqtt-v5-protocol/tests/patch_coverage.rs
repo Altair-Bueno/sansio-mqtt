@@ -1,14 +1,18 @@
 //! Paths introduced or reshaped by the cleanup refactor that the existing suite
 //! did not reach: the re-buffering read path, the shared
-//! acknowledgement-failure teardown, QoS2 replay, and the consolidated
+//! acknowledgement-failure teardown, `QoS2` replay, and the consolidated
 //! protocol-error branches.
+#![expect(
+    clippy::expect_used,
+    reason = "test helpers fail the test on setup errors by design"
+)]
 
 use bytes::Bytes;
 use bytestring::ByteString;
 use core::num::NonZero;
 use core::time::Duration;
-use encode::Encodable;
-use sansio::Protocol;
+use encode::Encodable as _;
+use sansio::Protocol as _;
 use sansio_mqtt_protocol::Command;
 use sansio_mqtt_protocol::ConnectOptions;
 use sansio_mqtt_protocol::DriverAction;
@@ -313,7 +317,7 @@ fn deciding_on_an_undelivered_packet_id_is_an_invalid_state_transition() {
     );
 }
 
-/// Acknowledging a QoS2 message moves the exchange to awaiting PUBREL.
+/// Acknowledging a `QoS2` message moves the exchange to awaiting PUBREL.
 #[test]
 fn acknowledging_a_qos2_message_moves_it_to_awaiting_pubrel() {
     let mut client = connected_client(ConnAckProperties::default());
@@ -347,7 +351,7 @@ fn acknowledging_a_qos2_message_moves_it_to_awaiting_pubrel() {
     assert!(client.poll_write().is_some(), "PUBCOMP should be queued");
 }
 
-/// A QoS1 PUBLISH reusing a packet id already held by a QoS2 exchange is a
+/// A `QoS1` PUBLISH reusing a packet id already held by a `QoS2` exchange is a
 /// protocol error.
 #[test]
 fn qos1_publish_reusing_a_qos2_packet_id_is_a_protocol_error() {
@@ -371,7 +375,7 @@ fn qos1_publish_reusing_a_qos2_packet_id_is_a_protocol_error() {
     );
 }
 
-/// And the mirror image: QoS2 reusing an id held by a QoS1 exchange.
+/// And the mirror image: `QoS2` reusing an id held by a `QoS1` exchange.
 #[test]
 fn qos2_publish_reusing_a_qos1_packet_id_is_a_protocol_error() {
     let mut client = connected_client(ConnAckProperties::default());
@@ -429,7 +433,7 @@ fn server_bound_packet_received_while_connected_is_a_protocol_error() {
     );
 }
 
-/// A second SocketConnected while already Connected is driver misuse.
+/// A second `SocketConnected` while already Connected is driver misuse.
 #[test]
 fn socket_connected_while_already_connected_is_an_invalid_state_transition() {
     let mut client = connected_client(ConnAckProperties::default());
@@ -472,7 +476,7 @@ fn close_before_first_connect_is_a_quiet_no_op() {
     assert!(client.poll_event().is_none());
 }
 
-/// A QoS2 exchange awaiting PUBREC is replayed with DUP=1 on session resume.
+/// A `QoS2` exchange awaiting PUBREC is replayed with DUP=1 on session resume.
 #[test]
 fn resumed_session_replays_qos2_publish_awaiting_pubrec() {
     let mut client = connected_client(ConnAckProperties::default());
@@ -535,8 +539,8 @@ fn resumed_session_replays_qos2_publish_awaiting_pubrec() {
     assert_eq!(client.poll_write(), Some(encode_packet(&replayed)));
 }
 
-/// A redelivered QoS2 PUBLISH while awaiting PUBREL re-sends PUBREC rather than
-/// delivering the message twice.
+/// A redelivered `QoS2` PUBLISH while awaiting PUBREL re-sends PUBREC rather
+/// than delivering the message twice.
 #[test]
 fn redelivered_qos2_publish_awaiting_pubrel_resends_pubrec() {
     let mut client = connected_client(ConnAckProperties::default());

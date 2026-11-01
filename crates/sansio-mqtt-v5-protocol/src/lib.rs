@@ -1,5 +1,13 @@
+//! Sans-IO MQTT v5.0 client state machine.
+//!
+//! [`Client`] implements the version-neutral
+//! [`MqttProtocol`](sansio_mqtt_protocol::MqttProtocol) trait for
+//! [MQTT v5.0](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html): it
+//! performs no I/O itself, consuming bytes, application commands, driver
+//! events and timestamps, and producing encoded packets, application events,
+//! driver actions and the next deadline. [`ClientSettings`] configures it.
 #![no_std]
-#![deny(unsafe_code)]
+#![forbid(unsafe_code)]
 extern crate alloc;
 
 mod client;
@@ -9,7 +17,13 @@ mod queues;
 mod scratchpad;
 mod session;
 mod session_ops;
+#[expect(
+    clippy::allow_attributes,
+    clippy::allow_attributes_without_reason,
+    reason = "false positive: the `bon::Builder` setters carry `#[allow]`s spanned at field names starting with `allow_`, which clippy mistakes for hand-written attributes"
+)]
+mod settings;
 mod state;
 
 pub use client::Client;
-pub use client::ClientSettings;
+pub use settings::ClientSettings;

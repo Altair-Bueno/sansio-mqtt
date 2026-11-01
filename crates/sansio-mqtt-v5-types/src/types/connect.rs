@@ -69,7 +69,7 @@ pub struct Connect {
 pub struct ConnectHeaderFlags;
 
 impl From<ConnectHeaderFlags> for u8 {
-    fn from(_: ConnectHeaderFlags) -> u8 {
+    fn from(_: ConnectHeaderFlags) -> Self {
         0b0000_0000
     }
 }
@@ -90,7 +90,7 @@ pub struct Will {
     pub topic: Topic,
     /// Will Payload — opaque bytes delivered as the Will Message.
     pub payload: BinaryData,
-    /// Will QoS ([MQTT-3.1.2-11], [MQTT-3.1.2-12]).
+    /// Will `QoS` ([MQTT-3.1.2-11], [MQTT-3.1.2-12]).
     #[builder(default)]
     pub qos: Qos,
     /// Will Retain flag ([MQTT-3.1.2-14], [MQTT-3.1.2-15],
@@ -148,7 +148,7 @@ pub struct ConnectProperties {
     /// Session Expiry Interval in seconds
     /// ([§3.1.2.11.2](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901048)).
     pub session_expiry_interval: Option<u32>,
-    /// Receive Maximum for in-flight QoS 1/2 PUBLISH packets
+    /// Receive Maximum for in-flight `QoS` 1/2 PUBLISH packets
     /// ([§3.1.2.11.3](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901049),
     /// [MQTT-3.1.2-23]).
     pub receive_maximum: Option<NonZero<u16>>,

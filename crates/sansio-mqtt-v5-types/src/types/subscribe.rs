@@ -40,7 +40,7 @@ pub struct Subscribe {
 pub struct SubscribeHeaderFlags;
 
 impl From<SubscribeHeaderFlags> for u8 {
-    fn from(_: SubscribeHeaderFlags) -> u8 {
+    fn from(_: SubscribeHeaderFlags) -> Self {
         0b0000_0010
     }
 }
@@ -56,7 +56,7 @@ pub struct Subscription {
     /// UTF-8 string ([MQTT-3.8.3-1], [MQTT-4.7.1-1],
     /// [MQTT-4.7.1-2]).
     pub topic_filter: Utf8String,
-    /// Maximum QoS the subscriber wishes to receive.
+    /// Maximum `QoS` the subscriber wishes to receive.
     #[builder(default)]
     pub qos: Qos,
     /// No Local option: if true, Application Messages MUST NOT be

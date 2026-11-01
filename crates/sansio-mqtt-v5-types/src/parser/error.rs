@@ -56,7 +56,7 @@ pub enum DecodeError {
     #[error(transparent)]
     Properties(#[from] PropertiesError),
 
-    /// A QoS field held a value other than 0, 1 or 2
+    /// A `QoS` field held a value other than 0, 1 or 2
     /// ([§3.3.1.2](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901103)).
     #[error(transparent)]
     InvalidQos(#[from] InvalidQosError),
@@ -131,6 +131,7 @@ impl DecodeError {
     /// and are rejected for being disallowed, so by the §4.13
     /// definition this crate classifies them as Protocol Errors.
     #[inline]
+    #[must_use]
     pub const fn disconnect_reason_code(&self) -> DisconnectReasonCode {
         match self {
             // Cannot be parsed per the specification.
@@ -164,6 +165,7 @@ impl DecodeError {
     /// Returns `true` when this error is a Malformed Packet
     /// (Reason Code `0x81`) rather than a Protocol Error.
     #[inline]
+    #[must_use]
     pub const fn is_malformed_packet(&self) -> bool {
         matches!(
             self.disconnect_reason_code(),
@@ -235,7 +237,7 @@ where
     }
 }
 
-impl ErrorConvert<DecodeError> for DecodeError {
+impl ErrorConvert<Self> for DecodeError {
     #[inline]
     fn convert(self) -> Self {
         self

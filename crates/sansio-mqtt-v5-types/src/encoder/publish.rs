@@ -1,4 +1,17 @@
-use super::*;
+use super::EncodeError;
+use super::basic::TwoByteInteger;
+use super::basic::VariableByteInteger;
+use super::basic::fixed_header;
+use super::basic::user_properties_iter;
+use crate::ControlPacketType;
+use crate::Property;
+use crate::Publish;
+use crate::PublishHeaderFlags;
+use crate::PublishHeaderFlagsKind;
+use crate::PublishKind;
+use crate::PublishProperties;
+use encode::ByteEncoder;
+use encode::Encodable;
 
 impl<E> Encodable<E> for PublishProperties
 where

@@ -10,7 +10,7 @@ use bytes::Bytes;
 use bytestring::ByteString;
 use core::time::Duration;
 
-use crate::client::ClientSettings;
+use crate::settings::ClientSettings;
 
 use sansio_mqtt_protocol::Authentication;
 use sansio_mqtt_protocol::ConnectOptions;
@@ -62,7 +62,7 @@ use sansio_mqtt_v5_types::WillProperties;
 /// already guarantees well-formed UTF-8, so the character check is the only
 /// other way [`Utf8String::try_new`] can fail here.
 pub(crate) fn utf8_to_wire(value: ByteString) -> Result<Utf8String, Error> {
-    if value.len() > u16::MAX as usize {
+    if value.len() > usize::from(u16::MAX) {
         return Err(Error::StringTooLong);
     }
     Utf8String::try_new(value).map_err(|_| Error::InvalidTopicFilter)
@@ -72,7 +72,7 @@ pub(crate) fn utf8_to_wire(value: ByteString) -> Result<Utf8String, Error> {
 /// which additionally MUST NOT contain the `#`/`+` wildcard characters,
 /// [MQTT-4.7.1-1], [MQTT-4.7.1-2]).
 pub(crate) fn topic_to_wire(value: ByteString) -> Result<Topic, Error> {
-    if value.len() > u16::MAX as usize {
+    if value.len() > usize::from(u16::MAX) {
         return Err(Error::StringTooLong);
     }
     let utf8 = Utf8String::try_new(value).map_err(|_| Error::InvalidTopicFilter)?;
@@ -85,13 +85,10 @@ pub(crate) fn binary_to_wire(value: Bytes) -> Result<BinaryData, Error> {
     BinaryData::try_new(value).map_err(|_| Error::BinaryTooLong)
 }
 
-/// Converts application bytes into a wire [`Payload`].
-///
-/// [`Payload::try_new`] only rejects payloads whose length exceeds
-/// `u64::MAX`, which is unreachable for a [`bytes::Bytes`] on any supported
-/// platform, so this conversion is infallible.
+/// Converts application bytes into a wire [`Payload`]; every byte sequence
+/// is a valid payload.
 pub(crate) fn payload_to_wire(value: Bytes) -> Payload {
-    Payload::new(value)
+    Payload::from(value)
 }
 
 pub(crate) fn binary_from_wire(value: BinaryData) -> Bytes {
@@ -215,6 +212,10 @@ fn will_to_wire(will: ProtocolWill) -> Result<WireWill, Error> {
 /// (Receive Maximum, Maximum Packet Size, Topic Alias Maximum, Request
 /// Response/Problem Information) come from `settings` alone: they are no
 /// longer overridable per `Command::Connect`.
+#[expect(
+    clippy::expect_used,
+    reason = "the literal \"MQTT\" protocol name is a valid MQTT UTF-8 string [MQTT-3.1.2-1]"
+)]
 pub(crate) fn connect_options_to_wire(
     settings: &ClientSettings,
     options: &ConnectOptions,
@@ -379,13 +380,12 @@ pub(crate) fn unsubscribe_options_to_wire(
 /// carry.
 pub(crate) fn reject_reason_to_puback(reason: RejectReason) -> PubAckReasonCode {
     match reason {
-        RejectReason::UnspecifiedError => PubAckReasonCode::UnspecifiedError,
         RejectReason::ImplementationSpecificError => PubAckReasonCode::ImplementationSpecificError,
         RejectReason::NotAuthorized => PubAckReasonCode::NotAuthorized,
         RejectReason::TopicNameInvalid => PubAckReasonCode::TopicNameInvalid,
         RejectReason::QuotaExceeded => PubAckReasonCode::QuotaExceeded,
         RejectReason::PayloadFormatInvalid => PubAckReasonCode::PayloadFormatInvalid,
-        _ => PubAckReasonCode::UnspecifiedError,
+        RejectReason::UnspecifiedError | _ => PubAckReasonCode::UnspecifiedError,
     }
 }
 
@@ -393,13 +393,12 @@ pub(crate) fn reject_reason_to_puback(reason: RejectReason) -> PubAckReasonCode 
 /// carry.
 pub(crate) fn reject_reason_to_pubrec(reason: RejectReason) -> PubRecReasonCode {
     match reason {
-        RejectReason::UnspecifiedError => PubRecReasonCode::UnspecifiedError,
         RejectReason::ImplementationSpecificError => PubRecReasonCode::ImplementationSpecificError,
         RejectReason::NotAuthorized => PubRecReasonCode::NotAuthorized,
         RejectReason::TopicNameInvalid => PubRecReasonCode::TopicNameInvalid,
         RejectReason::QuotaExceeded => PubRecReasonCode::QuotaExceeded,
         RejectReason::PayloadFormatInvalid => PubRecReasonCode::PayloadFormatInvalid,
-        _ => PubRecReasonCode::UnspecifiedError,
+        RejectReason::UnspecifiedError | _ => PubRecReasonCode::UnspecifiedError,
     }
 }
 
@@ -407,14 +406,13 @@ pub(crate) fn puback_reason_to_protocol(code: PubAckReasonCode) -> ReasonCode {
     match code {
         PubAckReasonCode::Success => ReasonCode::Success,
         PubAckReasonCode::NoMatchingSubscribers => ReasonCode::NoMatchingSubscribers,
-        PubAckReasonCode::UnspecifiedError => ReasonCode::UnspecifiedError,
         PubAckReasonCode::ImplementationSpecificError => ReasonCode::ImplementationSpecificError,
         PubAckReasonCode::NotAuthorized => ReasonCode::NotAuthorized,
         PubAckReasonCode::TopicNameInvalid => ReasonCode::TopicNameInvalid,
         PubAckReasonCode::PacketIdentifierInUse => ReasonCode::PacketIdentifierInUse,
         PubAckReasonCode::QuotaExceeded => ReasonCode::QuotaExceeded,
         PubAckReasonCode::PayloadFormatInvalid => ReasonCode::PayloadFormatInvalid,
-        _ => ReasonCode::UnspecifiedError,
+        PubAckReasonCode::UnspecifiedError | _ => ReasonCode::UnspecifiedError,
     }
 }
 
@@ -422,14 +420,13 @@ pub(crate) fn pubrec_reason_to_protocol(code: PubRecReasonCode) -> ReasonCode {
     match code {
         PubRecReasonCode::Success => ReasonCode::Success,
         PubRecReasonCode::NoMatchingSubscribers => ReasonCode::NoMatchingSubscribers,
-        PubRecReasonCode::UnspecifiedError => ReasonCode::UnspecifiedError,
         PubRecReasonCode::ImplementationSpecificError => ReasonCode::ImplementationSpecificError,
         PubRecReasonCode::NotAuthorized => ReasonCode::NotAuthorized,
         PubRecReasonCode::TopicNameInvalid => ReasonCode::TopicNameInvalid,
         PubRecReasonCode::PacketIdentifierInUse => ReasonCode::PacketIdentifierInUse,
         PubRecReasonCode::QuotaExceeded => ReasonCode::QuotaExceeded,
         PubRecReasonCode::PayloadFormatInvalid => ReasonCode::PayloadFormatInvalid,
-        _ => ReasonCode::UnspecifiedError,
+        PubRecReasonCode::UnspecifiedError | _ => ReasonCode::UnspecifiedError,
     }
 }
 
@@ -444,7 +441,6 @@ pub(crate) fn pubcomp_reason_to_protocol(code: PubCompReasonCode) -> ReasonCode 
 pub(crate) fn connack_reason_to_protocol(code: ConnackReasonCode) -> ReasonCode {
     match code {
         ConnackReasonCode::Success => ReasonCode::Success,
-        ConnackReasonCode::UnspecifiedError => ReasonCode::UnspecifiedError,
         ConnackReasonCode::MalformedPacket => ReasonCode::MalformedPacket,
         ConnackReasonCode::ProtocolError => ReasonCode::ProtocolError,
         ConnackReasonCode::ImplementationSpecificError => ReasonCode::ImplementationSpecificError,
@@ -465,7 +461,7 @@ pub(crate) fn connack_reason_to_protocol(code: ConnackReasonCode) -> ReasonCode 
         ConnackReasonCode::UseAnotherServer => ReasonCode::UseAnotherServer,
         ConnackReasonCode::ServerMoved => ReasonCode::ServerMoved,
         ConnackReasonCode::ConnectionRateExceeded => ReasonCode::ConnectionRateExceeded,
-        _ => ReasonCode::UnspecifiedError,
+        ConnackReasonCode::UnspecifiedError | _ => ReasonCode::UnspecifiedError,
     }
 }
 
@@ -473,7 +469,6 @@ pub(crate) fn disconnect_reason_to_protocol(code: DisconnectReasonCode) -> Reaso
     match code {
         DisconnectReasonCode::NormalDisconnection => ReasonCode::NormalDisconnection,
         DisconnectReasonCode::DisconnectWithWillMessage => ReasonCode::DisconnectWithWillMessage,
-        DisconnectReasonCode::UnspecifiedError => ReasonCode::UnspecifiedError,
         DisconnectReasonCode::MalformedPacket => ReasonCode::MalformedPacket,
         DisconnectReasonCode::ProtocolError => ReasonCode::ProtocolError,
         DisconnectReasonCode::ImplementationSpecificError => {
@@ -514,7 +509,7 @@ pub(crate) fn disconnect_reason_to_protocol(code: DisconnectReasonCode) -> Reaso
         DisconnectReasonCode::WildcardSubscriptionsNotSupported => {
             ReasonCode::WildcardSubscriptionsNotSupported
         }
-        _ => ReasonCode::UnspecifiedError,
+        DisconnectReasonCode::UnspecifiedError | _ => ReasonCode::UnspecifiedError,
     }
 }
 

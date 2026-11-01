@@ -49,7 +49,7 @@ pub struct SubAckProperties {
 pub struct SubAckHeaderFlags;
 
 impl From<SubAckHeaderFlags> for u8 {
-    fn from(_: SubAckHeaderFlags) -> u8 {
+    fn from(_: SubAckHeaderFlags) -> Self {
         0
     }
 }

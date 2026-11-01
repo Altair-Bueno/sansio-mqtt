@@ -1,4 +1,15 @@
-use super::*;
+use super::EncodeError;
+use super::basic::TwoByteInteger;
+use super::basic::VariableByteInteger;
+use super::basic::fixed_header;
+use super::basic::user_properties_iter;
+use crate::ControlPacketType;
+use crate::Property;
+use crate::Subscribe;
+use crate::SubscribeHeaderFlags;
+use crate::SubscribeProperties;
+use encode::ByteEncoder;
+use encode::Encodable;
 
 impl<E> Encodable<E> for SubscribeProperties
 where

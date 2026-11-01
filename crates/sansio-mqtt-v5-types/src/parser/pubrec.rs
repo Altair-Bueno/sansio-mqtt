@@ -1,8 +1,45 @@
-use super::*;
+use super::BytesSource;
+use super::ParserSettings;
+use super::basic::two_byte_integer;
+use crate::BinaryDataError;
+use crate::InvalidPropertyTypeError;
+use crate::InvalidQosError;
+use crate::InvalidReasonCode;
+use crate::PropertiesError;
+use crate::PubRec;
+use crate::PubRecHeaderFlags;
+use crate::PubRecProperties;
+use crate::PubRecReasonCode;
+use crate::TopicError;
+use crate::UnknownFormatIndicatorError;
+use crate::Utf8StringError;
+use core::any::type_name;
+use core::num::TryFromIntError;
+use core::str::Utf8Error;
+use winnow::Parser;
+use winnow::binary::bits;
+use winnow::binary::bits::Bits;
+use winnow::combinator;
+use winnow::error::AddContext;
+use winnow::error::ErrorConvert;
+use winnow::error::FromExternalError;
+use winnow::error::ParserError;
+use winnow::error::Result;
+use winnow::error::StrContext;
+use winnow::error::StrContextValue;
+use winnow::stream::Stream;
+use winnow::stream::StreamIsPartial;
+use winnow::stream::UpdateSlice;
 impl PubRecHeaderFlags {
     /// Parses the 4-bit Fixed Header flags for `PUBREC`
     /// ([§3.5.1](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901133),
     /// [MQTT-3.5.1-1]).
+    ///
+    /// # Errors
+    ///
+    /// Fails when fewer than four bits remain or the flags are not the reserved
+    /// value `0b0000` required for `PUBREC`; the caller treats that as a
+    /// Malformed Packet.
     #[inline]
     pub fn parser<Input, Error>(input: &mut Bits<Input>) -> Result<Self, Error>
     where
@@ -65,7 +102,7 @@ impl PubRec {
                     ),
                 )),
             )
-                .map(move |(packet_id, (reason_code, properties, _))| PubRec {
+                .map(move |(packet_id, (reason_code, properties, _))| Self {
                     packet_id,
                     reason_code,
                     properties,

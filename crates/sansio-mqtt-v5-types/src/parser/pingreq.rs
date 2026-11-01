@@ -1,8 +1,30 @@
-use super::*;
+use super::BytesSource;
+use super::ParserSettings;
+use crate::PingReq;
+use crate::PingReqHeaderFlags;
+use core::any::type_name;
+use winnow::Parser;
+use winnow::binary::bits;
+use winnow::binary::bits::Bits;
+use winnow::combinator;
+use winnow::error::AddContext;
+use winnow::error::ErrorConvert;
+use winnow::error::ParserError;
+use winnow::error::Result;
+use winnow::error::StrContext;
+use winnow::error::StrContextValue;
+use winnow::stream::Stream;
+use winnow::stream::StreamIsPartial;
 impl PingReqHeaderFlags {
     /// Parses the 4-bit Fixed Header flags for `PINGREQ`
     /// ([§3.12.1](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901196),
     /// [MQTT-3.12.1-1]).
+    ///
+    /// # Errors
+    ///
+    /// Fails when fewer than four bits remain or the flags are not the reserved
+    /// value `0b0000` required for `PINGREQ`; the caller treats that as a
+    /// Malformed Packet.
     #[inline]
     pub fn parser<Input, Error>(input: &mut Bits<Input>) -> Result<Self, Error>
     where
@@ -36,7 +58,7 @@ impl PingReq {
         combinator::trace(
             type_name::<Self>(),
             // The remaining length of the PINGREQ packet is always 0
-            combinator::eof.value(PingReq {}),
+            combinator::eof.value(Self {}),
         )
     }
 }

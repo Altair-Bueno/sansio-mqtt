@@ -1,4 +1,16 @@
-use super::*;
+use super::EncodeError;
+use super::basic::VariableByteInteger;
+use super::basic::fixed_header;
+use super::basic::user_properties_iter;
+use crate::Auth;
+use crate::AuthHeaderFlags;
+use crate::AuthProperties;
+use crate::AuthReasonCode;
+use crate::AuthenticationKind;
+use crate::ControlPacketType;
+use crate::Property;
+use encode::ByteEncoder;
+use encode::Encodable;
 
 impl<E> Encodable<E> for AuthProperties
 where

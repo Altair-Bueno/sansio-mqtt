@@ -1,6 +1,6 @@
-use std::future::Future;
+use core::future::Future;
+use core::pin::Pin;
 use std::io;
-use std::pin::Pin;
 use tokio::io::AsyncRead;
 use tokio::io::AsyncWrite;
 use tokio::net::TcpStream;

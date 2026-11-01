@@ -3,6 +3,10 @@ name = "sansio-mqtt-v5-protocol"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
+description = "Sans-IO MQTT v5.0 client state machine"
+repository.workspace = true
+keywords.workspace = true
+categories = ["network-programming", "no-std"]
 
 [dependencies]
 bon = { workspace = true }
@@ -16,3 +20,6 @@ sansio-mqtt-v5-types = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true, features = ["attributes"] }
 winnow = { workspace = true }
+
+[lints]
+workspace = true

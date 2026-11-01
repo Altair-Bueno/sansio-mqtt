@@ -1,6 +1,6 @@
-use std::future::Future;
+use core::future::Future;
+use core::pin::Pin;
 use std::io;
-use std::pin::Pin;
 use tokio_rustls::client::TlsStream;
 use tokio_rustls::rustls::pki_types::ServerName;
 
@@ -37,11 +37,11 @@ impl<C> TlsConnector<C> {
     }
 }
 
-impl<C> std::fmt::Debug for TlsConnector<C>
+impl<C> core::fmt::Debug for TlsConnector<C>
 where
-    C: std::fmt::Debug,
+    C: core::fmt::Debug,
 {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("TlsConnector")
             .field("inner", &self.inner)
             .field("server_name", &self.server_name)

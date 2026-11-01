@@ -2,17 +2,23 @@
 //!
 //! The MQTT v5.0 spec defines which properties are valid for each packet type.
 //! These tests verify that:
-//! 1. Invalid properties are rejected with UnsupportedPropertyError
-//! 2. Duplicate properties are rejected with DuplicatedPropertyError
-//! 3. AuthenticationData without AuthenticationMethod is rejected
+//! 1. Invalid properties are rejected with `UnsupportedPropertyError`
+//! 2. Duplicate properties are rejected with `DuplicatedPropertyError`
+//! 3. `AuthenticationData` without `AuthenticationMethod` is rejected
 //! 4. All valid properties can be encoded and decoded successfully
 
+#![expect(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    reason = "test helpers fail the test on setup errors by design"
+)]
+
 use core::num::NonZero;
-use encode::Encodable;
-use encode::EncodableSize;
+use encode::Encodable as _;
+use encode::EncodableSize as _;
 use rstest::rstest;
 use sansio_mqtt_v5_types::*;
-use winnow::Parser;
+use winnow::Parser as _;
 use winnow::error::ContextError;
 
 #[test]
@@ -21,8 +27,8 @@ fn value_types_support_hash_and_order_where_semantic() {
 
     fn assert_hash_and_ord<T: Hash + Ord>(_value: &T) {}
 
-    let a = Utf8String::new("a");
-    let b = Utf8String::new("b");
+    let a = Utf8String::try_new("a").unwrap();
+    let b = Utf8String::try_new("b").unwrap();
     assert!(a < b);
     assert_hash_and_ord(&a);
 
@@ -33,7 +39,7 @@ fn value_types_support_hash_and_order_where_semantic() {
 /// Fixed-header flags are `Copy`.
 ///
 /// Fourteen of them are zero-sized and the fifteenth
-/// ([`PublishHeaderFlags`]) holds only DUP, QoS and RETAIN, so there is
+/// ([`PublishHeaderFlags`]) holds only DUP, `QoS` and RETAIN, so there is
 /// nothing to own and no reason to make callers clone or borrow them —
 /// [`Publish::parser`] takes its flags by value and reads them inside a
 /// closure. This guards against a future field that would silently make
@@ -300,32 +306,32 @@ fn roundtrip(packet: &ControlPacket) -> Result<(), String> {
     let mut bytes = Vec::with_capacity(packet.encoded_size().unwrap());
     packet
         .encode(&mut bytes)
-        .map_err(|e| format!("Encode error: {:?}", e))?;
+        .map_err(|e| format!("Encode error: {e:?}"))?;
 
     let settings = ParserSettings::default();
     let result = ControlPacket::parser::<_, ContextError, ContextError>(&settings)
         .parse(&bytes[..])
-        .map_err(|e| format!("Parse error: {:?}", e))?;
+        .map_err(|e| format!("Parse error: {e:?}"))?;
 
     let mut reencoded = Vec::new();
     result
         .encode(&mut reencoded)
-        .map_err(|e| format!("Re-encode error: {:?}", e))?;
+        .map_err(|e| format!("Re-encode error: {e:?}"))?;
 
     if bytes == reencoded {
         Ok(())
     } else {
-        Err("Round-trip mismatch".to_string())
+        Err("Round-trip mismatch".to_owned())
     }
 }
 
 #[test]
 fn connect_with_all_valid_properties_roundtrip() {
     let connect = Connect::builder()
-        .protocol_name(Utf8String::new("MQTT"))
+        .protocol_name(Utf8String::try_new("MQTT").unwrap())
         .protocol_version(5)
         .clean_start(true)
-        .client_identifier(Utf8String::new("test"))
+        .client_identifier(Utf8String::try_new("test").unwrap())
         .maybe_keep_alive(NonZero::new(60))
         .properties(
             ConnectProperties::builder()
@@ -336,7 +342,7 @@ fn connect_with_all_valid_properties_roundtrip() {
                 .request_response_information(true)
                 .request_problem_information(true)
                 .authentication(AuthenticationKind::WithoutData {
-                    method: Utf8String::new("test"),
+                    method: Utf8String::try_new("test").unwrap(),
                 })
                 .build(),
         )
@@ -349,10 +355,10 @@ fn connect_with_all_valid_properties_roundtrip() {
 #[test]
 fn will_with_all_valid_properties_roundtrip() {
     let connect = Connect::builder()
-        .protocol_name(Utf8String::new("MQTT"))
+        .protocol_name(Utf8String::try_new("MQTT").unwrap())
         .protocol_version(5)
         .clean_start(true)
-        .client_identifier(Utf8String::new("test"))
+        .client_identifier(Utf8String::try_new("test").unwrap())
         .maybe_keep_alive(NonZero::new(60))
         .will(
             Will::builder()
@@ -364,8 +370,8 @@ fn will_with_all_valid_properties_roundtrip() {
                         .will_delay_interval(100)
                         .payload_format_indicator(FormatIndicator::Utf8)
                         .message_expiry_interval(1000)
-                        .content_type(Utf8String::new("text/plain"))
-                        .response_topic(Topic::new("response/topic"))
+                        .content_type(Utf8String::try_new("text/plain").unwrap())
+                        .response_topic(Topic::try_new("response/topic").unwrap())
                         .maybe_correlation_data(BinaryData::try_from(&[1, 2]).ok())
                         .build(),
                 )
@@ -426,10 +432,10 @@ fn publish_with_all_valid_properties_roundtrip() {
                 .payload_format_indicator(FormatIndicator::Utf8)
                 .message_expiry_interval(1000)
                 .maybe_topic_alias(NonZero::new(100))
-                .response_topic(Topic::new("response/topic"))
+                .response_topic(Topic::try_new("response/topic").unwrap())
                 .maybe_correlation_data(BinaryData::try_from(&[1, 2]).ok())
                 .subscription_identifiers(vec![NonZero::new(42).unwrap()])
-                .content_type(Utf8String::new("text/plain"))
+                .content_type(Utf8String::try_new("text/plain").unwrap())
                 .build(),
         )
         .build();
@@ -644,10 +650,10 @@ fn pingresp_parsing_valid() {
 #[test]
 fn connect_with_will_roundtrip() {
     let connect = Connect::builder()
-        .protocol_name(Utf8String::new("MQTT"))
+        .protocol_name(Utf8String::try_new("MQTT").unwrap())
         .protocol_version(5)
         .clean_start(true)
-        .client_identifier(Utf8String::new("test"))
+        .client_identifier(Utf8String::try_new("test").unwrap())
         .maybe_keep_alive(NonZero::new(60))
         .will(
             Will::builder()
@@ -665,10 +671,10 @@ fn connect_with_will_roundtrip() {
 #[test]
 fn connect_without_will_roundtrip() {
     let connect = Connect::builder()
-        .protocol_name(Utf8String::new("MQTT"))
+        .protocol_name(Utf8String::try_new("MQTT").unwrap())
         .protocol_version(5)
         .clean_start(true)
-        .client_identifier(Utf8String::new("test"))
+        .client_identifier(Utf8String::try_new("test").unwrap())
         .maybe_keep_alive(NonZero::new(60))
         .build();
 
@@ -831,7 +837,7 @@ fn settings_unlimited() {
     let settings = ParserSettings::unlimited();
     assert_eq!(settings.max_bytes_string, u16::MAX);
     assert_eq!(settings.max_bytes_binary_data, u16::MAX);
-    assert_eq!(settings.max_remaining_bytes, u64::MAX);
+    assert_eq!(settings.max_remaining_bytes, u32::MAX);
     assert_eq!(settings.max_subscriptions_len, u32::MAX);
     assert_eq!(settings.max_user_properties_len, usize::MAX);
     assert_eq!(settings.max_subscription_identifiers_len, usize::MAX);
@@ -911,7 +917,7 @@ fn utf8string_with_noncharacter_rejected() {
 #[test]
 fn topic_valid() {
     let topic = Topic::try_new("home/living-room").unwrap();
-    let expected = Utf8String::new("home/living-room");
+    let expected = Utf8String::try_new("home/living-room").unwrap();
     let topic_inner: &Utf8String = &topic;
     assert_eq!(topic_inner, &expected);
 }

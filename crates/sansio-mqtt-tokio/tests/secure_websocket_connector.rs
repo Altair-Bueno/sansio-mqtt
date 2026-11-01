@@ -2,11 +2,13 @@
 //! [`WebSocketConnector`] over a [`TlsConnector`] over a [`TcpConnector`],
 //! against a loopback server with a throwaway certificate for `localhost`.
 
-use std::sync::Arc;
-use std::time::Duration;
+extern crate alloc;
 
-use futures_util::SinkExt;
-use futures_util::StreamExt;
+use alloc::sync::Arc;
+use core::time::Duration;
+
+use futures_util::SinkExt as _;
+use futures_util::StreamExt as _;
 use sansio_mqtt_protocol::ByteString;
 use sansio_mqtt_protocol::Command;
 use sansio_mqtt_protocol::ConnectOptions;
@@ -38,9 +40,10 @@ const STEP: Duration = Duration::from_secs(2);
 const CONNACK: [u8; 5] = [0x20, 0x03, 0x00, 0x00, 0x00];
 
 /// Selects the `mqtt` subprotocol the client must request [MQTT-6.0.0-3].
-#[allow(
+#[expect(
     clippy::result_large_err,
-    reason = "tungstenite dictates the callback's error type"
+    clippy::unnecessary_wraps,
+    reason = "tungstenite's handshake `Callback` dictates this signature and its error type"
 )]
 fn select_mqtt(request: &Request, mut response: Response) -> Result<Response, ErrorResponse> {
     assert_eq!(
@@ -99,6 +102,10 @@ async fn secure_websocket_carries_mqtt_through_tls() {
         let mut broker = accept_hdr_async(tls, select_mqtt)
             .await
             .expect("WebSocket handshake failed");
+        #[expect(
+            clippy::wildcard_enum_match_arm,
+            reason = "tungstenite's `Message` is foreign; any non-binary message fails the test"
+        )]
         match broker.next().await.unwrap().unwrap() {
             Message::Binary(data) => assert_eq!(data[0], 0x10, "expected a CONNECT"),
             other => panic!("expected a binary CONNECT, got {other:?}"),
@@ -107,7 +114,7 @@ async fn secure_websocket_carries_mqtt_through_tls() {
             .send(Message::binary(CONNACK.to_vec()))
             .await
             .unwrap();
-        std::future::pending::<()>().await;
+        core::future::pending::<()>().await;
     };
     tokio::select! {
         () = broker => unreachable!(),

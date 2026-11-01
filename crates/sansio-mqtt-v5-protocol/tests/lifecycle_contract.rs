@@ -10,13 +10,18 @@
 //! - `Err` from the protocol means only "this input was rejected and nothing
 //!   changed". Connection failures the protocol handles itself return `Ok(())`
 //!   and surface as `Event::Disconnected`.
+#![expect(
+    clippy::expect_used,
+    clippy::unwrap_used,
+    reason = "test helpers fail the test on setup errors by design"
+)]
 
 use bytes::Bytes;
 use bytestring::ByteString;
 use core::num::NonZero;
 use core::time::Duration;
-use encode::Encodable;
-use sansio::Protocol;
+use encode::Encodable as _;
+use sansio::Protocol as _;
 use sansio_mqtt_protocol::Command;
 use sansio_mqtt_protocol::ConnectOptions;
 use sansio_mqtt_protocol::DriverAction;
@@ -153,7 +158,7 @@ fn request_socket(client: &mut Client<Duration>, options: ConnectOptions) {
     assert_eq!(drain_actions(client), vec![DriverAction::OpenSocket]);
 }
 
-/// Connect + SocketConnected; drains the CONNECT bytes.
+/// Connect + `SocketConnected`; drains the CONNECT bytes.
 fn open_connecting(client: &mut Client<Duration>, options: ConnectOptions) {
     request_socket(client, options);
     assert_eq!(
@@ -166,11 +171,11 @@ fn open_connecting(client: &mut Client<Duration>, options: ConnectOptions) {
 fn connected_with(
     settings: ClientSettings,
     options: ConnectOptions,
-    ack: ControlPacket,
+    ack: &ControlPacket,
 ) -> Client<Duration> {
     let mut client = Client::<Duration>::new(settings);
     open_connecting(&mut client, options);
-    assert_eq!(read(&mut client, &ack), Ok(()));
+    assert_eq!(read(&mut client, ack), Ok(()));
     assert_eq!(drain_events(&mut client), vec![Event::Connected]);
     client
 }
@@ -179,7 +184,7 @@ fn connected() -> Client<Duration> {
     connected_with(
         ClientSettings::default(),
         connect_options(),
-        connack(ConnackReasonCode::Success),
+        &connack(ConnackReasonCode::Success),
     )
 }
 
@@ -690,7 +695,7 @@ fn keep_alive_timeout_disconnects_with_reason_and_returns_ok() {
         ConnectOptions::builder()
             .client_id(ByteString::from_static("test-client"))
             .build(),
-        connack(ConnackReasonCode::Success),
+        &connack(ConnackReasonCode::Success),
     );
     // Idle interval elapses: PINGREQ.
     assert_eq!(client.handle_timeout(Duration::from_secs(10)), Ok(()));
@@ -736,7 +741,7 @@ fn rejected_publish_does_not_consume_a_packet_identifier() {
     let mut client = connected_with(
         ClientSettings::default(),
         connect_options(),
-        connack_with_properties(
+        &connack_with_properties(
             ConnAckProperties::builder()
                 .maximum_packet_size(NonZero::new(64).unwrap())
                 .build(),

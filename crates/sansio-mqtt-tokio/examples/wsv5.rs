@@ -4,15 +4,17 @@
 //! `wss://` URI runs the WebSocket over TLS, verifying the broker with the
 //! operating system's verifier or the PEM file `MQTT_TLS_CA` names.
 
+extern crate alloc;
+
+use alloc::sync::Arc;
 use sansio_mqtt_protocol::Command;
 use sansio_mqtt_protocol::ConnectOptions;
 use sansio_mqtt_protocol::Event;
 use sansio_mqtt_protocol::Message;
 use sansio_mqtt_protocol::SubscribeOptions;
 use sansio_mqtt_protocol::Subscription;
-use std::sync::Arc;
 
-use rustls_platform_verifier::BuilderVerifierExt;
+use rustls_platform_verifier::BuilderVerifierExt as _;
 use sansio_mqtt_tokio::Connector;
 use sansio_mqtt_tokio::Driver;
 use sansio_mqtt_tokio::TcpConnector;
@@ -22,7 +24,7 @@ use sansio_mqtt_tokio::rustls::ClientConfig;
 use sansio_mqtt_tokio::rustls::RootCertStore;
 use sansio_mqtt_tokio::rustls::pki_types::CertificateDer;
 use sansio_mqtt_tokio::rustls::pki_types::ServerName;
-use sansio_mqtt_tokio::rustls::pki_types::pem::PemObject;
+use sansio_mqtt_tokio::rustls::pki_types::pem::PemObject as _;
 use sansio_mqtt_tokio::tokio_rustls;
 use sansio_mqtt_tokio::tungstenite::http::Uri;
 use sansio_mqtt_v5_protocol::Client;
@@ -30,7 +32,7 @@ use tracing::level_filters::LevelFilter;
 use tracing_subscriber::EnvFilter;
 
 #[tokio::main(flavor = "current_thread")]
-async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+async fn main() -> Result<(), Box<dyn core::error::Error + Send + Sync>> {
     tracing_subscriber::fmt()
         .with_env_filter(
             EnvFilter::builder()
@@ -58,7 +60,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
 /// Verifies the broker with the operating system's certificate verifier, or
 /// trusts only the PEM file `MQTT_TLS_CA` names.
-fn tls_context() -> Result<tokio_rustls::TlsConnector, Box<dyn std::error::Error + Send + Sync>> {
+fn tls_context() -> Result<tokio_rustls::TlsConnector, Box<dyn core::error::Error + Send + Sync>> {
     let config = match std::env::var("MQTT_TLS_CA") {
         Ok(path) => {
             let mut roots = RootCertStore::empty();
@@ -76,7 +78,7 @@ fn tls_context() -> Result<tokio_rustls::TlsConnector, Box<dyn std::error::Error
     Ok(tokio_rustls::TlsConnector::from(Arc::new(config)))
 }
 
-async fn run<C>(connector: C) -> Result<(), Box<dyn std::error::Error + Send + Sync>>
+async fn run<C>(connector: C) -> Result<(), Box<dyn core::error::Error + Send + Sync>>
 where
     C: Connector,
 {
@@ -90,6 +92,10 @@ where
     ))?;
 
     loop {
+        #[expect(
+            clippy::wildcard_enum_match_arm,
+            reason = "`Event` is `#[non_exhaustive]`; the example logs every event it does not act on"
+        )]
         match driver.next().await {
             Event::Connected => {
                 tracing::info!("connected over WebSocket");

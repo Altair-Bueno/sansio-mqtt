@@ -1,8 +1,45 @@
-use super::*;
+use super::BytesSource;
+use super::ParserSettings;
+use super::basic::two_byte_integer;
+use crate::BinaryDataError;
+use crate::InvalidPropertyTypeError;
+use crate::InvalidQosError;
+use crate::InvalidReasonCode;
+use crate::PropertiesError;
+use crate::SubAck;
+use crate::SubAckHeaderFlags;
+use crate::SubAckProperties;
+use crate::SubAckReasonCode;
+use crate::TopicError;
+use crate::UnknownFormatIndicatorError;
+use crate::Utf8StringError;
+use core::any::type_name;
+use core::num::TryFromIntError;
+use core::str::Utf8Error;
+use winnow::Parser;
+use winnow::binary::bits;
+use winnow::binary::bits::Bits;
+use winnow::combinator;
+use winnow::error::AddContext;
+use winnow::error::ErrorConvert;
+use winnow::error::FromExternalError;
+use winnow::error::ParserError;
+use winnow::error::Result;
+use winnow::error::StrContext;
+use winnow::error::StrContextValue;
+use winnow::stream::Stream;
+use winnow::stream::StreamIsPartial;
+use winnow::stream::UpdateSlice;
 impl SubAckHeaderFlags {
     /// Parses the 4-bit Fixed Header flags for `SUBACK`
     /// ([§3.9.1](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901172),
     /// [MQTT-3.9.1-1]).
+    ///
+    /// # Errors
+    ///
+    /// Fails when fewer than four bits remain or the flags are not the reserved
+    /// value `0b0000` required for `SUBACK`; the caller treats that as a
+    /// Malformed Packet.
     #[inline]
     pub fn parser<Input, Error>(input: &mut Bits<Input>) -> Result<Self, Error>
     where
@@ -53,13 +90,14 @@ impl SubAck {
                 combinator::trace(
                     "reason codes",
                     combinator::repeat_till(
-                        ..=parser_settings.max_subscriptions_len as usize,
+                        ..=usize::try_from(parser_settings.max_subscriptions_len)
+                            .unwrap_or(usize::MAX),
                         SubAckReasonCode::parser,
                         combinator::eof,
                     ),
                 ),
             )
-                .map(move |(packet_id, properties, (reason_codes, _))| SubAck {
+                .map(move |(packet_id, properties, (reason_codes, _))| Self {
                     packet_id,
                     properties,
                     reason_codes,

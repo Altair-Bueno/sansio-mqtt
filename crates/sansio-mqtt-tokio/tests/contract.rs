@@ -1,8 +1,10 @@
 //! Driver behaviour when the protocol rejects driver input, checked with a
 //! scripted protocol instead of the real v5 client.
 
-use std::collections::VecDeque;
-use std::time::Duration;
+extern crate alloc;
+
+use alloc::collections::VecDeque;
+use core::time::Duration;
 
 use sansio::Protocol;
 use sansio_mqtt_protocol::ByteString;
@@ -17,7 +19,7 @@ use sansio_mqtt_protocol::IncomingData;
 use sansio_mqtt_protocol::MqttProtocol;
 use sansio_mqtt_protocol::Timestamped;
 use sansio_mqtt_tokio::Driver;
-use tokio::io::AsyncReadExt;
+use tokio::io::AsyncReadExt as _;
 use tokio::io::duplex;
 use tokio::time::Instant;
 use tokio::time::timeout;
@@ -47,6 +49,10 @@ impl<'bytes>
     }
 
     fn handle_write(&mut self, msg: Timestamped<Command, Instant>) -> Result<(), Error> {
+        #[expect(
+            clippy::wildcard_enum_match_arm,
+            reason = "`Command` is `#[non_exhaustive]`; this scripted protocol rejects every command but CONNECT"
+        )]
         match msg.value {
             Command::Connect(_) => {
                 self.actions.push_back(DriverAction::OpenSocket);
@@ -96,7 +102,7 @@ async fn rejected_socket_connected_closes_the_socket() {
     let (client_side, mut broker) = duplex(1024);
     let mut socket = Some(client_side);
     let connector = move || {
-        std::future::ready(Ok::<_, std::io::Error>(
+        core::future::ready(Ok::<_, std::io::Error>(
             socket.take().expect("driver connected more than once"),
         ))
     };
@@ -199,12 +205,12 @@ async fn protocol_timers_fire_without_a_socket_even_after_a_rejected_timeout() {
         rejections_left: 1,
         events: VecDeque::new(),
     };
-    let connector = || -> std::future::Ready<std::io::Result<tokio::io::DuplexStream>> {
+    let connector = || -> core::future::Ready<std::io::Result<tokio::io::DuplexStream>> {
         panic!("the protocol never asked for a socket")
     };
     let mut driver = Driver::new(protocol, connector);
 
-    let event = timeout(Duration::from_secs(60), driver.next())
+    let event = timeout(Duration::from_mins(1), driver.next())
         .await
         .expect("the protocol timer never fired");
 

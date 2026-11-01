@@ -9,13 +9,18 @@
 //!
 //! The limit is always advertised: there is no "unlimited" setting the parser
 //! could silently contradict.
+#![expect(
+    clippy::expect_used,
+    clippy::panic,
+    reason = "test helpers fail the test on setup errors by design"
+)]
 
 use bytes::Bytes;
 use bytestring::ByteString;
 use core::num::NonZero;
 use core::time::Duration;
-use encode::Encodable;
-use sansio::Protocol;
+use encode::Encodable as _;
+use sansio::Protocol as _;
 use sansio_mqtt_protocol::Command;
 use sansio_mqtt_protocol::ConnectOptions;
 use sansio_mqtt_protocol::DriverAction;
@@ -37,7 +42,7 @@ use sansio_mqtt_v5_types::Disconnect;
 use sansio_mqtt_v5_types::DisconnectReasonCode;
 use sansio_mqtt_v5_types::ParserSettings;
 use sansio_mqtt_v5_types::Utf8String;
-use winnow::Parser;
+use winnow::Parser as _;
 use winnow::error::ContextError;
 
 /// Stamps a protocol input with `Duration::ZERO`, the instant these tests
@@ -126,6 +131,10 @@ fn connecting_client(maximum_packet_size: NonZero<u32>) -> Client<Duration> {
 }
 
 /// Like [`connecting_client`], also returning the CONNECT the client sent.
+#[expect(
+    clippy::wildcard_enum_match_arm,
+    reason = "`ControlPacket` is `#[non_exhaustive]`; every packet but CONNECT fails the test"
+)]
 fn connecting_client_with(settings: ClientSettings) -> (Client<Duration>, Connect) {
     let mut client = Client::<Duration>::new(settings);
 

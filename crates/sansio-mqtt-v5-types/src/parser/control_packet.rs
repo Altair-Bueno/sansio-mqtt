@@ -1,4 +1,64 @@
-use super::*;
+use super::BytesSource;
+use super::ParserSettings;
+use super::basic::variable_byte_integer_len_with_limits;
+use crate::Auth;
+use crate::AuthHeaderFlags;
+use crate::BinaryDataError;
+use crate::ConnAck;
+use crate::ConnAckHeaderFlags;
+use crate::Connect;
+use crate::ConnectHeaderFlags;
+use crate::ControlPacket;
+use crate::ControlPacketType;
+use crate::Disconnect;
+use crate::DisconnectHeaderFlags;
+use crate::InvalidControlPacketTypeError;
+use crate::InvalidPropertyTypeError;
+use crate::InvalidQosError;
+use crate::InvalidReasonCode;
+use crate::InvalidRetainHandlingError;
+use crate::PingReq;
+use crate::PingReqHeaderFlags;
+use crate::PingResp;
+use crate::PingRespHeaderFlags;
+use crate::PropertiesError;
+use crate::PubAck;
+use crate::PubAckHeaderFlags;
+use crate::PubComp;
+use crate::PubCompHeaderFlags;
+use crate::PubRec;
+use crate::PubRecHeaderFlags;
+use crate::PubRel;
+use crate::PubRelHeaderFlags;
+use crate::Publish;
+use crate::PublishHeaderFlags;
+use crate::SubAck;
+use crate::SubAckHeaderFlags;
+use crate::Subscribe;
+use crate::SubscribeHeaderFlags;
+use crate::TopicError;
+use crate::UnknownFormatIndicatorError;
+use crate::UnsubAck;
+use crate::UnsubAckHeaderFlags;
+use crate::Unsubscribe;
+use crate::UnsubscribeHeaderFlags;
+use crate::Utf8StringError;
+use core::any::type_name;
+use core::num::TryFromIntError;
+use core::str::Utf8Error;
+use winnow::Parser;
+use winnow::binary;
+use winnow::binary::bits;
+use winnow::binary::bits::Bits;
+use winnow::combinator;
+use winnow::error::AddContext;
+use winnow::error::ErrorConvert;
+use winnow::error::FromExternalError;
+use winnow::error::ParserError;
+use winnow::error::StrContext;
+use winnow::stream::Stream;
+use winnow::stream::StreamIsPartial;
+use winnow::stream::UpdateSlice;
 
 impl ControlPacket {
     /// Returns a parser for any MQTT v5.0 Control Packet
@@ -6,7 +66,12 @@ impl ControlPacket {
     ///
     /// Dispatches on the Fixed Header's Control Packet type to the
     /// appropriate variant parser.
+    #[expect(
+        clippy::too_many_lines,
+        reason = "exhaustive dispatch with one arm per Control Packet Type (§2.1.2); splitting it would scatter the packet table"
+    )]
     #[inline]
+    #[must_use]
     pub fn parser<'input, 'settings, ByteInput, ByteError, BitError>(
         parser_settings: &'settings ParserSettings,
     ) -> impl Parser<ByteInput, Self, ByteError> + use<'input, 'settings, ByteInput, ByteError, BitError>
@@ -42,7 +107,7 @@ impl ControlPacket {
 
             let remaining_len_parser = combinator::trace(
                 "Remaining length",
-                self::variable_byte_integer_len_with_limits(parser_settings.max_remaining_bytes),
+                variable_byte_integer_len_with_limits(parser_settings.max_remaining_bytes),
             )
             .context(StrContext::Label("Remaining length"));
 

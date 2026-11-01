@@ -35,6 +35,10 @@ pub trait BytesSource: sealed::Sealed {
 }
 
 mod sealed {
+    #[expect(
+        unnameable_types,
+        reason = "sealed-trait pattern: `Sealed` must be reachable as a supertrait of the public `BytesSource` but unnameable so downstream crates cannot implement it"
+    )]
     pub trait Sealed {}
 
     impl Sealed for &[u8] {}
@@ -76,8 +80,8 @@ fn owned_slice_of(owner: &bytes::Bytes, slice: &[u8]) -> bytes::Bytes {
         return bytes::Bytes::new();
     }
 
-    let owner_start = owner.as_ptr() as usize;
-    let slice_start = slice.as_ptr() as usize;
+    let owner_start = owner.as_ptr().addr();
+    let slice_start = slice.as_ptr().addr();
     let within_owner = slice_start >= owner_start
         && slice_start
             .checked_add(slice.len())

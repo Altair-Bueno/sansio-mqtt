@@ -1,23 +1,44 @@
 use encode::combinators::LengthPrefix;
 
-use super::*;
+use super::EncodeError;
+use crate::AuthReasonCode;
+use crate::BinaryData;
+use crate::ConnackReasonCode;
+use crate::ConnectReasonCode;
+use crate::ControlPacketType;
+use crate::DisconnectReasonCode;
+use crate::FormatIndicator;
+use crate::Payload;
+use crate::Property;
+use crate::PubAckReasonCode;
+use crate::PubCompReasonCode;
+use crate::PubRecReasonCode;
+use crate::PubRelReasonCode;
+use crate::PublishReasonCode;
+use crate::SubAckReasonCode;
+use crate::Subscription;
+use crate::Topic;
+use crate::UnsubAckReasonCode;
+use crate::Utf8String;
+use encode::ByteEncoder;
+use encode::Encodable;
 
-pub type TwoByteInteger = encode::combinators::BE<u16>;
-pub type FourByteInteger = encode::combinators::BE<u32>;
+pub(super) type TwoByteInteger = encode::combinators::BE<u16>;
+pub(super) type FourByteInteger = encode::combinators::BE<u32>;
 
 /// Builds the Fixed Header byte from a Control Packet type and its
 /// 4-bit flags nibble
 /// ([§2.1.1](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901021)).
 #[inline]
-pub const fn fixed_header(packet_type: ControlPacketType, flags: u8) -> u8 {
-    ((packet_type as u8) << 4) | flags
+pub(super) fn fixed_header(packet_type: ControlPacketType, flags: u8) -> u8 {
+    (u8::from(packet_type) << 4) | flags
 }
 
 /// Wraps a User Property list as the [`Property`] sequence the
 /// encoders expect
 /// ([§2.2.2.2](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901029)).
 #[inline]
-pub fn user_properties_iter(
+pub(super) fn user_properties_iter(
     properties: &[(Utf8String, Utf8String)],
 ) -> encode::combinators::Iter<impl Iterator<Item = Property> + Clone + '_> {
     encode::combinators::Iter::new(
@@ -28,14 +49,43 @@ pub fn user_properties_iter(
     )
 }
 
-pub struct VariableByteInteger(pub u64);
+/// A value that fits in a Variable Byte Integer
+/// ([§1.5.5](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901011)):
+/// at most [`Self::MAX`], so it always encodes in four bytes or fewer
+/// [MQTT-1.5.5-1].
+pub(super) struct VariableByteInteger(u32);
+
+impl VariableByteInteger {
+    /// The largest value four bytes can encode.
+    pub(super) const MAX: u32 = 268_435_455;
+}
+
+impl From<u8> for VariableByteInteger {
+    #[inline]
+    fn from(value: u8) -> Self {
+        Self(u32::from(value))
+    }
+}
+
+impl TryFrom<u64> for VariableByteInteger {
+    type Error = EncodeError;
+
+    #[inline]
+    fn try_from(value: u64) -> Result<Self, Self::Error> {
+        u32::try_from(value)
+            .ok()
+            .filter(|value| *value <= Self::MAX)
+            .map(Self)
+            .ok_or(EncodeError::VariableByteIntegerTooLarge(value))
+    }
+}
 
 impl TryFrom<usize> for VariableByteInteger {
     type Error = EncodeError;
 
     #[inline]
     fn try_from(value: usize) -> Result<Self, Self::Error> {
-        Ok(VariableByteInteger(u64::try_from(value)?))
+        Self::try_from(u64::try_from(value)?)
     }
 }
 
@@ -50,7 +100,8 @@ where
     fn encode(&self, encoder: &mut E) -> Result<(), Self::Error> {
         let mut value = self.0;
         loop {
-            let mut encoded_byte = (value % 128) as u8;
+            let [low_byte, ..] = value.to_le_bytes();
+            let mut encoded_byte = low_byte & 0x7F;
             value /= 128;
             if value > 0 {
                 encoded_byte |= 128;

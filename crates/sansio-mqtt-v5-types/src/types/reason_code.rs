@@ -66,7 +66,7 @@ pub enum ConnectReasonCode {
     /// `0x9A` — The Server does not support retained messages, and
     /// Will Retain was set to 1.
     RetainNotSupported = 0x9A,
-    /// `0x9B` — The Server does not support the QoS set in Will QoS.
+    /// `0x9B` — The Server does not support the `QoS` set in Will `QoS`.
     QoSNotSupported = 0x9B,
     /// `0x9C` — The Client should temporarily use another Server.
     UseAnotherServer = 0x9C,
@@ -135,7 +135,7 @@ pub enum ConnackReasonCode {
     /// `0x9A` — The Server does not support retained messages, and
     /// Will Retain was set to 1.
     RetainNotSupported = 0x9A,
-    /// `0x9B` — The Server does not support the QoS set in Will QoS.
+    /// `0x9B` — The Server does not support the `QoS` set in Will `QoS`.
     QoSNotSupported = 0x9B,
     /// `0x9C` — The Client should temporarily use another Server.
     UseAnotherServer = 0x9C,
@@ -156,7 +156,7 @@ pub enum ConnackReasonCode {
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy, Default, EnumIter, Display)]
 #[non_exhaustive]
 pub enum PublishReasonCode {
-    /// `0x00` — The message is accepted. Publication of the QoS 1
+    /// `0x00` — The message is accepted. Publication of the `QoS` 1
     /// message proceeds.
     #[default]
     Success = 0x00,
@@ -186,13 +186,13 @@ pub enum PublishReasonCode {
 /// Reason Code carried by a `PUBACK` packet
 /// ([§3.4.2.1](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901124)).
 ///
-/// Sent by the receiver of a QoS 1 `PUBLISH` to acknowledge receipt
+/// Sent by the receiver of a `QoS` 1 `PUBLISH` to acknowledge receipt
 /// (`Success`) or reject it with one of the error codes. Conformance:
 /// `[MQTT-3.4.2-1]`.
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy, Default, EnumIter, Display)]
 #[non_exhaustive]
 pub enum PubAckReasonCode {
-    /// `0x00` — The message is accepted. Publication of the QoS 1
+    /// `0x00` — The message is accepted. Publication of the `QoS` 1
     /// message proceeds.
     #[default]
     Success = 0x00,
@@ -222,13 +222,13 @@ pub enum PubAckReasonCode {
 /// Reason Code carried by a `PUBREC` packet
 /// ([§3.5.2.1](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901134)).
 ///
-/// Sent by the receiver of a QoS 2 `PUBLISH` as the first
+/// Sent by the receiver of a `QoS` 2 `PUBLISH` as the first
 /// acknowledgement of the four-packet flow. Conformance:
 /// `[MQTT-3.5.2-1]`.
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy, Default, EnumIter, Display)]
 #[non_exhaustive]
 pub enum PubRecReasonCode {
-    /// `0x00` — The message is accepted. Publication of the QoS 2
+    /// `0x00` — The message is accepted. Publication of the `QoS` 2
     /// message proceeds.
     #[default]
     Success = 0x00,
@@ -258,7 +258,7 @@ pub enum PubRecReasonCode {
 /// Reason Code carried by a `PUBREL` packet
 /// ([§3.6.2.1](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901144)).
 ///
-/// Third packet of the QoS 2 flow. The sender can only indicate
+/// Third packet of the `QoS` 2 flow. The sender can only indicate
 /// `Success` or that the acknowledged Packet Identifier was not
 /// recognised. Conformance: `[MQTT-3.6.2-1]`.
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy, Default, EnumIter, Display)]
@@ -276,7 +276,7 @@ pub enum PubRelReasonCode {
 /// Reason Code carried by a `PUBCOMP` packet
 /// ([§3.7.2.1](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901154)).
 ///
-/// Fourth and final packet of the QoS 2 flow. Conformance:
+/// Fourth and final packet of the `QoS` 2 flow. Conformance:
 /// `[MQTT-3.7.2-1]`.
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy, Default, EnumIter, Display)]
 #[non_exhaustive]
@@ -293,17 +293,17 @@ pub enum PubCompReasonCode {
 /// ([§3.9.3](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901174)).
 ///
 /// Each `SUBACK` payload byte corresponds to one Topic Filter in the
-/// matching `SUBSCRIBE`, and indicates either the maximum QoS granted
+/// matching `SUBSCRIBE`, and indicates either the maximum `QoS` granted
 /// or a failure reason. Conformance: `[MQTT-3.9.3-1]`,
 /// `[MQTT-3.9.3-2]`.
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy, EnumIter, Display)]
 #[non_exhaustive]
 pub enum SubAckReasonCode {
-    /// `0x00` — Subscription accepted; maximum granted QoS is 0.
+    /// `0x00` — Subscription accepted; maximum granted `QoS` is 0.
     SuccessQoS0 = 0x00,
-    /// `0x01` — Subscription accepted; maximum granted QoS is 1.
+    /// `0x01` — Subscription accepted; maximum granted `QoS` is 1.
     SuccessQoS1 = 0x01,
-    /// `0x02` — Subscription accepted; maximum granted QoS is 2.
+    /// `0x02` — Subscription accepted; maximum granted `QoS` is 2.
     SuccessQoS2 = 0x02,
     /// `0x11` — No matching existing subscription to update.
     NoSubscriptionExisted = 0x11,
@@ -329,7 +329,7 @@ pub enum SubAckReasonCode {
     PayloadFormatInvalid = 0x99,
     /// `0x9A` — The Server does not support retained messages.
     RetainNotSupported = 0x9A,
-    /// `0x9B` — The Server does not support the QoS.
+    /// `0x9B` — The Server does not support the `QoS`.
     QoSNotSupported = 0x9B,
     /// `0x9C` — The Client should temporarily use another Server.
     UseAnotherServer = 0x9C,
@@ -459,7 +459,7 @@ pub enum DisconnectReasonCode {
     /// `0x9A` — The Server does not support retained messages and a
     /// retained message was received.
     RetainNotSupported = 0x9A,
-    /// `0x9B` — The Server does not support the QoS requested.
+    /// `0x9B` — The Server does not support the `QoS` requested.
     QoSNotSupported = 0x9B,
     /// `0x9C` — The Client should temporarily change its Server.
     UseAnotherServer = 0x9C,
@@ -510,6 +510,10 @@ macro_rules! impl_reason_code {
     ($name:ty) => {
         impl From<$name> for u8 {
             #[inline]
+            #[expect(
+                clippy::as_conversions,
+                reason = "reason codes are fieldless enums whose explicit discriminants are the one-byte wire values (0x00..=0xA2), so the cast cannot truncate"
+            )]
             fn from(value: $name) -> Self {
                 value as u8
             }
@@ -521,7 +525,7 @@ macro_rules! impl_reason_code {
             #[inline]
             fn try_from(value: u8) -> Result<Self, Self::Error> {
                 Self::iter()
-                    .find(|v| *v as u8 == value)
+                    .find(|v| u8::from(*v) == value)
                     .ok_or(InvalidReasonCode { value })
             }
         }

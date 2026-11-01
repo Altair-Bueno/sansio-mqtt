@@ -1,14 +1,14 @@
 //! MQTT v5.0 `PUBREL` packet
 //! ([§3.6](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901141)).
 //!
-//! Second response in the QoS 2 flow, sent by the originator of the
+//! Second response in the `QoS` 2 flow, sent by the originator of the
 //! `PUBLISH`. Conformance: `[MQTT-3.6.0-1]`.
 use super::*;
 
 /// MQTT v5.0 `PUBREL` packet
 /// ([§3.6](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901141)).
 ///
-/// Sent in response to a `PUBREC`; third step of the four-packet QoS
+/// Sent in response to a `PUBREC`; third step of the four-packet `QoS`
 /// 2 flow. Conformance: `[MQTT-3.6.0-1]`, `[MQTT-3.6.1-1]`,
 /// `[MQTT-3.6.2-1]`.
 #[derive(Debug, PartialEq, Eq, Clone, bon::Builder)]
@@ -35,7 +35,7 @@ pub struct PubRel {
 pub struct PubRelHeaderFlags;
 
 impl From<PubRelHeaderFlags> for u8 {
-    fn from(_: PubRelHeaderFlags) -> u8 {
+    fn from(_: PubRelHeaderFlags) -> Self {
         0b0000_0010
     }
 }

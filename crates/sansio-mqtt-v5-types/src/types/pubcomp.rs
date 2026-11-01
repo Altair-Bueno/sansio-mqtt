@@ -1,7 +1,7 @@
 //! MQTT v5.0 `PUBCOMP` packet
 //! ([§3.7](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901151)).
 //!
-//! Final acknowledgement in the QoS 2 flow. Conformance:
+//! Final acknowledgement in the `QoS` 2 flow. Conformance:
 //! `[MQTT-3.7.0-1]`.
 use super::*;
 
@@ -9,7 +9,7 @@ use super::*;
 /// ([§3.7](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901151)).
 ///
 /// Sent in response to a `PUBREL`; fourth and final step of the
-/// four-packet QoS 2 flow. Conformance: `[MQTT-3.7.0-1]`,
+/// four-packet `QoS` 2 flow. Conformance: `[MQTT-3.7.0-1]`,
 /// `[MQTT-3.7.2-1]`.
 #[derive(Debug, PartialEq, Eq, Clone, bon::Builder)]
 #[non_exhaustive]
@@ -34,7 +34,7 @@ pub struct PubComp {
 pub struct PubCompHeaderFlags;
 
 impl From<PubCompHeaderFlags> for u8 {
-    fn from(_: PubCompHeaderFlags) -> u8 {
+    fn from(_: PubCompHeaderFlags) -> Self {
         0
     }
 }

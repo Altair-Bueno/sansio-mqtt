@@ -1,6 +1,6 @@
 //! [`TcpConnector`] against a real TCP listener on the loopback interface.
 
-use std::time::Duration;
+use core::time::Duration;
 
 use sansio_mqtt_protocol::ByteString;
 use sansio_mqtt_protocol::Command;
@@ -9,7 +9,7 @@ use sansio_mqtt_protocol::Event;
 use sansio_mqtt_tokio::Driver;
 use sansio_mqtt_tokio::TcpConnector;
 use sansio_mqtt_v5_protocol::Client;
-use tokio::io::AsyncReadExt;
+use tokio::io::AsyncReadExt as _;
 use tokio::net::TcpListener;
 use tokio::time::Instant;
 use tokio::time::timeout;

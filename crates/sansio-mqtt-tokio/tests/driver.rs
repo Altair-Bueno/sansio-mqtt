@@ -5,20 +5,30 @@
 //! [`Driver::next`] inside a `select!` with incoming commands, so every
 //! submitted command cancels an in-flight `next` call.
 
-use std::collections::VecDeque;
-use std::io;
-use std::num::NonZero;
-use std::pin::Pin;
-use std::sync::Arc;
-use std::sync::atomic::AtomicBool;
-use std::sync::atomic::Ordering;
-use std::task::Context;
-use std::task::Poll;
-use std::time::Duration;
+#![expect(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    reason = "test helpers fail the test on setup errors by design"
+)]
 
+extern crate alloc;
+
+use alloc::collections::VecDeque;
+use alloc::sync::Arc;
+use core::num::NonZero;
+use core::pin::Pin;
+use core::sync::atomic::AtomicBool;
+use core::sync::atomic::Ordering;
+use core::task::Context;
+use core::task::Poll;
+use core::time::Duration;
+use std::io;
+
+use bytes::Buf as _;
 use bytes::Bytes;
 use bytes::BytesMut;
-use encode::Encodable;
+use encode::Encodable as _;
 use sansio_mqtt_protocol::ByteString;
 use sansio_mqtt_protocol::Command;
 use sansio_mqtt_protocol::ConnectOptions;
@@ -39,9 +49,9 @@ use sansio_mqtt_v5_types::DisconnectReasonCode;
 use sansio_mqtt_v5_types::ParserSettings;
 use sansio_mqtt_v5_types::PingReq;
 use tokio::io::AsyncRead;
-use tokio::io::AsyncReadExt;
+use tokio::io::AsyncReadExt as _;
 use tokio::io::AsyncWrite;
-use tokio::io::AsyncWriteExt;
+use tokio::io::AsyncWriteExt as _;
 use tokio::io::DuplexStream;
 use tokio::io::ReadBuf;
 use tokio::io::duplex;
@@ -49,7 +59,7 @@ use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 use tokio::time::Instant;
 use tokio::time::timeout;
-use winnow::Parser;
+use winnow::Parser as _;
 use winnow::error::ContextError;
 use winnow::error::ErrMode;
 use winnow::stream::Partial;
@@ -82,7 +92,7 @@ async fn read_packet(broker: &mut DuplexStream, buffer: &mut BytesMut) -> Contro
         };
         match parsed {
             Ok(Some((packet, consumed))) => {
-                let _ = buffer.split_to(consumed);
+                buffer.advance(consumed);
                 return packet;
             }
             Ok(None) => {
@@ -207,17 +217,17 @@ impl Harness {
                 Dial::Accept => {
                     let (client_side, broker) = duplex(buffer);
                     let socket_faults = Arc::new(Faults::default());
-                    attempts.push_back(Box::pin(std::future::ready(Ok(Socket {
+                    attempts.push_back(Box::pin(core::future::ready(Ok(Socket {
                         inner: client_side,
                         faults: Arc::clone(&socket_faults),
                     }))));
                     brokers.push_back(broker);
                     faults.push_back(socket_faults);
                 }
-                Dial::Refuse => attempts.push_back(Box::pin(std::future::ready(Err(
+                Dial::Refuse => attempts.push_back(Box::pin(core::future::ready(Err(
                     io::ErrorKind::ConnectionRefused.into(),
                 )))),
-                Dial::Hang => attempts.push_back(Box::pin(std::future::pending())),
+                Dial::Hang => attempts.push_back(Box::pin(core::future::pending())),
             }
         }
         let connector = move || {
@@ -240,7 +250,8 @@ impl Harness {
                             .into_iter()
                             .map(|command| driver.submit(command))
                             .collect();
-                        let _ = reply.send(results);
+                        // A cancelled `submit_all` no longer waits for the results.
+                        drop(reply.send(results));
                     }
                     event = driver.next() => if event_tx.send(event).await.is_err() { break },
                 }
@@ -361,6 +372,10 @@ async fn publishes_and_disconnects_gracefully() {
         .submit(publish_command(7, Bytes::from_static(b"hello")))
         .await
         .unwrap();
+    #[expect(
+        clippy::wildcard_enum_match_arm,
+        reason = "`ControlPacket` is `#[non_exhaustive]`; any other packet fails the test"
+    )]
     match harness.packet().await {
         ControlPacket::Publish(publish) => {
             let topic: &str = &publish.topic;
@@ -401,6 +416,10 @@ async fn broker_protocol_violation_sends_disconnect_closes_and_allows_reconnecti
     // client answers with DISCONNECT 0x82 before closing [MQTT-4.13.1-1].
     let pingreq = encode(&ControlPacket::PingReq(PingReq {}));
     harness.broker().write_all(&pingreq).await.unwrap();
+    #[expect(
+        clippy::wildcard_enum_match_arm,
+        reason = "`ControlPacket` is `#[non_exhaustive]`; any other packet fails the test"
+    )]
     match harness.packet().await {
         ControlPacket::Disconnect(disconnect) => {
             assert_eq!(disconnect.reason_code, DisconnectReasonCode::ProtocolError);
@@ -464,6 +483,10 @@ async fn cancelling_next_mid_write_does_not_corrupt_outgoing_packets() {
             .unwrap();
     }
 
+    #[expect(
+        clippy::wildcard_enum_match_arm,
+        reason = "`ControlPacket` is `#[non_exhaustive]`; any other packet fails the test"
+    )]
     match harness.packet().await {
         ControlPacket::Publish(publish) => assert_eq!(publish.payload[..], payload[..]),
         other => panic!("expected PUBLISH, got {other:?}"),
@@ -533,7 +556,7 @@ async fn keep_alive_timeout_closes_a_connection_whose_peer_stopped_reading() {
         .unwrap();
 
     assert_eq!(
-        harness.event_within(Duration::from_secs(60)).await,
+        harness.event_within(Duration::from_mins(1)).await,
         Event::Disconnected(Some(ReasonCode::KeepAliveTimeout))
     );
     // The driver gave up on the stalled socket and dropped it.
@@ -562,7 +585,7 @@ async fn connection_attempt_that_never_completes_times_out_and_allows_retrying()
     harness.submit(connect_command()).await.unwrap();
 
     assert_eq!(
-        harness.event_within(Duration::from_secs(60)).await,
+        harness.event_within(Duration::from_mins(1)).await,
         Event::Disconnected(None)
     );
     assert!(started.elapsed() >= connect_timeout);
@@ -583,7 +606,7 @@ async fn broker_that_never_sends_connack_times_out_and_the_socket_is_closed() {
     assert!(matches!(harness.packet().await, ControlPacket::Connect(_)));
 
     assert_eq!(
-        harness.event_within(Duration::from_secs(60)).await,
+        harness.event_within(Duration::from_mins(1)).await,
         Event::Disconnected(None)
     );
     assert!(started.elapsed() >= connect_timeout);

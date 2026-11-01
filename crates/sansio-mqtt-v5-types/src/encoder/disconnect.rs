@@ -1,4 +1,15 @@
-use super::*;
+use super::EncodeError;
+use super::basic::VariableByteInteger;
+use super::basic::fixed_header;
+use super::basic::user_properties_iter;
+use crate::ControlPacketType;
+use crate::Disconnect;
+use crate::DisconnectHeaderFlags;
+use crate::DisconnectProperties;
+use crate::DisconnectReasonCode;
+use crate::Property;
+use encode::ByteEncoder;
+use encode::Encodable;
 
 impl<E> Encodable<E> for DisconnectProperties
 where

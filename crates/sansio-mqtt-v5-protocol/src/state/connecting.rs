@@ -1,10 +1,10 @@
-use crate::client::ClientSettings;
 use crate::convert;
 use crate::limits;
 use crate::queues;
 use crate::scratchpad::ClientScratchpad;
 use crate::session::ClientSession;
 use crate::session_ops;
+use crate::settings::ClientSettings;
 use crate::state::ClientState;
 use crate::state::StateHandler;
 use crate::state::connected::Connected;
@@ -51,13 +51,13 @@ enum ConnectingPhase {
 impl Connecting {
     /// A connection attempt that sends the already encoded `connect` once
     /// the requested socket is connected.
-    pub(crate) fn awaiting_socket(connect: Bytes) -> Self {
+    pub(super) fn awaiting_socket(connect: Bytes) -> Self {
         Self {
             phase: ConnectingPhase::AwaitingSocket { connect },
         }
     }
 
-    pub(crate) fn has_open_socket(&self) -> bool {
+    pub(super) fn has_open_socket(&self) -> bool {
         matches!(self.phase, ConnectingPhase::AwaitingConnAck)
     }
 }
@@ -100,7 +100,7 @@ fn on_connack<T>(
     settings: &ClientSettings,
     session: &mut ClientSession,
     scratchpad: &mut ClientScratchpad<T>,
-    connack: ConnAck,
+    connack: &ConnAck,
     received_at: T,
 ) -> (ClientState, Result<(), Error>)
 where
@@ -215,7 +215,7 @@ impl Connecting {
     ///
     /// Only called while CONNACK is awaited: `Client::handle_read` parses no
     /// packet unless [`has_open_socket`](Self::has_open_socket) holds.
-    pub(crate) fn handle_control_packet<T>(
+    pub(super) fn handle_control_packet<T>(
         self,
         settings: &ClientSettings,
         session: &mut ClientSession,
@@ -228,7 +228,7 @@ impl Connecting {
     {
         match packet {
             ControlPacket::ConnAck(connack) => {
-                on_connack(settings, session, scratchpad, connack, received_at)
+                on_connack(settings, session, scratchpad, &connack, received_at)
             }
             // [MQTT-3.15.4-1] AUTH is only valid mid-handshake when the CONNECT
             // requested enhanced authentication and asks to continue it.
@@ -241,7 +241,22 @@ impl Connecting {
             {
                 (ClientState::Connecting(self), Ok(()))
             }
-            _ => fail_with_protocol_error(settings, session, scratchpad),
+            // Anything else before CONNACK is a Protocol Error.
+            ControlPacket::Connect(_)
+            | ControlPacket::Publish(_)
+            | ControlPacket::PubAck(_)
+            | ControlPacket::PubRec(_)
+            | ControlPacket::PubRel(_)
+            | ControlPacket::PubComp(_)
+            | ControlPacket::Subscribe(_)
+            | ControlPacket::SubAck(_)
+            | ControlPacket::Unsubscribe(_)
+            | ControlPacket::UnsubAck(_)
+            | ControlPacket::PingReq(_)
+            | ControlPacket::PingResp(_)
+            | ControlPacket::Disconnect(_)
+            | ControlPacket::Auth(_)
+            | _ => fail_with_protocol_error(settings, session, scratchpad),
         }
     }
 }
@@ -261,7 +276,13 @@ where
         match msg {
             // A user-requested disconnect is the same teardown as `close`.
             Command::Disconnect => self.close(settings, session, scratchpad),
-            _ => (
+            Command::Connect(_)
+            | Command::Publish { .. }
+            | Command::Acknowledge(_)
+            | Command::Reject(..)
+            | Command::Subscribe(_)
+            | Command::Unsubscribe(_)
+            | _ => (
                 ClientState::Connecting(self),
                 Err(Error::InvalidStateTransition),
             ),
@@ -286,8 +307,8 @@ where
             }
             // A `SocketConnected` while awaiting CONNACK: the socket is
             // already open and the protocol did not ask for another one.
-            (phase, _) => (
-                ClientState::Connecting(Connecting { phase }),
+            (phase, DriverEvent::SocketConnected | _) => (
+                ClientState::Connecting(Self { phase }),
                 Err(Error::InvalidStateTransition),
             ),
         }

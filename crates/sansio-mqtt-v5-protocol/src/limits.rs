@@ -1,7 +1,7 @@
-use crate::client::ClientSettings;
 use crate::convert;
 use crate::scratchpad::ClientScratchpad;
 use crate::session::ClientSession;
+use crate::settings::ClientSettings;
 use core::num::NonZero;
 use sansio_mqtt_protocol::Capability;
 use sansio_mqtt_protocol::Error;
@@ -14,7 +14,7 @@ use sansio_mqtt_v5_types::MaximumQoS;
 use sansio_mqtt_v5_types::Publish;
 use sansio_mqtt_v5_types::Qos as WireQos;
 
-/// The Maximum QoS cap [`ClientSettings::max_outgoing_qos`] imposes on
+/// The Maximum `QoS` cap [`ClientSettings::max_outgoing_qos`] imposes on
 /// outbound PUBLISH, or `None` when the setting is absent or
 /// `Qos::ExactlyOnce` (both mean "no local cap").
 fn settings_outgoing_qos_cap(settings: &ClientSettings) -> Option<MaximumQoS> {
@@ -93,7 +93,8 @@ pub(crate) fn validate_outbound_packet_size<T>(
     packet_size_bytes: usize,
 ) -> Result<(), Error> {
     if let Some(maximum_packet_size) = scratchpad.negotiated_maximum_packet_size
-        && packet_size_bytes > maximum_packet_size.get() as usize
+        && usize::try_from(maximum_packet_size.get())
+            .is_ok_and(|maximum| packet_size_bytes > maximum)
     {
         return Err(Error::PacketTooLarge);
     }

@@ -1,14 +1,14 @@
 //! MQTT v5.0 `PUBACK` packet
 //! ([§3.4](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901121)).
 //!
-//! Acknowledgement to a QoS 1 [`Publish`]. Conformance:
+//! Acknowledgement to a `QoS` 1 [`Publish`]. Conformance:
 //! `[MQTT-3.4.0-1]`.
 use super::*;
 
 /// MQTT v5.0 `PUBACK` packet
 /// ([§3.4](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901121)).
 ///
-/// Sent in response to a QoS 1 `PUBLISH`. Conformance:
+/// Sent in response to a `QoS` 1 `PUBLISH`. Conformance:
 /// `[MQTT-3.4.0-1]`, `[MQTT-3.4.2-1]`.
 #[derive(Debug, PartialEq, Eq, Clone, bon::Builder)]
 #[non_exhaustive]
@@ -34,7 +34,7 @@ pub struct PubAck {
 pub struct PubAckHeaderFlags;
 
 impl From<PubAckHeaderFlags> for u8 {
-    fn from(_: PubAckHeaderFlags) -> u8 {
+    fn from(_: PubAckHeaderFlags) -> Self {
         0
     }
 }

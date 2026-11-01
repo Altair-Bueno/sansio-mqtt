@@ -3,6 +3,10 @@ name = "sansio-mqtt-protocol"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
+description = "Version-neutral application API (commands, events, messages) shared by the sansio-mqtt protocol crates"
+repository.workspace = true
+keywords.workspace = true
+categories = ["network-programming", "no-std"]
 
 [dependencies]
 bon = { workspace = true }
@@ -12,3 +16,6 @@ sansio = { workspace = true }
 semver = { workspace = true }
 thiserror = { workspace = true }
 strum = { workspace = true, features = ["derive"] }
+
+[lints]
+workspace = true

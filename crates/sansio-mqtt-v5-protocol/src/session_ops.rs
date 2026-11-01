@@ -42,7 +42,7 @@ pub(crate) fn reset_session_state(session: &mut ClientSession) {
     session.pending_unsubscribe.clear();
 }
 
-/// Advances and returns the packet id counter, wrapping from u16::MAX back to
+/// Advances and returns the packet id counter, wrapping from `u16::MAX` back to
 /// 1.
 ///
 /// [MQTT-2.2.1-3] A Packet Identifier of 0 is invalid, so the counter wraps to
@@ -97,7 +97,7 @@ pub(crate) fn replay_outbound_inflight_with_dup<T>(
 ) -> Result<(), Error> {
     // `session` and `scratchpad` are distinct borrows, so the retained packets
     // can be marked and re-enqueued in place — no copy of the in-flight map.
-    for (packet_id, state) in session.on_flight_sent.iter_mut() {
+    for (packet_id, state) in &mut session.on_flight_sent {
         match state {
             OutboundInflightState::Qos1AwaitPubAck { publish, .. }
             | OutboundInflightState::Qos2AwaitPubRec { publish, .. } => {

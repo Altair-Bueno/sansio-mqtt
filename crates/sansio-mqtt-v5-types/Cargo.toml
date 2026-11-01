@@ -3,6 +3,16 @@ name = "sansio-mqtt-v5-types"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
+description = "MQTT v5.0 control packet types with zero-copy parsers and encoders, no_std"
+repository.workspace = true
+keywords.workspace = true
+categories = [
+  "network-programming",
+  "encoding",
+  "parser-implementations",
+  "no-std",
+]
+readme = "README.md"
 
 [features]
 
@@ -18,3 +28,6 @@ encode = { workspace = true, features = ["alloc"] }
 [dev-dependencies]
 rstest = { workspace = true }
 bytestring = { workspace = true }
+
+[lints]
+workspace = true

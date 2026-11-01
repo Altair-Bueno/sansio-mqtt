@@ -56,7 +56,7 @@ pub enum ConnAckKind {
 pub struct ConnAckHeaderFlags;
 
 impl From<ConnAckHeaderFlags> for u8 {
-    fn from(_: ConnAckHeaderFlags) -> u8 {
+    fn from(_: ConnAckHeaderFlags) -> Self {
         0
     }
 }
@@ -77,7 +77,7 @@ pub struct ConnAckProperties {
     /// ([§3.2.2.3.3](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901083),
     /// [MQTT-3.2.2-11]).
     pub receive_maximum: Option<NonZero<u16>>,
-    /// Maximum QoS supported by the Server
+    /// Maximum `QoS` supported by the Server
     /// ([§3.2.2.3.4](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901084),
     /// [MQTT-3.2.2-12]).
     pub maximum_qos: Option<MaximumQoS>,
@@ -117,7 +117,7 @@ pub struct ConnAckProperties {
     /// ([§3.2.2.3.15](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901095),
     /// [MQTT-3.2.2-22]).
     pub response_information: Option<Utf8String>,
-    /// Server Reference for UseAnotherServer / ServerMoved
+    /// Server Reference for `UseAnotherServer` / `ServerMoved`
     /// disconnects
     /// ([§3.2.2.3.16](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901096)).
     pub server_reference: Option<Utf8String>,

@@ -27,3 +27,6 @@ name = "roundtrip_control_packet"
 path = "fuzz_targets/roundtrip_control_packet.rs"
 test = false
 doc = false
+
+[lints]
+workspace = true

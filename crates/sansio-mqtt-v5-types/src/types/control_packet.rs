@@ -21,7 +21,10 @@ use super::*;
 #[strum_discriminants(
     doc = "Control Packet Type discriminant of [`ControlPacket`] ([§2.1.2](https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html#_Toc3901022)). Identifies a packet type without the payload."
 )]
-#[allow(clippy::large_enum_variant)]
+#[expect(
+    clippy::large_enum_variant,
+    reason = "packets are moved by value through the codec; boxing the large variants would add an allocation per packet and change the public variant types"
+)]
 #[repr(u8)]
 #[non_exhaustive]
 pub enum ControlPacket {
@@ -77,8 +80,8 @@ impl TryFrom<u8> for ControlPacketType {
 
     #[inline]
     fn try_from(value: u8) -> Result<Self, Self::Error> {
-        ControlPacketType::iter()
-            .find(|v| *v as u8 == value)
+        Self::iter()
+            .find(|v| u8::from(*v) == value)
             .ok_or(InvalidControlPacketTypeError { value })
     }
 }
@@ -86,7 +89,23 @@ impl TryFrom<u8> for ControlPacketType {
 impl From<ControlPacketType> for u8 {
     #[inline]
     fn from(value: ControlPacketType) -> Self {
-        value as u8
+        match value {
+            ControlPacketType::Connect => 1,
+            ControlPacketType::ConnAck => 2,
+            ControlPacketType::Publish => 3,
+            ControlPacketType::PubAck => 4,
+            ControlPacketType::PubRec => 5,
+            ControlPacketType::PubRel => 6,
+            ControlPacketType::PubComp => 7,
+            ControlPacketType::Subscribe => 8,
+            ControlPacketType::SubAck => 9,
+            ControlPacketType::Unsubscribe => 10,
+            ControlPacketType::UnsubAck => 11,
+            ControlPacketType::PingReq => 12,
+            ControlPacketType::PingResp => 13,
+            ControlPacketType::Disconnect => 14,
+            ControlPacketType::Auth => 15,
+        }
     }
 }
 
