@@ -40,6 +40,8 @@ websocket = [
 futures-util = { workspace = true, features = ["sink"] }
 rcgen = { workspace = true, features = ["crypto", "pem", "ring"] }
 rustls-platform-verifier = { workspace = true }
+thiserror = { workspace = true }
+usage-rs = { workspace = true, features = ["diagnostics", "help"] }
 tokio-rustls = { workspace = true, features = ["logging", "ring", "tls12"] }
 sansio = { workspace = true }
 semver = { workspace = true }
@@ -51,16 +53,12 @@ winnow = { workspace = true }
 tracing-subscriber = { workspace = true, features = ["env-filter", "fmt"] }
 tokio = { workspace = true, features = ["full", "test-util"] }
 
-[[example]]
-name = "tlsv5"
-required-features = ["rustls"]
-
 [[test]]
 name = "websocket_connector"
 required-features = ["websocket"]
 
 [[example]]
-name = "wsv5"
+name = "client"
 required-features = ["rustls", "websocket"]
 
 [[test]]
