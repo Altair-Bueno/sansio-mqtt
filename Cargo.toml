@@ -39,6 +39,9 @@ tracing = { version = "0.1.41", default-features = false }
 tracing-subscriber = { version = "0.3.23", default-features = false }
 winnow = { version = "1.0.0", default-features = false }
 
+[profile.dev]
+debug = false
+
 [workspace.lints.rust]
 unsafe_code = "warn"
 unsafe_op_in_unsafe_fn = "warn"
