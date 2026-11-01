@@ -142,19 +142,13 @@ where
         while self.received.is_empty() {
             if self.peer_closed {
                 // tungstenite queued the reply to the peer's close but only
-                // sends it when flushed; the peer waits for it before ending
-                // the connection.
-                return match ready!(Pin::new(&mut self.stream).poll_flush(cx)) {
-                    Ok(())
-                    | Err(
-                        tungstenite::Error::ConnectionClosed | tungstenite::Error::AlreadyClosed,
-                    ) => Poll::Ready(Ok(())),
-                    Err(error) => Poll::Ready(Err(websocket_error(error))),
-                };
+                // sends it when flushed, and the peer waits for it before
+                // ending the connection. The WebSocket is over either way, so
+                // a reply that cannot be delivered changes nothing.
+                let _ = ready!(Pin::new(&mut self.stream).poll_flush(cx));
+                return Poll::Ready(Ok(()));
             }
             match ready!(Pin::new(&mut self.stream).poll_next(cx)) {
-                // End of the WebSocket: zero bytes read, end of stream.
-                None => return Poll::Ready(Ok(())),
                 Some(Ok(Message::Binary(data))) => self.received = data,
                 Some(Ok(Message::Text(_))) => {
                     return Poll::Ready(Err(io::Error::new(
@@ -162,7 +156,8 @@ where
                         "MQTT over WebSocket only allows binary messages [MQTT-6.0.0-1]",
                     )));
                 }
-                Some(Ok(Message::Close(_))) => self.peer_closed = true,
+                // The peer closed the WebSocket: reply, then end the stream.
+                None | Some(Ok(Message::Close(_))) => self.peer_closed = true,
                 Some(Ok(Message::Ping(_) | Message::Pong(_) | Message::Frame(_))) => {}
                 Some(Err(error)) => return Poll::Ready(Err(websocket_error(error))),
             }
