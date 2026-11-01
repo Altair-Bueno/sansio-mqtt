@@ -14,7 +14,8 @@
   inline `#[cfg(test)]` unit tests; unit tests for private functions are
   optional. All behavioral changes MUST have at least one test that would fail
   before the change and pass after.
-- When working on Rust code, follow the guidelines in /effective-rust:effective-rust.
+- When working on Rust code, follow the guidelines in
+  /effective-rust:effective-rust.
 - Type safety: encode invariants in types; avoid runtime checks when types can
   enforce.
 - Prefer `#![forbid(unsafe_code)]` by default. `unsafe` is allowed only when:
