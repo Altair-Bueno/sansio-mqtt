@@ -15,12 +15,25 @@ tokio-rustls = { workspace = true, optional = true, features = [
   "ring",
   "tls12",
 ] }
+futures-core = { workspace = true, optional = true }
+futures-sink = { workspace = true, optional = true }
+tokio-tungstenite = { workspace = true, optional = true, features = [
+  "handshake",
+] }
 
 [features]
 # TLS over any connector, using rustls with the ring crypto provider.
 rustls = ["dep:thiserror", "dep:tokio-rustls"]
+# MQTT over WebSocket (MQTT v5.0 §6) over any connector.
+websocket = [
+  "dep:futures-core",
+  "dep:futures-sink",
+  "dep:thiserror",
+  "dep:tokio-tungstenite",
+]
 
 [dev-dependencies]
+futures-util = { workspace = true, features = ["sink"] }
 rcgen = { workspace = true, features = ["crypto", "pem", "ring"] }
 rustls-platform-verifier = { workspace = true }
 tokio-rustls = { workspace = true, features = ["logging", "ring", "tls12"] }
@@ -37,3 +50,11 @@ tokio = { workspace = true, features = ["full", "test-util"] }
 [[example]]
 name = "tlsv5"
 required-features = ["rustls"]
+
+[[test]]
+name = "websocket_connector"
+required-features = ["websocket"]
+
+[[example]]
+name = "wsv5"
+required-features = ["websocket"]
