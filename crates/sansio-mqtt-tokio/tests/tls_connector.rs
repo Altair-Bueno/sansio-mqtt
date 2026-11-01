@@ -46,12 +46,13 @@ fn localhost_server() -> (TlsAcceptor, rcgen::CertifiedKey<rcgen::KeyPair>) {
     (TlsAcceptor::from(Arc::new(config)), certified)
 }
 
-fn client_config(roots: RootCertStore) -> Arc<ClientConfig> {
-    Arc::new(
+/// A TLS context trusting only `roots`; cloning it shares the configuration.
+fn tls_context(roots: RootCertStore) -> tokio_rustls::TlsConnector {
+    tokio_rustls::TlsConnector::from(Arc::new(
         ClientConfig::builder()
             .with_root_certificates(roots)
             .with_no_client_auth(),
-    )
+    ))
 }
 
 #[tokio::test]
@@ -62,7 +63,7 @@ async fn tls_connector_delivers_connect_through_the_tls_session() {
     roots.add(certified.cert.der().clone()).unwrap();
     let connector = TlsConnector::new(
         TcpConnector::new(listener.local_addr().unwrap()),
-        client_config(roots),
+        tls_context(roots),
         ServerName::try_from("localhost").unwrap(),
     );
     let mut driver = Driver::new(Client::<Instant>::default(), connector);
@@ -88,7 +89,7 @@ async fn tls_connector_untrusted_certificate_reports_disconnected() {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let connector = TlsConnector::new(
         TcpConnector::new(listener.local_addr().unwrap()),
-        client_config(RootCertStore::empty()),
+        tls_context(RootCertStore::empty()),
         ServerName::try_from("localhost").unwrap(),
     );
     let mut driver = Driver::new(Client::<Instant>::default(), connector);

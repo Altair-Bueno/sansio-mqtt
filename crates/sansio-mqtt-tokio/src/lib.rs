@@ -11,6 +11,10 @@ pub use driver::Driver;
 pub use tls::TlsConnectError;
 #[cfg(feature = "rustls")]
 pub use tls::TlsConnector;
+/// The tokio-rustls version [`TlsConnector`] is built on, for the shared TLS
+/// context ([`tokio_rustls::TlsConnector`]) it takes.
+#[cfg(feature = "rustls")]
+pub use tokio_rustls;
 /// The rustls version [`TlsConnector`] is built on, for its configuration
 /// types.
 #[cfg(feature = "rustls")]
