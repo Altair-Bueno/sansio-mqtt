@@ -17,11 +17,6 @@ mod queues;
 mod scratchpad;
 mod session;
 mod session_ops;
-#[expect(
-    clippy::allow_attributes,
-    clippy::allow_attributes_without_reason,
-    reason = "false positive: the `bon::Builder` setters carry `#[allow]`s spanned at field names starting with `allow_`, which clippy mistakes for hand-written attributes"
-)]
 mod settings;
 mod state;
 

@@ -12,6 +12,12 @@ use sansio_mqtt_v5_types::Topic;
 use sansio_mqtt_v5_types::Utf8String;
 use sansio_mqtt_v5_types::Utf8StringError;
 
+#[test]
+fn payload_from_byte_array_copies_the_bytes() {
+    let payload = Payload::from(&[7_u8, 8, 9]);
+    assert_eq!(&payload[..], [7_u8, 8, 9].as_slice());
+}
+
 #[rstest]
 #[case(vec![4_u8, 5, 6], vec![4_u8, 5, 6])]
 #[case(Vec::<u8>::new(), Vec::<u8>::new())]

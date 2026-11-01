@@ -15,7 +15,7 @@ sansio-mqtt-protocol = { path = "crates/sansio-mqtt-protocol", default-features 
 sansio-mqtt-v5-protocol = { path = "crates/sansio-mqtt-v5-protocol", default-features = false }
 sansio-mqtt-v5-types = { path = "crates/sansio-mqtt-v5-types", default-features = false }
 
-bon = { version = "3.9.3", default-features = false }
+bon = { version = "3.10.3", default-features = false }
 bytes = { version = "1", default-features = false }
 bytestring = { version = "1", default-features = false }
 encode = { version = "1.0.0", default-features = false }

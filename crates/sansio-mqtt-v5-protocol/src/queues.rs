@@ -22,14 +22,16 @@ use sansio_mqtt_v5_types::PubRecReasonCode;
 use sansio_mqtt_v5_types::PubRel;
 use sansio_mqtt_v5_types::PubRelReasonCode;
 
+/// Encodes `packet` into a fresh buffer.
+///
+/// A growable `Vec` never runs out of space, so the only way encoding fails
+/// is a length field overflowing its wire integer [MQTT-1.5.5-1],
+/// [MQTT-1.5.4-1], [MQTT-1.5.6-1], reported as [`Error::PacketTooLarge`].
 pub(crate) fn encode_control_packet(packet: &ControlPacket) -> Result<Bytes, Error> {
     let mut encoded = Vec::new();
-    packet.encode(&mut encoded).map_err(|err| match err {
-        EncodeError::PacketTooLarge(_) | EncodeError::VariableByteIntegerTooLarge(_) => {
-            Error::PacketTooLarge
-        }
-        EncodeError::InsufficientSpace(_) | _ => Error::EncodeFailure,
-    })?;
+    packet
+        .encode(&mut encoded)
+        .map_err(|_: EncodeError| Error::PacketTooLarge)?;
     Ok(Bytes::from(encoded))
 }
 

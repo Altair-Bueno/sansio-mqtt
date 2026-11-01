@@ -494,6 +494,10 @@ fn auth_with_all_valid_properties_roundtrip() {
                     method: Utf8String::try_from("method").unwrap(),
                     data: BinaryData::try_from(&[1, 2, 3, 4]).unwrap(),
                 })
+                .user_properties(vec![(
+                    Utf8String::try_from("key").unwrap(),
+                    Utf8String::try_from("value").unwrap(),
+                )])
                 .build(),
         )
         .build();
