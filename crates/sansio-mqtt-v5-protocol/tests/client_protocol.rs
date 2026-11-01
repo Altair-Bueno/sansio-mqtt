@@ -646,6 +646,130 @@ fn connack_rejected_reason_closes_without_connected_event() {
     ));
 }
 
+/// [MQTT-3.2.2-7] Every failure Reason Code in a CONNACK closes the connection
+/// without DISCONNECT and is reported to the application unchanged.
+#[test]
+fn every_refused_connack_reason_is_reported_in_disconnected() {
+    let refusals = [
+        (
+            ConnackReasonCode::UnspecifiedError,
+            ReasonCode::UnspecifiedError,
+        ),
+        (
+            ConnackReasonCode::MalformedPacket,
+            ReasonCode::MalformedPacket,
+        ),
+        (ConnackReasonCode::ProtocolError, ReasonCode::ProtocolError),
+        (
+            ConnackReasonCode::ImplementationSpecificError,
+            ReasonCode::ImplementationSpecificError,
+        ),
+        (
+            ConnackReasonCode::UnsupportedProtocolVersion,
+            ReasonCode::UnsupportedProtocolVersion,
+        ),
+        (
+            ConnackReasonCode::ClientIdentifierNotValid,
+            ReasonCode::ClientIdentifierNotValid,
+        ),
+        (
+            ConnackReasonCode::BadUserNameOrPassword,
+            ReasonCode::BadUserNameOrPassword,
+        ),
+        (ConnackReasonCode::NotAuthorized, ReasonCode::NotAuthorized),
+        (
+            ConnackReasonCode::ServerUnavailable,
+            ReasonCode::ServerUnavailable,
+        ),
+        (ConnackReasonCode::ServerBusy, ReasonCode::ServerBusy),
+        (ConnackReasonCode::Banned, ReasonCode::Banned),
+        (
+            ConnackReasonCode::BadAuthenticationMethod,
+            ReasonCode::BadAuthenticationMethod,
+        ),
+        (
+            ConnackReasonCode::TopicNameInvalid,
+            ReasonCode::TopicNameInvalid,
+        ),
+        (
+            ConnackReasonCode::PacketTooLarge,
+            ReasonCode::PacketTooLarge,
+        ),
+        (ConnackReasonCode::QuotaExceeded, ReasonCode::QuotaExceeded),
+        (
+            ConnackReasonCode::PayloadFormatInvalid,
+            ReasonCode::PayloadFormatInvalid,
+        ),
+        (
+            ConnackReasonCode::RetainNotSupported,
+            ReasonCode::RetainNotSupported,
+        ),
+        (
+            ConnackReasonCode::QoSNotSupported,
+            ReasonCode::QoSNotSupported,
+        ),
+        (
+            ConnackReasonCode::UseAnotherServer,
+            ReasonCode::UseAnotherServer,
+        ),
+        (ConnackReasonCode::ServerMoved, ReasonCode::ServerMoved),
+        (
+            ConnackReasonCode::ConnectionRateExceeded,
+            ReasonCode::ConnectionRateExceeded,
+        ),
+    ];
+
+    for (wire, expected) in refusals {
+        let mut client = Client::<Duration>::default();
+        let _ = open_connecting(&mut client, connect_options());
+        let connack = ControlPacket::ConnAck(
+            ConnAck::builder()
+                .kind(ConnAckKind::Other { reason_code: wire })
+                .build(),
+        );
+
+        assert_eq!(read(&mut client, &connack), Ok(()), "{wire:?}");
+        assert_eq!(
+            client.poll_read(),
+            Some(Event::Disconnected(Some(expected))),
+            "{wire:?}"
+        );
+        assert_eq!(client.poll_write(), None, "{wire:?} sent a packet");
+        assert!(
+            matches!(client.poll_event(), Some(DriverAction::CloseSocket)),
+            "{wire:?} did not close the socket"
+        );
+    }
+}
+
+/// [MQTT-1.5.5-1] A Variable Byte Integer uses at most four bytes, so a
+/// Remaining Length with a fifth byte is a Malformed Packet, answered with
+/// DISCONNECT 0x81 [MQTT-4.13.1-1].
+#[test]
+fn remaining_length_longer_than_four_bytes_is_a_malformed_packet() {
+    let mut client = Client::<Duration>::default();
+    let _ = connect_default(&mut client);
+
+    let result = client.handle_read(IncomingData {
+        bytes: &[0x30, 0xFF, 0xFF, 0xFF, 0xFF, 0x7F],
+        received_at: Duration::ZERO,
+    });
+
+    assert_eq!(result, Ok(()));
+    assert_eq!(
+        client.poll_read(),
+        Some(Event::Disconnected(Some(ReasonCode::MalformedPacket)))
+    );
+    assert_eq!(
+        client.poll_write(),
+        Some(Bytes::from_static(&[0xE0, 0x02, 0x81, 0x00]))
+    );
+    assert!(matches!(
+        client.poll_event(),
+        Some(DriverAction::CloseSocket)
+    ));
+}
+
 #[test]
 fn inbound_publish_qos0_is_forwarded_to_user_queue() {
     let mut client = Client::<Duration>::default();
@@ -2214,6 +2338,78 @@ fn subscribe_rejects_packet_exceeding_connack_maximum_packet_size() {
         Err(Error::PacketTooLarge)
     );
     assert_eq!(client.poll_write(), None);
+}
+
+/// MQTT v5.0 §3.2.2.3.6: the client MUST NOT send a packet larger than the
+/// server's Maximum Packet Size, so an oversized UNSUBSCRIBE is rejected.
+#[test]
+fn unsubscribe_rejects_packet_exceeding_connack_maximum_packet_size() {
+    let mut client = Client::<Duration>::default();
+    let _ = open_connecting(&mut client, connect_options());
+    assert_eq!(
+        read(
+            &mut client,
+            &connack_with_properties(
+                ConnAckProperties::builder()
+                    .maybe_maximum_packet_size(NonZero::new(20))
+                    .build(),
+            ),
+        ),
+        Ok(())
+    );
+    assert!(matches!(client.poll_read(), Some(Event::Connected)));
+
+    assert_eq!(
+        client.handle_write(at_zero(unsubscribe_one("a/very/long/topic/filter"))),
+        Err(Error::PacketTooLarge)
+    );
+    assert_eq!(client.poll_write(), None);
+
+    // The rejected UNSUBSCRIBE left nothing pending: one that fits is sent.
+    assert_eq!(client.handle_write(at_zero(unsubscribe_one("a/b"))), Ok(()));
+    assert!(
+        client.poll_write().is_some(),
+        "UNSUBSCRIBE should be queued"
+    );
+}
+
+/// [MQTT-3.1.2-22] Keep-alive cannot be honoured when the server's Maximum
+/// Packet Size is too small for a 2-byte PINGREQ, so the connection is closed
+/// as a Protocol Error when the keep-alive interval elapses.
+#[test]
+fn keep_alive_pingreq_exceeding_connack_maximum_packet_size_closes_the_connection() {
+    let mut client = Client::<Duration>::new(
+        ClientSettings::builder()
+            .keep_alive(NonZero::new(10))
+            .build(),
+    );
+    let _ = open_connecting(&mut client, connect_options());
+    assert_eq!(
+        read(
+            &mut client,
+            &connack_with_properties(
+                ConnAckProperties::builder()
+                    .maybe_maximum_packet_size(NonZero::new(1))
+                    .build(),
+            ),
+        ),
+        Ok(())
+    );
+    assert!(matches!(client.poll_read(), Some(Event::Connected)));
+    assert_eq!(client.poll_timeout(), Some(Duration::from_secs(10)));
+
+    assert_eq!(client.handle_timeout(Duration::from_secs(10)), Ok(()));
+
+    // Neither PINGREQ nor DISCONNECT fits in a single byte.
+    assert_eq!(client.poll_write(), None);
+    assert!(matches!(
+        client.poll_event(),
+        Some(DriverAction::CloseSocket)
+    ));
+    assert_eq!(
+        client.poll_read(),
+        Some(Event::Disconnected(Some(ReasonCode::ProtocolError)))
+    );
 }
 
 #[test]
