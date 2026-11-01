@@ -423,8 +423,8 @@ where
                             (ClientState::Connected(self), Ok(()))
                         }
                     }
-                    // [MQTT-4.3.3-4] Repeated PUBREC still requires PUBREL with the same Packet
-                    // Identifier.
+                    // [MQTT-4.3.3-4] Repeated PUBREC still requires PUBREL with
+                    // the same Packet Identifier.
                     Some((OutboundQos2Stage::AwaitPubComp, _)) => {
                         stay_or_disconnect(queues::enqueue_ack_or_fail_protocol(
                             settings,
