@@ -226,3 +226,56 @@ fn websocket_connector_rejects_a_uri_without_a_host() {
         Err(UrlError::EmptyHostName)
     ));
 }
+
+#[tokio::test]
+async fn websocket_connector_dropped_connection_reports_disconnected() {
+    // The broker vanishes without a closing handshake.
+    let observed = events(2, |listener| async move {
+        let mut broker = accept_mqtt(&listener).await;
+        broker
+            .send(Message::binary(CONNACK.to_vec()))
+            .await
+            .unwrap();
+        drop(broker);
+        std::future::pending().await
+    })
+    .await;
+
+    assert_eq!(observed, [Event::Connected, Event::Disconnected(None)]);
+}
+
+#[tokio::test]
+async fn websocket_connector_disconnect_sends_disconnect_then_closes_the_websocket() {
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let mut driver = Driver::new(Client::<Instant>::default(), websocket_connector(&listener));
+    driver.submit(connect_command()).unwrap();
+
+    let broker = async {
+        let mut broker = accept_mqtt(&listener).await;
+        broker
+            .send(Message::binary(CONNACK.to_vec()))
+            .await
+            .unwrap();
+        let disconnect = broker.next().await.unwrap().unwrap();
+        let close = broker.next().await.unwrap().unwrap();
+        (disconnect, close)
+    };
+    let client = async {
+        assert_eq!(driver.next().await, Event::Connected);
+        driver.submit(Command::Disconnect).unwrap();
+        driver.next().await
+    };
+    let ((disconnect, close), disconnected) = timeout(STEP, async { tokio::join!(broker, client) })
+        .await
+        .expect("the disconnect did not complete within the timeout");
+
+    match disconnect {
+        Message::Binary(data) => assert_eq!(data[0], 0xE0, "expected a DISCONNECT"),
+        other => panic!("expected a binary DISCONNECT, got {other:?}"),
+    }
+    assert!(
+        matches!(close, Message::Close(_)),
+        "expected a close, got {close:?}"
+    );
+    assert_eq!(disconnected, Event::Disconnected(None));
+}
