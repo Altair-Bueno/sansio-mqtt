@@ -10,7 +10,15 @@ use sansio_mqtt_protocol::Qos;
 /// the CONNECT packet, the caps enforced on outbound traffic, and the caps fed
 /// to the inbound parser are all derived from this struct alone (there is no
 /// longer a separate per-connect override).
+///
+/// With the `serde` feature it is `Deserialize`: every field is optional and
+/// falls back to its default, unknown fields are rejected, `keep_alive` is
+/// whole seconds (`0` turns keep-alive off, as a Keep Alive of 0 does in
+/// CONNECT, MQTT v5.0 §3.1.2.10), `connect_timeout` is seconds, possibly
+/// fractional, and `max_outgoing_qos` is `0`, `1` or `2`.
 #[derive(Debug, Clone, PartialEq, Eq, bon::Builder)]
+#[cfg_attr(feature = "serde", derive(serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(default, deny_unknown_fields))]
 #[non_exhaustive]
 #[expect(
     clippy::struct_excessive_bools,
@@ -48,6 +56,10 @@ pub struct ClientSettings {
     /// keep-alive off (sent as 0), which leaves such dead connections
     /// undetected.
     #[builder(required, default = Some(ClientSettings::DEFAULT_KEEP_ALIVE))]
+    #[cfg_attr(
+        feature = "serde",
+        serde(with = "serde_with::As::<serde_with::NoneAsZero>")
+    )]
     pub keep_alive: Option<NonZero<u16>>,
     /// Local cap on the `QoS` of outbound PUBLISH packets.
     ///
@@ -95,6 +107,12 @@ pub struct ClientSettings {
     /// deadline (if any) takes its place. Defaults to
     /// [`DEFAULT_CONNECT_TIMEOUT`](Self::DEFAULT_CONNECT_TIMEOUT).
     #[builder(default = ClientSettings::DEFAULT_CONNECT_TIMEOUT)]
+    #[cfg_attr(
+        feature = "serde",
+        serde(
+            with = "serde_with::As::<serde_with::DurationSeconds<u64, serde_with::formats::Flexible>>"
+        )
+    )]
     pub connect_timeout: Duration,
 }
 

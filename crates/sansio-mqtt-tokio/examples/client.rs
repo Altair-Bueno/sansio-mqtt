@@ -10,14 +10,9 @@
 //! cargo run -p sansio-mqtt-tokio --all-features --example client -- ws://test.mosquitto.org:8080/mqtt -m hello -c 1
 //! ```
 
-extern crate alloc;
-
-use alloc::sync::Arc;
 use core::num::NonZero;
-use core::str::FromStr;
 use std::path::PathBuf;
 
-use rustls_platform_verifier::BuilderVerifierExt as _;
 use sansio_mqtt_protocol::Command;
 use sansio_mqtt_protocol::ConnectOptions;
 use sansio_mqtt_protocol::Event;
@@ -25,21 +20,11 @@ use sansio_mqtt_protocol::Message;
 use sansio_mqtt_protocol::Qos;
 use sansio_mqtt_protocol::SubscribeOptions;
 use sansio_mqtt_protocol::Subscription;
-use sansio_mqtt_tokio::Driver;
-use sansio_mqtt_tokio::connector::Connector;
-use sansio_mqtt_tokio::connector::RustlsConnector;
-use sansio_mqtt_tokio::connector::TcpConnector;
-use sansio_mqtt_tokio::connector::TungsteniteConnector;
-use sansio_mqtt_v5_protocol::Client;
-use tokio_rustls::rustls::ClientConfig;
-use tokio_rustls::rustls::RootCertStore;
-use tokio_rustls::rustls::pki_types::CertificateDer;
-use tokio_rustls::rustls::pki_types::ServerName;
-use tokio_rustls::rustls::pki_types::pem::PemObject as _;
-use tokio_tungstenite::tungstenite::http::Uri;
-use tokio_tungstenite::tungstenite::http::uri::InvalidUri;
+use sansio_mqtt_tokio::DynDriver;
+use sansio_mqtt_tokio::connect;
 use tracing::level_filters::LevelFilter;
 use tracing_subscriber::EnvFilter;
+use url::Url;
 
 type BoxError = Box<dyn core::error::Error + Send + Sync>;
 
@@ -48,14 +33,15 @@ type BoxError = Box<dyn core::error::Error + Send + Sync>;
 ///
 /// The broker URL's scheme selects the transport: `mqtt://` for plain TCP
 /// (port 1883 by default), `mqtts://` for TLS (8883), `ws://` for a
-/// WebSocket (80) and `wss://` for a WebSocket over TLS (443). A URL without
-/// a scheme is plain TCP. Set `RUST_LOG` to change the log level.
+/// WebSocket (80) and `wss://` for a WebSocket over TLS (443). Set `RUST_LOG`
+/// to change the log level.
 #[derive(Debug, usage_rs::Cli)]
 #[usage(bin = "client")]
 struct Cli {
-    /// The broker to connect to
+    /// The broker to connect to; its query may carry connection settings,
+    /// e.g. `?keep_alive=30`
     #[usage(env = "MQTT_BROKER", default = "mqtt://test.mosquitto.org:1883")]
-    url: Broker,
+    url: Url,
 
     /// The topic filter to subscribe to, and the topic to publish to
     #[usage(short, long, default = "sansio-mqtt/example")]
@@ -96,72 +82,6 @@ struct Cli {
     ca: Option<PathBuf>,
 }
 
-/// How the bytes reach the broker.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Transport {
-    Tcp,
-    Tls,
-    WebSocket,
-    SecureWebSocket,
-}
-
-impl Transport {
-    const fn default_port(self) -> u16 {
-        match self {
-            Self::Tcp => 1883,
-            Self::Tls => 8883,
-            Self::WebSocket => 80,
-            Self::SecureWebSocket => 443,
-        }
-    }
-
-    const fn is_tls(self) -> bool {
-        matches!(self, Self::Tls | Self::SecureWebSocket)
-    }
-}
-
-/// A broker URL, already checked to name a supported transport and a host.
-#[derive(Debug)]
-struct Broker {
-    transport: Transport,
-    host: String,
-    port: u16,
-    uri: Uri,
-}
-
-#[derive(Debug, thiserror::Error)]
-enum BrokerUrlError {
-    #[error("the broker URL is invalid: {0}")]
-    Invalid(#[from] InvalidUri),
-    #[error("the broker URL scheme `{0}` is not one of mqtt, mqtts, ws or wss")]
-    UnsupportedScheme(String),
-    #[error("the broker URL has no host")]
-    MissingHost,
-}
-
-impl FromStr for Broker {
-    type Err = BrokerUrlError;
-
-    fn from_str(url: &str) -> Result<Self, Self::Err> {
-        let uri: Uri = url.parse()?;
-        let transport = match uri.scheme_str() {
-            None | Some("mqtt" | "tcp") => Transport::Tcp,
-            Some("mqtts" | "ssl" | "tls") => Transport::Tls,
-            Some("ws") => Transport::WebSocket,
-            Some("wss") => Transport::SecureWebSocket,
-            Some(scheme) => return Err(BrokerUrlError::UnsupportedScheme(scheme.to_owned())),
-        };
-        let host = uri.host().ok_or(BrokerUrlError::MissingHost)?.to_owned();
-        let port = uri.port_u16().unwrap_or(transport.default_port());
-        Ok(Self {
-            transport,
-            host,
-            port,
-            uri,
-        })
-    }
-}
-
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<(), BoxError> {
     let cli = Cli::parse();
@@ -172,51 +92,18 @@ async fn main() -> Result<(), BoxError> {
                 .from_env()?,
         )
         .init();
+    // TLS brokers need a process-wide rustls crypto provider.
+    drop(tokio_rustls::rustls::crypto::ring::default_provider().install_default());
 
-    let Broker {
-        transport,
-        ref host,
-        port,
-        ref uri,
-    } = cli.url;
-    if cli.ca.is_some() && !transport.is_tls() {
-        tracing::warn!("ignoring --ca: the broker URL does not use TLS");
+    let mut url = cli.url.clone();
+    if let Some(ca) = &cli.ca {
+        url.query_pairs_mut()
+            .append_pair("ca", ca.to_str().ok_or("the --ca path is not UTF-8")?);
     }
-    let tcp = TcpConnector::new((host.clone(), port));
-    match transport {
-        Transport::Tcp => run(&cli, tcp).await,
-        Transport::Tls => {
-            let tls =
-                RustlsConnector::new(tcp, tls_context(&cli)?, ServerName::try_from(host.clone())?);
-            run(&cli, tls).await
-        }
-        Transport::WebSocket => run(&cli, TungsteniteConnector::new(tcp, uri.clone())?).await,
-        Transport::SecureWebSocket => {
-            let tls =
-                RustlsConnector::new(tcp, tls_context(&cli)?, ServerName::try_from(host.clone())?);
-            run(&cli, TungsteniteConnector::new(tls, uri.clone())?).await
-        }
-    }
-}
-
-/// Verifies the broker with the operating system's certificate verifier, like
-/// a browser would, or trusts only the certificates in `--ca`.
-fn tls_context(cli: &Cli) -> Result<tokio_rustls::TlsConnector, BoxError> {
-    let config = match &cli.ca {
-        Some(path) => {
-            let mut roots = RootCertStore::empty();
-            for certificate in CertificateDer::pem_file_iter(path)? {
-                roots.add(certificate?)?;
-            }
-            ClientConfig::builder()
-                .with_root_certificates(roots)
-                .with_no_client_auth()
-        }
-        None => ClientConfig::builder()
-            .with_platform_verifier()?
-            .with_no_client_auth(),
-    };
-    Ok(tokio_rustls::TlsConnector::from(Arc::new(config)))
+    let mut driver = connect(&url)?;
+    tracing::info!(%url, "connecting to broker");
+    driver.submit(cli.connect())?;
+    run(&cli, &mut driver).await
 }
 
 impl Cli {
@@ -263,14 +150,7 @@ impl Cli {
     }
 }
 
-async fn run<C>(cli: &Cli, connector: C) -> Result<(), BoxError>
-where
-    C: Connector,
-{
-    let mut driver = Driver::new(Client::default(), connector);
-    tracing::info!(url = %cli.url.uri, "connecting to broker");
-    driver.submit(cli.connect())?;
-
+async fn run(cli: &Cli, driver: &mut DynDriver) -> Result<(), BoxError> {
     let mut shutdown = core::pin::pin!(tokio::signal::ctrl_c());
     let mut shutting_down = false;
     let mut remaining = cli.count.map(NonZero::get);

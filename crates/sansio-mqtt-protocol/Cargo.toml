@@ -16,6 +16,12 @@ sansio = { workspace = true }
 semver = { workspace = true }
 thiserror = { workspace = true }
 strum = { workspace = true, features = ["derive"] }
+serde = { workspace = true, optional = true }
+serde_repr = { workspace = true, optional = true }
+
+[features]
+# `Deserialize` for the settings types, e.g. to read them from a config file.
+serde = ["dep:serde", "dep:serde_repr"]
 
 [lints]
 workspace = true

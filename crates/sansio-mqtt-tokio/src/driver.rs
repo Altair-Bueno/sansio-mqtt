@@ -97,10 +97,25 @@ where
         client: Protocol,
         connector: C,
     ) -> Driver<Protocol, C, impl Future<Output = Result<C::Connection, C::Error>>> {
-        Driver {
+        Driver::from_parts(client, connector, C::connect)
+    }
+}
+
+impl<Protocol, C, Attempt> Driver<Protocol, C, Attempt>
+where
+    C: Connector,
+{
+    /// Creates a driver whose attempts are started by `connect`, which lets
+    /// the caller name `Attempt`.
+    pub(crate) fn from_parts(
+        client: Protocol,
+        connector: C,
+        connect: fn(&mut C) -> Attempt,
+    ) -> Self {
+        Self {
             client,
             connector,
-            connect: C::connect,
+            connect,
             connection: Connection::Closed,
             outgoing: Bytes::new(),
             needs_flush: false,

@@ -20,6 +20,12 @@ sansio-mqtt-v5-wire = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true, features = ["attributes"] }
 winnow = { workspace = true }
+serde = { workspace = true, optional = true, features = ["derive"] }
+serde_with = { workspace = true, optional = true }
+
+[features]
+# `Deserialize` for `ClientSettings`, e.g. to read it from a config file.
+serde = ["dep:serde", "dep:serde_with", "sansio-mqtt-protocol/serde"]
 
 [lints]
 workspace = true

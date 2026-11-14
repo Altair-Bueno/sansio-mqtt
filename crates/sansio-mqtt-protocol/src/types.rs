@@ -69,18 +69,23 @@ pub struct Timestamped<Value, Time> {
 }
 
 /// The delivery guarantee of an application message (MQTT v5.0 section 4.3).
+///
+/// With the `serde` feature it is `Deserialize` from its number on the wire:
+/// `0`, `1` or `2`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[cfg_attr(feature = "serde", derive(serde_repr::Deserialize_repr))]
+#[repr(u8)]
 pub enum Qos {
     /// `QoS` 0: delivered at most once, with no acknowledgement
     /// (section 4.3.1).
     #[default]
-    AtMostOnce,
+    AtMostOnce = 0,
     /// `QoS` 1: delivered at least once, acknowledged with PUBACK
     /// (section 4.3.2).
-    AtLeastOnce,
+    AtLeastOnce = 1,
     /// `QoS` 2: delivered exactly once, through the PUBREC, PUBREL and PUBCOMP
     /// exchange (section 4.3.3).
-    ExactlyOnce,
+    ExactlyOnce = 2,
 }
 
 /// Whether the server sends retained messages when a subscription is

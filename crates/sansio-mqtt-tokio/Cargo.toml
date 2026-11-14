@@ -10,43 +10,58 @@ categories = ["network-programming", "asynchronous"]
 
 [dependencies]
 bytes = { workspace = true }
+sansio = { workspace = true }
 sansio-mqtt-protocol = { workspace = true }
+sansio-mqtt-v5-protocol = { workspace = true }
+semver = { workspace = true }
 tokio = { workspace = true, features = ["io-util", "macros", "net", "time"] }
 tracing = { workspace = true, features = ["std"] }
-thiserror = { workspace = true, optional = true }
+thiserror = { workspace = true }
 tokio-rustls = { workspace = true, optional = true }
 futures-core = { workspace = true, optional = true }
 futures-sink = { workspace = true, optional = true }
 tokio-tungstenite = { workspace = true, optional = true, features = [
   "handshake",
 ] }
+url = { workspace = true, optional = true, features = ["std"] }
+serde_path_to_error = { workspace = true, optional = true }
+serde_urlencoded = { workspace = true, optional = true }
+rustls-platform-verifier = { workspace = true, optional = true }
 
 [features]
 # `RustlsConnector`: TLS over any connector, using rustls. The application
 # picks the crypto provider and protocol versions through its own `rustls`
 # dependency.
-tokio-rustls = ["dep:thiserror", "dep:tokio-rustls"]
+tokio-rustls = ["dep:tokio-rustls"]
 # `TungsteniteConnector`: MQTT over WebSocket (MQTT v5.0 §6) over any
 # connector, using tungstenite.
 tokio-tungstenite = [
   "dep:futures-core",
   "dep:futures-sink",
-  "dep:thiserror",
   "dep:tokio-tungstenite",
+]
+# `connect`: builds a driver from a broker URL.
+url = [
+  "dep:serde_path_to_error",
+  "dep:serde_urlencoded",
+  "dep:url",
+  "sansio-mqtt-v5-protocol/serde",
+]
+# Lets `connect` verify `mqtts://` and `wss://` brokers with the operating
+# system's verifier when the URL names no `ca`.
+rustls-platform-verifier = [
+  "url",
+  "tokio-rustls",
+  "dep:rustls-platform-verifier",
 ]
 
 [dev-dependencies]
 futures-util = { workspace = true, features = ["sink"] }
-rcgen = { workspace = true, features = ["crypto", "ring"] }
-rustls-platform-verifier = { workspace = true }
-thiserror = { workspace = true }
+rcgen = { workspace = true, features = ["crypto", "pem", "ring"] }
+tempfile = { workspace = true }
 usage-rs = { workspace = true, features = ["diagnostics", "help"] }
 tokio-rustls = { workspace = true, features = ["ring"] }
-sansio = { workspace = true }
-semver = { workspace = true }
 encode = { workspace = true }
-sansio-mqtt-v5-protocol = { workspace = true }
-sansio-mqtt-protocol = { workspace = true }
 sansio-mqtt-v5-wire = { workspace = true }
 winnow = { workspace = true }
 tracing-subscriber = { workspace = true, features = ["env-filter", "fmt"] }
@@ -73,9 +88,17 @@ required-features = ["tokio-tungstenite"]
 name = "tungstenite_rustls_connector"
 required-features = ["tokio-rustls", "tokio-tungstenite"]
 
+[[test]]
+name = "connect"
+required-features = ["rustls-platform-verifier", "tokio-tungstenite"]
+
+[[test]]
+name = "connect_without_crypto_provider"
+required-features = ["rustls-platform-verifier", "tokio-tungstenite"]
+
 [[example]]
 name = "client"
-required-features = ["tokio-rustls", "tokio-tungstenite"]
+required-features = ["rustls-platform-verifier", "tokio-tungstenite"]
 
 [lints]
 workspace = true
