@@ -77,14 +77,10 @@ pub enum WebSocketConnectError<E> {
 impl<C> Connector for WebSocketConnector<C>
 where
     C: Connector,
-    C::Connection: Send + 'static,
-    C::Future: Send + 'static,
 {
     type Connection = WebSocketConnection<C::Connection>;
     type Error = WebSocketConnectError<C::Error>;
-    type Future = Pin<Box<dyn Future<Output = Result<Self::Connection, Self::Error>> + Send>>;
-
-    fn connect(&mut self) -> Self::Future {
+    fn connect(&mut self) -> impl Future<Output = Result<Self::Connection, Self::Error>> + use<C> {
         let socket = self.inner.connect();
         // Each handshake needs its own random Sec-WebSocket-Key.
         let request = (&self.uri).into_client_request().map(|mut request| {
@@ -93,7 +89,7 @@ where
                 .insert(SEC_WEBSOCKET_PROTOCOL, HeaderValue::from_static("mqtt"));
             request
         });
-        Box::pin(async move {
+        async move {
             let request = request.map_err(WebSocketConnectError::Handshake)?;
             let socket = socket.await.map_err(WebSocketConnectError::Transport)?;
             let (stream, _response) = client_async(request, socket)
@@ -104,7 +100,7 @@ where
                 received: Bytes::new(),
                 peer_closed: false,
             })
-        })
+        }
     }
 }
 

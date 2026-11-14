@@ -1,5 +1,4 @@
 use core::future::Future;
-use core::pin::Pin;
 use std::io;
 use tokio::io::AsyncRead;
 use tokio::io::AsyncWrite;
@@ -22,15 +21,15 @@ pub trait Connector {
     /// The socket this connector opens. The driver buffers reads itself.
     type Connection: AsyncRead + AsyncWrite + Unpin;
     /// Why a connection attempt failed.
-    type Error: core::error::Error + Send + Sync + 'static;
-    /// The pending connection attempt.
-    ///
-    /// It must not borrow the connector: the driver keeps it across
-    /// cancelled [`Driver::next`](crate::Driver::next) calls.
-    type Future: Future<Output = Result<Self::Connection, Self::Error>>;
+    type Error: core::error::Error + 'static;
 
     /// Starts opening a new socket.
-    fn connect(&mut self) -> Self::Future;
+    ///
+    /// The attempt must not borrow the connector: the driver keeps it across
+    /// cancelled [`Driver::next`](crate::Driver::next) calls.
+    fn connect(
+        &mut self,
+    ) -> impl Future<Output = Result<Self::Connection, Self::Error>> + use<Self>;
 }
 
 impl<F, Fut, Connection, Error> Connector for F
@@ -38,13 +37,14 @@ where
     F: FnMut() -> Fut,
     Fut: Future<Output = Result<Connection, Error>>,
     Connection: AsyncRead + AsyncWrite + Unpin,
-    Error: core::error::Error + Send + Sync + 'static,
+    Error: core::error::Error + 'static,
 {
     type Connection = Connection;
     type Error = Error;
-    type Future = Fut;
 
-    fn connect(&mut self) -> Self::Future {
+    fn connect(
+        &mut self,
+    ) -> impl Future<Output = Result<Connection, Error>> + use<F, Fut, Connection, Error> {
         self()
     }
 }
@@ -69,18 +69,17 @@ impl<Address> TcpConnector<Address> {
 
 impl<Address> Connector for TcpConnector<Address>
 where
-    Address: ToSocketAddrs + Clone + Send + 'static,
+    Address: ToSocketAddrs + Clone,
 {
     type Connection = TcpStream;
     type Error = io::Error;
-    type Future = Pin<Box<dyn Future<Output = io::Result<TcpStream>> + Send>>;
 
-    fn connect(&mut self) -> Self::Future {
+    fn connect(&mut self) -> impl Future<Output = io::Result<TcpStream>> + use<Address> {
         let address = self.address.clone();
-        Box::pin(async move {
+        async move {
             let stream = TcpStream::connect(address).await?;
             stream.set_nodelay(true)?;
             Ok(stream)
-        })
+        }
     }
 }
