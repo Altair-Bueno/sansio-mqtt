@@ -73,17 +73,19 @@ pub(crate) fn next_packet_id_checked(session: &mut ClientSession) -> Result<NonZ
     Err(Error::ReceiveMaximumExceeded)
 }
 
-/// Pushes `Event::PublishDropped { reason: DropReason::SessionNotResumed, .. }`
+/// Pushes `Event::PublishDropped` with `DropReason::SessionNotResumed`
 /// for every in-flight packet.
 pub(crate) fn emit_publish_dropped_for_all_inflight<T>(
     session: &ClientSession,
     scratchpad: &mut ClientScratchpad<T>,
 ) {
     for state in session.on_flight_sent.values() {
-        scratchpad.read_queue.push_back(Event::PublishDropped {
-            token: state.token(),
-            reason: DropReason::SessionNotResumed,
-        });
+        scratchpad.read_queue.push_back(Event::PublishDropped(
+            sansio_mqtt_protocol::PublishDropped::builder()
+                .token(state.token())
+                .reason(DropReason::SessionNotResumed)
+                .build(),
+        ));
     }
 }
 

@@ -32,9 +32,12 @@ use encode::Encodable as _;
 use sansio_mqtt_protocol::ByteString;
 use sansio_mqtt_protocol::Command;
 use sansio_mqtt_protocol::ConnectOptions;
+use sansio_mqtt_protocol::Connected;
+use sansio_mqtt_protocol::Disconnected;
 use sansio_mqtt_protocol::Error;
 use sansio_mqtt_protocol::Event;
 use sansio_mqtt_protocol::Message;
+use sansio_mqtt_protocol::PublishOptions;
 use sansio_mqtt_protocol::ReasonCode;
 use sansio_mqtt_protocol::SubscribeOptions;
 use sansio_mqtt_protocol::Subscription;
@@ -343,10 +346,7 @@ impl Harness {
         self.broker().write_all(&encode(&connack)).await.unwrap();
         assert_eq!(
             self.event().await,
-            Event::Connected {
-                assigned_client_id: None,
-                session_present: false
-            }
+            Event::Connected(Connected::builder().session_present(false).build())
         );
     }
 }
@@ -360,13 +360,17 @@ fn connect_command() -> Command {
 }
 
 fn publish_command(token: u64, payload: Bytes) -> Command {
-    Command::Publish {
-        token,
-        message: Message::builder()
-            .topic(ByteString::from_static("a/b"))
-            .payload(payload)
+    Command::Publish(
+        PublishOptions::builder()
+            .token(token)
+            .message(
+                Message::builder()
+                    .topic(ByteString::from_static("a/b"))
+                    .payload(payload)
+                    .build(),
+            )
             .build(),
-    }
+    )
 }
 
 #[tokio::test]
@@ -397,7 +401,10 @@ async fn publishes_and_disconnects_gracefully() {
         ControlPacket::Disconnect(_)
     ));
     harness.expect_closed().await;
-    assert_eq!(harness.event().await, Event::Disconnected(None));
+    assert_eq!(
+        harness.event().await,
+        Event::Disconnected(Disconnected::builder().build())
+    );
 }
 
 #[tokio::test]
@@ -406,7 +413,10 @@ async fn broker_closing_the_connection_reports_disconnected_and_allows_reconnect
     harness.connect().await;
 
     harness.broker().shutdown().await.unwrap();
-    assert_eq!(harness.event().await, Event::Disconnected(None));
+    assert_eq!(
+        harness.event().await,
+        Event::Disconnected(Disconnected::builder().build())
+    );
 
     // The driver released the dead socket, so a new connection can be opened.
     harness.next_connection();
@@ -435,7 +445,11 @@ async fn broker_protocol_violation_sends_disconnect_closes_and_allows_reconnecti
     harness.expect_closed().await;
     assert_eq!(
         harness.event().await,
-        Event::Disconnected(Some(ReasonCode::ProtocolError))
+        Event::Disconnected(
+            Disconnected::builder()
+                .reason(ReasonCode::ProtocolError)
+                .build()
+        )
     );
 
     harness.connect().await;
@@ -461,7 +475,10 @@ async fn refused_connection_reports_disconnected_and_allows_retrying() {
     let mut harness = Harness::spawn(&[Dial::Refuse, Dial::Accept]);
 
     harness.submit(connect_command()).await.unwrap();
-    assert_eq!(harness.event().await, Event::Disconnected(None));
+    assert_eq!(
+        harness.event().await,
+        Event::Disconnected(Disconnected::builder().build())
+    );
 
     harness.connect().await;
 }
@@ -518,7 +535,10 @@ async fn failed_disconnect_write_does_not_fail_the_following_connect() {
         .await;
     assert_eq!(results, vec![Ok(()), Ok(())]);
 
-    assert_eq!(harness.event().await, Event::Disconnected(None));
+    assert_eq!(
+        harness.event().await,
+        Event::Disconnected(Disconnected::builder().build())
+    );
     harness.accept_connect().await;
 }
 
@@ -538,7 +558,10 @@ async fn failed_write_discards_the_rest_of_the_closing_socket_bytes() {
         .await;
     assert!(results.iter().all(Result::is_ok), "{results:?}");
 
-    assert_eq!(harness.event().await, Event::Disconnected(None));
+    assert_eq!(
+        harness.event().await,
+        Event::Disconnected(Disconnected::builder().build())
+    );
     harness.connect().await;
 }
 
@@ -563,7 +586,11 @@ async fn keep_alive_timeout_closes_a_connection_whose_peer_stopped_reading() {
 
     assert_eq!(
         harness.event_within(Duration::from_mins(1)).await,
-        Event::Disconnected(Some(ReasonCode::KeepAliveTimeout))
+        Event::Disconnected(
+            Disconnected::builder()
+                .reason(ReasonCode::KeepAliveTimeout)
+                .build()
+        )
     );
     // The driver gave up on the stalled socket and dropped it.
     let mut rest = Vec::new();
@@ -592,7 +619,7 @@ async fn connection_attempt_that_never_completes_times_out_and_allows_retrying()
 
     assert_eq!(
         harness.event_within(Duration::from_mins(1)).await,
-        Event::Disconnected(None)
+        Event::Disconnected(Disconnected::builder().build())
     );
     assert!(started.elapsed() >= connect_timeout);
     // The abandoned attempt released the connection slot.
@@ -613,7 +640,7 @@ async fn broker_that_never_sends_connack_times_out_and_the_socket_is_closed() {
 
     assert_eq!(
         harness.event_within(Duration::from_mins(1)).await,
-        Event::Disconnected(None)
+        Event::Disconnected(Disconnected::builder().build())
     );
     assert!(started.elapsed() >= connect_timeout);
     // No DISCONNECT: no session was ever established [MQTT-3.2.2-7].
@@ -630,7 +657,10 @@ async fn read_error_reports_disconnected_and_allows_reconnecting() {
     // Wakes the driver's pending read, which now fails.
     harness.broker().write_all(&[0xD0]).await.unwrap();
 
-    assert_eq!(harness.event().await, Event::Disconnected(None));
+    assert_eq!(
+        harness.event().await,
+        Event::Disconnected(Disconnected::builder().build())
+    );
     harness.next_connection();
     harness.connect().await;
 }
@@ -647,7 +677,10 @@ async fn assert_failed_write_allows_reconnecting(fault: fn(&Faults) -> &AtomicBo
         .await
         .unwrap();
 
-    assert_eq!(harness.event().await, Event::Disconnected(None));
+    assert_eq!(
+        harness.event().await,
+        Event::Disconnected(Disconnected::builder().build())
+    );
     harness.next_connection();
     harness.connect().await;
 }
@@ -680,7 +713,10 @@ async fn failed_shutdown_still_releases_the_socket() {
     ));
     // The socket is dropped even though shutting it down failed.
     harness.expect_closed().await;
-    assert_eq!(harness.event().await, Event::Disconnected(None));
+    assert_eq!(
+        harness.event().await,
+        Event::Disconnected(Disconnected::builder().build())
+    );
 
     harness.connect().await;
 }

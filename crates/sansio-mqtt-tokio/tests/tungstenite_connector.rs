@@ -15,6 +15,8 @@ use futures_util::StreamExt as _;
 use sansio_mqtt_protocol::ByteString;
 use sansio_mqtt_protocol::Command;
 use sansio_mqtt_protocol::ConnectOptions;
+use sansio_mqtt_protocol::Connected;
+use sansio_mqtt_protocol::Disconnected;
 use sansio_mqtt_protocol::Event;
 use sansio_mqtt_tokio::Driver;
 use sansio_mqtt_tokio::connector::TcpConnector;
@@ -132,10 +134,9 @@ async fn websocket_connector_carries_mqtt_in_binary_messages() {
 
     assert_eq!(
         observed,
-        [Event::Connected {
-            assigned_client_id: None,
-            session_present: false
-        }]
+        [Event::Connected(
+            Connected::builder().session_present(false).build()
+        )]
     );
 }
 
@@ -160,10 +161,9 @@ async fn websocket_connector_reassembles_packets_split_across_messages() {
 
     assert_eq!(
         observed,
-        [Event::Connected {
-            assigned_client_id: None,
-            session_present: false
-        }]
+        [Event::Connected(
+            Connected::builder().session_present(false).build()
+        )]
     );
 }
 
@@ -184,10 +184,9 @@ async fn websocket_connector_ignores_pings_between_mqtt_packets() {
 
     assert_eq!(
         observed,
-        [Event::Connected {
-            assigned_client_id: None,
-            session_present: false
-        }]
+        [Event::Connected(
+            Connected::builder().session_present(false).build()
+        )]
     );
 }
 
@@ -209,11 +208,8 @@ async fn websocket_connector_text_message_closes_the_connection() {
     assert_eq!(
         observed,
         [
-            Event::Connected {
-                assigned_client_id: None,
-                session_present: false
-            },
-            Event::Disconnected(None)
+            Event::Connected(Connected::builder().session_present(false).build()),
+            Event::Disconnected(Disconnected::builder().build())
         ]
     );
 }
@@ -234,11 +230,8 @@ async fn websocket_connector_close_message_reports_disconnected() {
     assert_eq!(
         observed,
         [
-            Event::Connected {
-                assigned_client_id: None,
-                session_present: false
-            },
-            Event::Disconnected(None)
+            Event::Connected(Connected::builder().session_present(false).build()),
+            Event::Disconnected(Disconnected::builder().build())
         ]
     );
 }
@@ -254,7 +247,10 @@ async fn websocket_connector_failed_handshake_reports_disconnected() {
     })
     .await;
 
-    assert_eq!(observed, [Event::Disconnected(None)]);
+    assert_eq!(
+        observed,
+        [Event::Disconnected(Disconnected::builder().build())]
+    );
 }
 
 #[test]
@@ -292,11 +288,8 @@ async fn websocket_connector_dropped_connection_reports_disconnected() {
     assert_eq!(
         observed,
         [
-            Event::Connected {
-                assigned_client_id: None,
-                session_present: false
-            },
-            Event::Disconnected(None)
+            Event::Connected(Connected::builder().session_present(false).build()),
+            Event::Disconnected(Disconnected::builder().build())
         ]
     );
 }
@@ -320,10 +313,7 @@ async fn websocket_connector_disconnect_sends_disconnect_then_closes_the_websock
     let client = async {
         assert_eq!(
             driver.next().await,
-            Event::Connected {
-                assigned_client_id: None,
-                session_present: false
-            }
+            Event::Connected(Connected::builder().session_present(false).build())
         );
         driver.submit(Command::Disconnect).unwrap();
         driver.next().await
@@ -344,5 +334,8 @@ async fn websocket_connector_disconnect_sends_disconnect_then_closes_the_websock
         matches!(close, Message::Close(_)),
         "expected a close, got {close:?}"
     );
-    assert_eq!(disconnected, Event::Disconnected(None));
+    assert_eq!(
+        disconnected,
+        Event::Disconnected(Disconnected::builder().build())
+    );
 }

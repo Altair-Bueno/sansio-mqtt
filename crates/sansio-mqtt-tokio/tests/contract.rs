@@ -11,6 +11,7 @@ use sansio_mqtt_protocol::ByteString;
 use sansio_mqtt_protocol::Bytes;
 use sansio_mqtt_protocol::Command;
 use sansio_mqtt_protocol::ConnectOptions;
+use sansio_mqtt_protocol::Connected;
 use sansio_mqtt_protocol::DriverAction;
 use sansio_mqtt_protocol::DriverEvent;
 use sansio_mqtt_protocol::Error;
@@ -166,10 +167,9 @@ impl<'bytes>
             return Err(Error::InvalidStateTransition);
         }
         self.deadline = None;
-        self.events.push_back(Event::Connected {
-            assigned_client_id: None,
-            session_present: false,
-        });
+        self.events.push_back(Event::Connected(
+            Connected::builder().session_present(false).build(),
+        ));
         Ok(())
     }
 
@@ -219,10 +219,7 @@ async fn protocol_timers_fire_without_a_socket_even_after_a_rejected_timeout() {
 
     assert_eq!(
         event,
-        Event::Connected {
-            assigned_client_id: None,
-            session_present: false
-        }
+        Event::Connected(Connected::builder().session_present(false).build())
     );
     // The first expiry was rejected and re-armed the timer one second later.
     assert!(started.elapsed() >= Duration::from_secs(2));

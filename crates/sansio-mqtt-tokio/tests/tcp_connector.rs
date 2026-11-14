@@ -6,6 +6,7 @@ use core::time::Duration;
 use sansio_mqtt_protocol::ByteString;
 use sansio_mqtt_protocol::Command;
 use sansio_mqtt_protocol::ConnectOptions;
+use sansio_mqtt_protocol::Disconnected;
 use sansio_mqtt_protocol::Event;
 use sansio_mqtt_tokio::Driver;
 use sansio_mqtt_tokio::DynConnector;
@@ -60,7 +61,7 @@ async fn tcp_connector_refused_connection_reports_disconnected() {
     let event = timeout(STEP, driver.next())
         .await
         .expect("no event within the timeout");
-    assert_eq!(event, Event::Disconnected(None));
+    assert_eq!(event, Event::Disconnected(Disconnected::builder().build()));
 }
 
 /// A driver stored in a field, whose type has to be written out.
@@ -82,7 +83,7 @@ async fn driver_type_is_nameable_without_the_attempt_type() {
     let event = timeout(STEP, application.driver.next())
         .await
         .expect("no event within the timeout");
-    assert_eq!(event, Event::Disconnected(None));
+    assert_eq!(event, Event::Disconnected(Disconnected::builder().build()));
 }
 
 #[tokio::test]
@@ -100,5 +101,5 @@ async fn dyn_connector_erases_a_connector() {
     let event = timeout(STEP, driver.next())
         .await
         .expect("no event within the timeout");
-    assert_eq!(event, Event::Disconnected(None));
+    assert_eq!(event, Event::Disconnected(Disconnected::builder().build()));
 }

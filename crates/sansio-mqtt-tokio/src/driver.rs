@@ -34,7 +34,7 @@ use tokio::time::sleep_until;
 /// the protocol's own deadlines apply: a connection attempt that is still
 /// opening the socket or waiting for CONNACK when the protocol's connect
 /// timeout elapses is abandoned and reported as
-/// [`Event::Disconnected(None)`](Event::Disconnected).
+/// an [`Event::Disconnected`] with no reason.
 pub struct Driver<Protocol, C>
 where
     C: Connector,

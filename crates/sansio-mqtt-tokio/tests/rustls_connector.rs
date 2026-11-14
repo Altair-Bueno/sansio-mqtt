@@ -13,6 +13,7 @@ use core::time::Duration;
 use sansio_mqtt_protocol::ByteString;
 use sansio_mqtt_protocol::Command;
 use sansio_mqtt_protocol::ConnectOptions;
+use sansio_mqtt_protocol::Disconnected;
 use sansio_mqtt_protocol::Event;
 use sansio_mqtt_tokio::Driver;
 use sansio_mqtt_tokio::connector::RustlsConnector;
@@ -109,7 +110,7 @@ async fn tls_connector_untrusted_certificate_reports_disconnected() {
     tokio::select! {
         () = server => unreachable!(),
         event = timeout(STEP, driver.next()) => {
-            assert_eq!(event.expect("no event within the timeout"), Event::Disconnected(None));
+            assert_eq!(event.expect("no event within the timeout"), Event::Disconnected(Disconnected::builder().build()));
         }
     }
 }

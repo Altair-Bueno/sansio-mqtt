@@ -107,8 +107,10 @@ fn handle_inbound_qos1_publish<T>(
             scratchpad
                 .read_queue
                 .push_back(Event::MessageRequiresAcknowledgement(
-                    MessageId::new(packet_id),
-                    convert::publish_to_message(publish),
+                    sansio_mqtt_protocol::MessageRequiresAcknowledgement::builder()
+                        .id(MessageId::new(packet_id))
+                        .message(convert::publish_to_message(publish))
+                        .build(),
                 ));
             session
                 .on_flight_received
@@ -162,8 +164,10 @@ fn handle_inbound_qos2_publish<T>(
             scratchpad
                 .read_queue
                 .push_back(Event::MessageRequiresAcknowledgement(
-                    MessageId::new(packet_id),
-                    convert::publish_to_message(publish),
+                    sansio_mqtt_protocol::MessageRequiresAcknowledgement::builder()
+                        .id(MessageId::new(packet_id))
+                        .message(convert::publish_to_message(publish))
+                        .build(),
                 ));
             session
                 .on_flight_received
@@ -382,10 +386,12 @@ impl Connected {
                         // PUBACK is received.
                         let token = *token;
                         session.on_flight_sent.remove(&packet_id);
-                        scratchpad.read_queue.push_back(Event::PublishAcknowledged {
-                            token,
-                            reason: convert::puback_reason_to_protocol(puback.reason_code),
-                        });
+                        scratchpad.read_queue.push_back(Event::PublishAcknowledged(
+                            sansio_mqtt_protocol::PublishAcknowledged::builder()
+                                .token(token)
+                                .reason(convert::puback_reason_to_protocol(puback.reason_code))
+                                .build(),
+                        ));
                         (ClientState::Connected(self), Ok(()))
                     }
                     _ => fail_with_protocol_error(settings, session, scratchpad),
@@ -419,12 +425,15 @@ impl Connected {
                             stay_or_disconnect(result)
                         } else {
                             session.on_flight_sent.remove(&packet_id);
-                            scratchpad.read_queue.push_back(Event::PublishDropped {
-                                token,
-                                reason: DropReason::BrokerRejected(
-                                    convert::pubrec_reason_to_protocol(reason_code),
-                                ),
-                            });
+                            let reason = sansio_mqtt_protocol::BrokerRejected::builder()
+                                .reason(convert::pubrec_reason_to_protocol(reason_code))
+                                .build();
+                            scratchpad.read_queue.push_back(Event::PublishDropped(
+                                sansio_mqtt_protocol::PublishDropped::builder()
+                                    .token(token)
+                                    .reason(DropReason::BrokerRejected(reason))
+                                    .build(),
+                            ));
                             (ClientState::Connected(self), Ok(()))
                         }
                     }
@@ -451,10 +460,12 @@ impl Connected {
                         // PUBCOMP is received.
                         let token = *token;
                         session.on_flight_sent.remove(&packet_id);
-                        scratchpad.read_queue.push_back(Event::PublishCompleted {
-                            token,
-                            reason: convert::pubcomp_reason_to_protocol(pubcomp.reason_code),
-                        });
+                        scratchpad.read_queue.push_back(Event::PublishCompleted(
+                            sansio_mqtt_protocol::PublishCompleted::builder()
+                                .token(token)
+                                .reason(convert::pubcomp_reason_to_protocol(pubcomp.reason_code))
+                                .build(),
+                        ));
                         (ClientState::Connected(self), Ok(()))
                     }
                     _ => fail_with_protocol_error(settings, session, scratchpad),
@@ -491,9 +502,13 @@ impl Connected {
                 // normal server disconnects from error
                 // conditions.
                 queues::reset_connection_state(settings, session, scratchpad);
-                scratchpad.read_queue.push_back(Event::Disconnected(Some(
-                    convert::disconnect_reason_to_protocol(disconnect.reason_code),
-                )));
+                scratchpad.read_queue.push_back(Event::Disconnected(
+                    sansio_mqtt_protocol::Disconnected::builder()
+                        .reason(convert::disconnect_reason_to_protocol(
+                            disconnect.reason_code,
+                        ))
+                        .build(),
+                ));
                 scratchpad.action_queue.push_back(DriverAction::CloseSocket);
                 (ClientState::Disconnected(Disconnected), Ok(()))
             }
@@ -534,7 +549,7 @@ where
         _at: T,
     ) -> (ClientState, Result<(), Error>) {
         match msg {
-            Command::Publish { token, message } => {
+            Command::Publish(sansio_mqtt_protocol::PublishOptions { token, message, .. }) => {
                 let result =
                     without_side_effects_on_error(session, scratchpad, |session, scratchpad| {
                         limits::validate_outbound_publish_capabilities(scratchpad, &message)?;
@@ -556,7 +571,10 @@ where
                     });
                 (ClientState::Connected(self), result)
             }
-            Command::Acknowledge(message_id) => respond_to_inbound_publish(
+            Command::Acknowledge(sansio_mqtt_protocol::AcknowledgeOptions {
+                id: message_id,
+                ..
+            }) => respond_to_inbound_publish(
                 settings,
                 session,
                 scratchpad,
@@ -565,7 +583,11 @@ where
                 PubRecReasonCode::Success,
                 InboundInflightState::Qos2AwaitPubRel,
             ),
-            Command::Reject(message_id, reason) => {
+            Command::Reject(sansio_mqtt_protocol::RejectOptions {
+                id: message_id,
+                reason,
+                ..
+            }) => {
                 let pubrec_reason_code = convert::reject_reason_to_pubrec(reason);
                 respond_to_inbound_publish(
                     settings,

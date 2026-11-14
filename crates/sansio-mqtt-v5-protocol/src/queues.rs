@@ -113,7 +113,9 @@ pub(crate) fn graceful_disconnect<T>(
         scratchpad,
         DisconnectReasonCode::NormalDisconnection,
     );
-    scratchpad.read_queue.push_back(Event::Disconnected(None));
+    scratchpad.read_queue.push_back(Event::Disconnected(
+        sansio_mqtt_protocol::Disconnected::builder().build(),
+    ));
 }
 
 /// Tears the connection down because of a failure the protocol detected, and
@@ -128,9 +130,11 @@ pub(crate) fn fail_connection<T>(
     reason: DisconnectReasonCode,
 ) -> ConnectionFailed {
     disconnect_and_reset(settings, session, scratchpad, reason);
-    scratchpad.read_queue.push_back(Event::Disconnected(Some(
-        crate::convert::disconnect_reason_to_protocol(reason),
-    )));
+    scratchpad.read_queue.push_back(Event::Disconnected(
+        sansio_mqtt_protocol::Disconnected::builder()
+            .reason(crate::convert::disconnect_reason_to_protocol(reason))
+            .build(),
+    ));
     ConnectionFailed
 }
 
@@ -148,7 +152,11 @@ pub(crate) fn close_without_disconnect<T>(
 ) {
     scratchpad.action_queue.push_back(DriverAction::CloseSocket);
     reset_connection_state(settings, session, scratchpad);
-    scratchpad.read_queue.push_back(Event::Disconnected(reason));
+    scratchpad.read_queue.push_back(Event::Disconnected(
+        sansio_mqtt_protocol::Disconnected::builder()
+            .maybe_reason(reason)
+            .build(),
+    ));
 }
 
 /// Abandons a connection attempt whose socket has not been reported connected
@@ -170,7 +178,9 @@ pub(crate) fn abandon_socket_request<T>(
         scratchpad.action_queue.push_back(DriverAction::CloseSocket);
     }
     reset_connection_state(settings, session, scratchpad);
-    scratchpad.read_queue.push_back(Event::Disconnected(None));
+    scratchpad.read_queue.push_back(Event::Disconnected(
+        sansio_mqtt_protocol::Disconnected::builder().build(),
+    ));
 }
 
 /// Handles the driver reporting that it lost the socket (`SocketClosed` or
@@ -186,7 +196,9 @@ pub(crate) fn on_socket_lost<T>(
 ) {
     debug_assert!(scratchpad.write_queue.is_empty());
     reset_connection_state(settings, session, scratchpad);
-    scratchpad.read_queue.push_back(Event::Disconnected(None));
+    scratchpad.read_queue.push_back(Event::Disconnected(
+        sansio_mqtt_protocol::Disconnected::builder().build(),
+    ));
 }
 
 /// Enqueues an acknowledgement packet, tearing the connection down if it cannot

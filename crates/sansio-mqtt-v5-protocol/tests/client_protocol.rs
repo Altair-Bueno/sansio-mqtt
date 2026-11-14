@@ -13,10 +13,14 @@ use core::num::NonZero;
 use core::time::Duration;
 use encode::Encodable as _;
 use sansio::Protocol as _;
+use sansio_mqtt_protocol::AcknowledgeOptions;
 use sansio_mqtt_protocol::Authentication;
+use sansio_mqtt_protocol::BrokerRejected;
 use sansio_mqtt_protocol::Capability;
 use sansio_mqtt_protocol::Command;
 use sansio_mqtt_protocol::ConnectOptions;
+use sansio_mqtt_protocol::Connected;
+use sansio_mqtt_protocol::Disconnected;
 use sansio_mqtt_protocol::DriverAction;
 use sansio_mqtt_protocol::DriverEvent;
 use sansio_mqtt_protocol::DropReason;
@@ -24,8 +28,14 @@ use sansio_mqtt_protocol::Error;
 use sansio_mqtt_protocol::Event;
 use sansio_mqtt_protocol::IncomingData;
 use sansio_mqtt_protocol::Message;
+use sansio_mqtt_protocol::MessageRequiresAcknowledgement;
+use sansio_mqtt_protocol::PublishAcknowledged;
+use sansio_mqtt_protocol::PublishCompleted;
+use sansio_mqtt_protocol::PublishDropped;
+use sansio_mqtt_protocol::PublishOptions;
 use sansio_mqtt_protocol::Qos as ProtoQos;
 use sansio_mqtt_protocol::ReasonCode;
+use sansio_mqtt_protocol::RejectOptions;
 use sansio_mqtt_protocol::RejectReason;
 use sansio_mqtt_protocol::SubscribeOptions;
 use sansio_mqtt_protocol::Subscription as ProtoSubscription;
@@ -255,7 +265,7 @@ fn open_connecting(client: &mut Client<Duration>, options: ConnectOptions) -> By
 fn connect_client(client: &mut Client<Duration>, options: ConnectOptions) -> Bytes {
     let connect_bytes = open_connecting(client, options);
     assert_eq!(read(client, &success_connack()), Ok(()));
-    assert!(matches!(client.poll_read(), Some(Event::Connected { .. })));
+    assert!(matches!(client.poll_read(), Some(Event::Connected(_))));
     connect_bytes
 }
 
@@ -297,49 +307,67 @@ fn event_exposes_qos_delivery_variants_with_token() {
     let no_ack = Event::Message(message("t", ProtoQos::AtMostOnce, b"x"));
     assert!(matches!(no_ack, Event::Message(_)));
 
-    let acknowledged = Event::PublishAcknowledged {
-        token: 7,
-        reason: ReasonCode::Success,
-    };
-    let completed = Event::PublishCompleted {
-        token: 7,
-        reason: ReasonCode::Success,
-    };
-    let dropped = Event::PublishDropped {
-        token: 7,
-        reason: DropReason::SessionNotResumed,
-    };
-    let dropped_by_broker = Event::PublishDropped {
-        token: 7,
-        reason: DropReason::BrokerRejected(ReasonCode::NotAuthorized),
-    };
+    let acknowledged = Event::PublishAcknowledged(
+        PublishAcknowledged::builder()
+            .token(7)
+            .reason(ReasonCode::Success)
+            .build(),
+    );
+    let completed = Event::PublishCompleted(
+        PublishCompleted::builder()
+            .token(7)
+            .reason(ReasonCode::Success)
+            .build(),
+    );
+    let dropped = Event::PublishDropped(
+        PublishDropped::builder()
+            .token(7)
+            .reason(DropReason::SessionNotResumed)
+            .build(),
+    );
+    let dropped_by_broker = Event::PublishDropped(
+        PublishDropped::builder()
+            .token(7)
+            .reason(DropReason::BrokerRejected(
+                BrokerRejected::builder()
+                    .reason(ReasonCode::NotAuthorized)
+                    .build(),
+            ))
+            .build(),
+    );
 
     match acknowledged {
-        Event::PublishAcknowledged { token, reason } => {
+        Event::PublishAcknowledged(PublishAcknowledged { token, reason, .. }) => {
             assert_eq!(token, 7);
             assert_eq!(reason, ReasonCode::Success);
         }
         other => panic!("expected PublishAcknowledged, got {other:?}"),
     }
     match completed {
-        Event::PublishCompleted { token, reason } => {
+        Event::PublishCompleted(PublishCompleted { token, reason, .. }) => {
             assert_eq!(token, 7);
             assert_eq!(reason, ReasonCode::Success);
         }
         other => panic!("expected PublishCompleted, got {other:?}"),
     }
     match dropped {
-        Event::PublishDropped {
+        Event::PublishDropped(PublishDropped {
             token,
             reason: DropReason::SessionNotResumed,
-        } => assert_eq!(token, 7),
+            ..
+        }) => assert_eq!(token, 7),
         other => panic!("expected PublishDropped(SessionNotResumed), got {other:?}"),
     }
     match dropped_by_broker {
-        Event::PublishDropped {
+        Event::PublishDropped(PublishDropped {
             token,
-            reason: DropReason::BrokerRejected(ReasonCode::NotAuthorized),
-        } => assert_eq!(token, 7),
+            reason:
+                DropReason::BrokerRejected(BrokerRejected {
+                    reason: ReasonCode::NotAuthorized,
+                    ..
+                }),
+            ..
+        }) => assert_eq!(token, 7),
         other => panic!("expected PublishDropped(BrokerRejected), got {other:?}"),
     }
 }
@@ -555,7 +583,11 @@ fn fragmented_packet_is_buffered_until_complete() {
     assert_eq!(second_fragment, Ok(()));
     assert_eq!(
         client.poll_read(),
-        Some(Event::Disconnected(Some(ReasonCode::ProtocolError)))
+        Some(Event::Disconnected(
+            Disconnected::builder()
+                .reason(ReasonCode::ProtocolError)
+                .build()
+        ))
     );
     assert_eq!(
         client.poll_write(),
@@ -580,7 +612,11 @@ fn malformed_packet_triggers_close_action() {
     assert_eq!(result, Ok(()));
     assert_eq!(
         client.poll_read(),
-        Some(Event::Disconnected(Some(ReasonCode::MalformedPacket)))
+        Some(Event::Disconnected(
+            Disconnected::builder()
+                .reason(ReasonCode::MalformedPacket)
+                .build()
+        ))
     );
     assert_eq!(
         client.poll_write(),
@@ -605,7 +641,11 @@ fn protocol_error_emits_disconnect_bytes_before_close_action_polling() {
     assert_eq!(result, Ok(()));
     assert_eq!(
         client.poll_read(),
-        Some(Event::Disconnected(Some(ReasonCode::ProtocolError)))
+        Some(Event::Disconnected(
+            Disconnected::builder()
+                .reason(ReasonCode::ProtocolError)
+                .build()
+        ))
     );
     assert_eq!(
         client.poll_write(),
@@ -625,13 +665,15 @@ fn connack_transitions_to_connected_and_emits_connected() {
     open_connecting(&mut client, connect_options());
 
     assert_eq!(read(&mut client, &success_connack()), Ok(()));
-    assert!(matches!(client.poll_read(), Some(Event::Connected { .. })));
+    assert!(matches!(client.poll_read(), Some(Event::Connected(_))));
 
     assert_eq!(
-        client.handle_write(at_zero(Command::Publish {
-            token: 1,
-            message: message("test/topic", ProtoQos::AtMostOnce, b"qos0"),
-        })),
+        client.handle_write(at_zero(Command::Publish(
+            PublishOptions::builder()
+                .token(1)
+                .message(message("test/topic", ProtoQos::AtMostOnce, b"qos0"))
+                .build()
+        ))),
         Ok(())
     );
     assert!(
@@ -657,7 +699,11 @@ fn connack_rejected_reason_closes_without_connected_event() {
     assert_eq!(read(&mut client, &connack), Ok(()));
     assert_eq!(
         client.poll_read(),
-        Some(Event::Disconnected(Some(ReasonCode::NotAuthorized)))
+        Some(Event::Disconnected(
+            Disconnected::builder()
+                .reason(ReasonCode::NotAuthorized)
+                .build()
+        ))
     );
     assert!(matches!(
         client.poll_event(),
@@ -750,7 +796,9 @@ fn every_refused_connack_reason_is_reported_in_disconnected() {
         assert_eq!(read(&mut client, &connack), Ok(()), "{wire:?}");
         assert_eq!(
             client.poll_read(),
-            Some(Event::Disconnected(Some(expected))),
+            Some(Event::Disconnected(
+                Disconnected::builder().reason(expected).build()
+            )),
             "{wire:?}"
         );
         assert_eq!(client.poll_write(), None, "{wire:?} sent a packet");
@@ -777,7 +825,11 @@ fn remaining_length_longer_than_four_bytes_is_a_malformed_packet() {
     assert_eq!(result, Ok(()));
     assert_eq!(
         client.poll_read(),
-        Some(Event::Disconnected(Some(ReasonCode::MalformedPacket)))
+        Some(Event::Disconnected(
+            Disconnected::builder()
+                .reason(ReasonCode::MalformedPacket)
+                .build()
+        ))
     );
     assert_eq!(
         client.poll_write(),
@@ -935,7 +987,11 @@ fn inbound_publish_alias_only_unknown_alias_is_protocol_error() {
     ));
     assert_eq!(
         client.poll_read(),
-        Some(Event::Disconnected(Some(ReasonCode::ProtocolError)))
+        Some(Event::Disconnected(
+            Disconnected::builder()
+                .reason(ReasonCode::ProtocolError)
+                .build()
+        ))
     );
 }
 
@@ -959,7 +1015,11 @@ fn inbound_publish_empty_topic_without_alias_is_protocol_error() {
     ));
     assert_eq!(
         client.poll_read(),
-        Some(Event::Disconnected(Some(ReasonCode::ProtocolError)))
+        Some(Event::Disconnected(
+            Disconnected::builder()
+                .reason(ReasonCode::ProtocolError)
+                .build()
+        ))
     );
 }
 
@@ -995,7 +1055,11 @@ fn inbound_publish_alias_rejected_when_topic_alias_maximum_is_zero() {
     ));
     assert_eq!(
         client.poll_read(),
-        Some(Event::Disconnected(Some(ReasonCode::TopicAliasInvalid)))
+        Some(Event::Disconnected(
+            Disconnected::builder()
+                .reason(ReasonCode::TopicAliasInvalid)
+                .build()
+        ))
     );
 }
 
@@ -1033,7 +1097,11 @@ fn inbound_publish_alias_exceeding_topic_alias_maximum_is_topic_alias_invalid() 
     ));
     assert_eq!(
         client.poll_read(),
-        Some(Event::Disconnected(Some(ReasonCode::TopicAliasInvalid)))
+        Some(Event::Disconnected(
+            Disconnected::builder()
+                .reason(ReasonCode::TopicAliasInvalid)
+                .build()
+        ))
     );
 }
 
@@ -1119,7 +1187,11 @@ fn inbound_qos1_publish_waits_for_app_ack_then_sends_puback() {
     assert_eq!(read(&mut client, &publish), Ok(()));
 
     let inbound_message_id = match client.poll_read() {
-        Some(Event::MessageRequiresAcknowledgement(id, message)) => {
+        Some(Event::MessageRequiresAcknowledgement(MessageRequiresAcknowledgement {
+            id,
+            message,
+            ..
+        })) => {
             assert_eq!(message.topic, ByteString::from_static("sensors/temp"));
             assert_eq!(message.payload, Bytes::from_static(b"27.5"));
             id
@@ -1129,7 +1201,9 @@ fn inbound_qos1_publish_waits_for_app_ack_then_sends_puback() {
     assert_eq!(client.poll_write(), None);
 
     assert_eq!(
-        client.handle_write(at_zero(Command::Acknowledge(inbound_message_id))),
+        client.handle_write(at_zero(Command::Acknowledge(
+            AcknowledgeOptions::builder().id(inbound_message_id).build()
+        ))),
         Ok(())
     );
 
@@ -1163,15 +1237,19 @@ fn inbound_qos1_publish_reject_sends_puback_failure_reason() {
     assert_eq!(read(&mut client, &publish), Ok(()));
 
     let inbound_message_id = match client.poll_read() {
-        Some(Event::MessageRequiresAcknowledgement(id, _)) => id,
+        Some(Event::MessageRequiresAcknowledgement(MessageRequiresAcknowledgement {
+            id, ..
+        })) => id,
         other => panic!("expected received message, got {other:?}"),
     };
     assert_eq!(client.poll_write(), None);
 
     assert_eq!(
         client.handle_write(at_zero(Command::Reject(
-            inbound_message_id,
-            RejectReason::NotAuthorized
+            RejectOptions::builder()
+                .id(inbound_message_id)
+                .reason(RejectReason::NotAuthorized)
+                .build()
         ))),
         Ok(())
     );
@@ -1205,13 +1283,17 @@ fn inbound_qos2_publish_waits_for_app_ack_then_sends_pubrec_and_completes_on_pub
     );
     assert_eq!(read(&mut client, &publish), Ok(()));
     let inbound_message_id = match client.poll_read() {
-        Some(Event::MessageRequiresAcknowledgement(id, _)) => id,
+        Some(Event::MessageRequiresAcknowledgement(MessageRequiresAcknowledgement {
+            id, ..
+        })) => id,
         other => panic!("expected received message with acknowledgement, got {other:?}"),
     };
     assert_eq!(client.poll_write(), None);
 
     assert_eq!(
-        client.handle_write(at_zero(Command::Acknowledge(inbound_message_id))),
+        client.handle_write(at_zero(Command::Acknowledge(
+            AcknowledgeOptions::builder().id(inbound_message_id).build()
+        ))),
         Ok(())
     );
 
@@ -1260,15 +1342,19 @@ fn inbound_qos2_publish_reject_sends_pubrec_failure_and_clears_state() {
     );
     assert_eq!(read(&mut client, &publish), Ok(()));
     let inbound_message_id = match client.poll_read() {
-        Some(Event::MessageRequiresAcknowledgement(id, _)) => id,
+        Some(Event::MessageRequiresAcknowledgement(MessageRequiresAcknowledgement {
+            id, ..
+        })) => id,
         other => panic!("expected received message with acknowledgement, got {other:?}"),
     };
     assert_eq!(client.poll_write(), None);
 
     assert_eq!(
         client.handle_write(at_zero(Command::Reject(
-            inbound_message_id,
-            RejectReason::QuotaExceeded
+            RejectOptions::builder()
+                .id(inbound_message_id)
+                .reason(RejectReason::QuotaExceeded)
+                .build()
         ))),
         Ok(())
     );
@@ -1319,7 +1405,7 @@ fn inbound_packet_id_reuse_conflict_causes_protocol_error() {
     assert_eq!(read(&mut client, &qos1_publish), Ok(()));
     assert!(matches!(
         client.poll_read(),
-        Some(Event::MessageRequiresAcknowledgement(_, _))
+        Some(Event::MessageRequiresAcknowledgement(_))
     ));
 
     let qos2_same_packet_id = ControlPacket::Publish(
@@ -1365,13 +1451,17 @@ fn duplicate_qos2_publish_after_reject_resends_same_failure_pubrec_without_redel
 
     assert_eq!(read(&mut client, &first_publish), Ok(()));
     let inbound_message_id = match client.poll_read() {
-        Some(Event::MessageRequiresAcknowledgement(id, _)) => id,
+        Some(Event::MessageRequiresAcknowledgement(MessageRequiresAcknowledgement {
+            id, ..
+        })) => id,
         other => panic!("expected received message with acknowledgement, got {other:?}"),
     };
     assert_eq!(
         client.handle_write(at_zero(Command::Reject(
-            inbound_message_id,
-            RejectReason::NotAuthorized
+            RejectOptions::builder()
+                .id(inbound_message_id)
+                .reason(RejectReason::NotAuthorized)
+                .build()
         ))),
         Ok(())
     );
@@ -1421,12 +1511,16 @@ fn manual_ack_sends_puback_success_for_pending_message_id() {
     assert_eq!(read(&mut client, &publish), Ok(()));
 
     let inbound_message_id = match client.poll_read() {
-        Some(Event::MessageRequiresAcknowledgement(id, _)) => id,
+        Some(Event::MessageRequiresAcknowledgement(MessageRequiresAcknowledgement {
+            id, ..
+        })) => id,
         other => panic!("expected received message with acknowledgement, got {other:?}"),
     };
 
     assert_eq!(
-        client.handle_write(at_zero(Command::Acknowledge(inbound_message_id))),
+        client.handle_write(at_zero(Command::Acknowledge(
+            AcknowledgeOptions::builder().id(inbound_message_id).build()
+        ))),
         Ok(())
     );
 
@@ -1483,12 +1577,20 @@ fn reject_reason_maps_to_puback_failure_codes_for_qos1() {
 
         assert_eq!(read(&mut client, &publish), Ok(()));
         let inbound_message_id = match client.poll_read() {
-            Some(Event::MessageRequiresAcknowledgement(id, _)) => id,
+            Some(Event::MessageRequiresAcknowledgement(MessageRequiresAcknowledgement {
+                id,
+                ..
+            })) => id,
             other => panic!("expected received message with acknowledgement, got {other:?}"),
         };
 
         assert_eq!(
-            client.handle_write(at_zero(Command::Reject(inbound_message_id, *reject_reason))),
+            client.handle_write(at_zero(Command::Reject(
+                RejectOptions::builder()
+                    .id(inbound_message_id)
+                    .reason(*reject_reason)
+                    .build()
+            ))),
             Ok(())
         );
 
@@ -1545,12 +1647,20 @@ fn reject_reason_maps_to_pubrec_failure_codes_for_qos2() {
 
         assert_eq!(read(&mut client, &publish), Ok(()));
         let inbound_message_id = match client.poll_read() {
-            Some(Event::MessageRequiresAcknowledgement(id, _)) => id,
+            Some(Event::MessageRequiresAcknowledgement(MessageRequiresAcknowledgement {
+                id,
+                ..
+            })) => id,
             other => panic!("expected received message with acknowledgement, got {other:?}"),
         };
 
         assert_eq!(
-            client.handle_write(at_zero(Command::Reject(inbound_message_id, *reject_reason))),
+            client.handle_write(at_zero(Command::Reject(
+                RejectOptions::builder()
+                    .id(inbound_message_id)
+                    .reason(*reject_reason)
+                    .build()
+            ))),
             Ok(())
         );
 
@@ -1621,10 +1731,12 @@ fn outbound_qos1_publish_emits_acknowledged_event_on_puback() {
     let qos1_message = message("test/topic", ProtoQos::AtLeastOnce, b"qos1");
 
     assert_eq!(
-        client.handle_write(at_zero(Command::Publish {
-            token: 42,
-            message: qos1_message.clone(),
-        })),
+        client.handle_write(at_zero(Command::Publish(
+            PublishOptions::builder()
+                .token(42)
+                .message(qos1_message.clone())
+                .build()
+        ))),
         Ok(())
     );
 
@@ -1651,10 +1763,12 @@ fn outbound_qos1_publish_emits_acknowledged_event_on_puback() {
     assert_eq!(read(&mut client, &puback), Ok(()));
     assert_eq!(
         client.poll_read(),
-        Some(Event::PublishAcknowledged {
-            token: 42,
-            reason: ReasonCode::Success,
-        })
+        Some(Event::PublishAcknowledged(
+            PublishAcknowledged::builder()
+                .token(42)
+                .reason(ReasonCode::Success)
+                .build()
+        ))
     );
     assert!(client.poll_read().is_none());
 }
@@ -1690,10 +1804,12 @@ fn qos2_inflight_receiving_puback_triggers_protocol_error_close() {
 
     let qos2_message = message("test/topic", ProtoQos::ExactlyOnce, b"qos2");
     assert_eq!(
-        client.handle_write(at_zero(Command::Publish {
-            token: 1,
-            message: qos2_message,
-        })),
+        client.handle_write(at_zero(Command::Publish(
+            PublishOptions::builder()
+                .token(1)
+                .message(qos2_message)
+                .build()
+        ))),
         Ok(())
     );
     assert!(client.poll_write().is_some());
@@ -1713,7 +1829,11 @@ fn qos2_inflight_receiving_puback_triggers_protocol_error_close() {
     );
     assert_eq!(
         client.poll_read(),
-        Some(Event::Disconnected(Some(ReasonCode::ProtocolError)))
+        Some(Event::Disconnected(
+            Disconnected::builder()
+                .reason(ReasonCode::ProtocolError)
+                .build()
+        ))
     );
     assert!(matches!(
         client.poll_event(),
@@ -1728,10 +1848,12 @@ fn qos1_inflight_receiving_pubrec_triggers_protocol_error_close() {
 
     let qos1_message = message("test/topic", ProtoQos::AtLeastOnce, b"qos1");
     assert_eq!(
-        client.handle_write(at_zero(Command::Publish {
-            token: 1,
-            message: qos1_message,
-        })),
+        client.handle_write(at_zero(Command::Publish(
+            PublishOptions::builder()
+                .token(1)
+                .message(qos1_message)
+                .build()
+        ))),
         Ok(())
     );
     assert!(client.poll_write().is_some());
@@ -1751,7 +1873,11 @@ fn qos1_inflight_receiving_pubrec_triggers_protocol_error_close() {
     );
     assert_eq!(
         client.poll_read(),
-        Some(Event::Disconnected(Some(ReasonCode::ProtocolError)))
+        Some(Event::Disconnected(
+            Disconnected::builder()
+                .reason(ReasonCode::ProtocolError)
+                .build()
+        ))
     );
     assert!(matches!(
         client.poll_event(),
@@ -1774,14 +1900,16 @@ fn connack_receive_maximum_only_limits_broker_facing_publish_flow() {
         ),
         Ok(())
     );
-    assert!(matches!(client.poll_read(), Some(Event::Connected { .. })));
+    assert!(matches!(client.poll_read(), Some(Event::Connected(_))));
 
     let first_message = message("test/topic", ProtoQos::AtLeastOnce, b"qos1-first");
     assert_eq!(
-        client.handle_write(at_zero(Command::Publish {
-            token: 1,
-            message: first_message.clone(),
-        })),
+        client.handle_write(at_zero(Command::Publish(
+            PublishOptions::builder()
+                .token(1)
+                .message(first_message.clone())
+                .build()
+        ))),
         Ok(())
     );
 
@@ -1829,14 +1957,20 @@ fn connack_receive_maximum_only_limits_broker_facing_publish_flow() {
     );
     assert_eq!(read(&mut client, &inbound_qos1_publish), Ok(()));
     let inbound_message_id = match client.poll_read() {
-        Some(Event::MessageRequiresAcknowledgement(id, message)) => {
+        Some(Event::MessageRequiresAcknowledgement(MessageRequiresAcknowledgement {
+            id,
+            message,
+            ..
+        })) => {
             assert_eq!(message.payload, Bytes::from_static(b"inbound-qos1-ok"));
             id
         }
         other => panic!("expected qos1 inbound message with ack id, got {other:?}"),
     };
     assert_eq!(
-        client.handle_write(at_zero(Command::Acknowledge(inbound_message_id))),
+        client.handle_write(at_zero(Command::Acknowledge(
+            AcknowledgeOptions::builder().id(inbound_message_id).build()
+        ))),
         Ok(())
     );
     let expected_puback = ControlPacket::PubAck(
@@ -1849,10 +1983,12 @@ fn connack_receive_maximum_only_limits_broker_facing_publish_flow() {
 
     let second_message = message("test/second", ProtoQos::AtLeastOnce, b"qos1-second");
     assert_eq!(
-        client.handle_write(at_zero(Command::Publish {
-            token: 2,
-            message: second_message,
-        })),
+        client.handle_write(at_zero(Command::Publish(
+            PublishOptions::builder()
+                .token(2)
+                .message(second_message)
+                .build()
+        ))),
         Err(Error::ReceiveMaximumExceeded)
     );
     assert_eq!(client.poll_write(), None);
@@ -1879,13 +2015,15 @@ fn effective_limits_recompute_on_connect_socketconnected_connack_and_socketclose
         ),
         Ok(())
     );
-    assert!(matches!(client.poll_read(), Some(Event::Connected { .. })));
+    assert!(matches!(client.poll_read(), Some(Event::Connected(_))));
 
     assert_eq!(
-        client.handle_write(at_zero(Command::Publish {
-            token: 1,
-            message: qos1_message.clone(),
-        })),
+        client.handle_write(at_zero(Command::Publish(
+            PublishOptions::builder()
+                .token(1)
+                .message(qos1_message.clone())
+                .build()
+        ))),
         Err(Error::CapabilityNotAvailable(Capability::MaximumQos))
     );
     assert_eq!(client.poll_write(), None);
@@ -1908,13 +2046,15 @@ fn effective_limits_recompute_on_connect_socketconnected_connack_and_socketclose
         ),
         Ok(())
     );
-    assert!(matches!(client.poll_read(), Some(Event::Connected { .. })));
+    assert!(matches!(client.poll_read(), Some(Event::Connected(_))));
 
     assert_eq!(
-        client.handle_write(at_zero(Command::Publish {
-            token: 2,
-            message: qos1_message,
-        })),
+        client.handle_write(at_zero(Command::Publish(
+            PublishOptions::builder()
+                .token(2)
+                .message(qos1_message)
+                .build()
+        ))),
         Err(Error::CapabilityNotAvailable(Capability::MaximumQos))
     );
     assert_eq!(client.poll_write(), None);
@@ -1935,14 +2075,16 @@ fn effective_limits_recompute_on_connect_applies_pending_connect_options() {
         ),
         Ok(())
     );
-    assert!(matches!(client.poll_read(), Some(Event::Connected { .. })));
+    assert!(matches!(client.poll_read(), Some(Event::Connected(_))));
 
     let qos2_message = message("test/qos2", ProtoQos::ExactlyOnce, b"qos2");
     assert_eq!(
-        client.handle_write(at_zero(Command::Publish {
-            token: 1,
-            message: qos2_message,
-        })),
+        client.handle_write(at_zero(Command::Publish(
+            PublishOptions::builder()
+                .token(1)
+                .message(qos2_message)
+                .build()
+        ))),
         Err(Error::CapabilityNotAvailable(Capability::MaximumQos))
     );
 }
@@ -1962,24 +2104,22 @@ fn effective_limits_recompute_on_connack_applies_broker_receive_maximum() {
         ),
         Ok(())
     );
-    assert!(matches!(client.poll_read(), Some(Event::Connected { .. })));
+    assert!(matches!(client.poll_read(), Some(Event::Connected(_))));
 
     let first = message("test/first", ProtoQos::AtLeastOnce, b"1");
     assert_eq!(
-        client.handle_write(at_zero(Command::Publish {
-            token: 1,
-            message: first,
-        })),
+        client.handle_write(at_zero(Command::Publish(
+            PublishOptions::builder().token(1).message(first).build()
+        ))),
         Ok(())
     );
     assert!(client.poll_write().is_some());
 
     let second = message("test/second", ProtoQos::AtLeastOnce, b"2");
     assert_eq!(
-        client.handle_write(at_zero(Command::Publish {
-            token: 2,
-            message: second,
-        })),
+        client.handle_write(at_zero(Command::Publish(
+            PublishOptions::builder().token(2).message(second).build()
+        ))),
         Err(Error::ReceiveMaximumExceeded)
     );
 }
@@ -1998,15 +2138,17 @@ fn app_retain_policy_false_blocks_retain_publish_even_if_broker_allows() {
         ),
         Ok(())
     );
-    assert!(matches!(client.poll_read(), Some(Event::Connected { .. })));
+    assert!(matches!(client.poll_read(), Some(Event::Connected(_))));
 
     let mut retained_message = message("retain/topic", ProtoQos::AtMostOnce, b"retained");
     retained_message.retain = true;
     assert_eq!(
-        client.handle_write(at_zero(Command::Publish {
-            token: 1,
-            message: retained_message,
-        })),
+        client.handle_write(at_zero(Command::Publish(
+            PublishOptions::builder()
+                .token(1)
+                .message(retained_message)
+                .build()
+        ))),
         Err(Error::CapabilityNotAvailable(Capability::Retain))
     );
 }
@@ -2033,7 +2175,7 @@ fn app_subscription_policy_flags_override_broker_allowances() {
         ),
         Ok(())
     );
-    assert!(matches!(client.poll_read(), Some(Event::Connected { .. })));
+    assert!(matches!(client.poll_read(), Some(Event::Connected(_))));
 
     assert_eq!(
         client.handle_write(at_zero(Command::Subscribe(
@@ -2062,10 +2204,12 @@ fn outbound_qos2_publish_emits_completed_event_on_pubcomp() {
 
     let qos2_message = message("test/topic", ProtoQos::ExactlyOnce, b"qos2");
     assert_eq!(
-        client.handle_write(at_zero(Command::Publish {
-            token: 9,
-            message: qos2_message.clone(),
-        })),
+        client.handle_write(at_zero(Command::Publish(
+            PublishOptions::builder()
+                .token(9)
+                .message(qos2_message.clone())
+                .build()
+        ))),
         Ok(())
     );
 
@@ -2108,10 +2252,12 @@ fn outbound_qos2_publish_emits_completed_event_on_pubcomp() {
     assert_eq!(read(&mut client, &pubcomp), Ok(()));
     assert_eq!(
         client.poll_read(),
-        Some(Event::PublishCompleted {
-            token: 9,
-            reason: ReasonCode::Success,
-        })
+        Some(Event::PublishCompleted(
+            PublishCompleted::builder()
+                .token(9)
+                .reason(ReasonCode::Success)
+                .build()
+        ))
     );
     assert!(client.poll_read().is_none());
 }
@@ -2123,10 +2269,12 @@ fn unexpected_pubcomp_before_pubrec_transition_triggers_protocol_error_close() {
 
     let qos2_message = message("test/topic", ProtoQos::ExactlyOnce, b"qos2");
     assert_eq!(
-        client.handle_write(at_zero(Command::Publish {
-            token: 1,
-            message: qos2_message,
-        })),
+        client.handle_write(at_zero(Command::Publish(
+            PublishOptions::builder()
+                .token(1)
+                .message(qos2_message)
+                .build()
+        ))),
         Ok(())
     );
     assert!(client.poll_write().is_some());
@@ -2165,14 +2313,16 @@ fn receive_maximum_full_returns_immediate_error_for_new_qos2_publish() {
         ),
         Ok(())
     );
-    assert!(matches!(client.poll_read(), Some(Event::Connected { .. })));
+    assert!(matches!(client.poll_read(), Some(Event::Connected(_))));
 
     let first_message = message("test/topic", ProtoQos::ExactlyOnce, b"qos2-first");
     assert_eq!(
-        client.handle_write(at_zero(Command::Publish {
-            token: 1,
-            message: first_message.clone(),
-        })),
+        client.handle_write(at_zero(Command::Publish(
+            PublishOptions::builder()
+                .token(1)
+                .message(first_message.clone())
+                .build()
+        ))),
         Ok(())
     );
 
@@ -2195,10 +2345,12 @@ fn receive_maximum_full_returns_immediate_error_for_new_qos2_publish() {
 
     let second_message = message("test/topic", ProtoQos::ExactlyOnce, b"qos2-second");
     assert_eq!(
-        client.handle_write(at_zero(Command::Publish {
-            token: 2,
-            message: second_message,
-        })),
+        client.handle_write(at_zero(Command::Publish(
+            PublishOptions::builder()
+                .token(2)
+                .message(second_message)
+                .build()
+        ))),
         Err(Error::ReceiveMaximumExceeded)
     );
     assert_eq!(client.poll_write(), None);
@@ -2211,10 +2363,12 @@ fn duplicate_pubrec_in_qos2_await_pubcomp_resends_pubrel_without_disconnect() {
 
     let qos2_message = message("test/topic", ProtoQos::ExactlyOnce, b"qos2");
     assert_eq!(
-        client.handle_write(at_zero(Command::Publish {
-            token: 1,
-            message: qos2_message.clone(),
-        })),
+        client.handle_write(at_zero(Command::Publish(
+            PublishOptions::builder()
+                .token(1)
+                .message(qos2_message.clone())
+                .build()
+        ))),
         Ok(())
     );
 
@@ -2261,10 +2415,12 @@ fn duplicate_pubrec_in_qos2_await_pubcomp_resends_pubrel_without_disconnect() {
     assert_eq!(read(&mut client, &pubcomp), Ok(()));
     assert_eq!(
         client.poll_read(),
-        Some(Event::PublishCompleted {
-            token: 1,
-            reason: ReasonCode::Success,
-        })
+        Some(Event::PublishCompleted(
+            PublishCompleted::builder()
+                .token(1)
+                .reason(ReasonCode::Success)
+                .build()
+        ))
     );
 }
 
@@ -2275,10 +2431,12 @@ fn qos2_pubrec_failure_reason_drops_inflight_without_pubrel() {
 
     let qos2_message = message("test/topic", ProtoQos::ExactlyOnce, b"qos2");
     assert_eq!(
-        client.handle_write(at_zero(Command::Publish {
-            token: 5,
-            message: qos2_message,
-        })),
+        client.handle_write(at_zero(Command::Publish(
+            PublishOptions::builder()
+                .token(5)
+                .message(qos2_message)
+                .build()
+        ))),
         Ok(())
     );
     let packet_id = NonZero::new(1).expect("non-zero packet id");
@@ -2294,10 +2452,16 @@ fn qos2_pubrec_failure_reason_drops_inflight_without_pubrel() {
     assert_eq!(client.poll_write(), None);
     assert_eq!(
         client.poll_read(),
-        Some(Event::PublishDropped {
-            token: 5,
-            reason: DropReason::BrokerRejected(ReasonCode::NotAuthorized),
-        })
+        Some(Event::PublishDropped(
+            PublishDropped::builder()
+                .token(5)
+                .reason(DropReason::BrokerRejected(
+                    BrokerRejected::builder()
+                        .reason(ReasonCode::NotAuthorized)
+                        .build()
+                ))
+                .build()
+        ))
     );
 
     let pubcomp = ControlPacket::PubComp(
@@ -2328,11 +2492,13 @@ fn publish_rejects_packet_exceeding_connack_maximum_packet_size() {
         ),
         Ok(())
     );
-    assert!(matches!(client.poll_read(), Some(Event::Connected { .. })));
+    assert!(matches!(client.poll_read(), Some(Event::Connected(_))));
 
     let message = message("test/topic", ProtoQos::AtMostOnce, &[0; 64]);
     assert_eq!(
-        client.handle_write(at_zero(Command::Publish { token: 1, message })),
+        client.handle_write(at_zero(Command::Publish(
+            PublishOptions::builder().token(1).message(message).build()
+        ))),
         Err(Error::PacketTooLarge)
     );
     assert_eq!(client.poll_write(), None);
@@ -2353,7 +2519,7 @@ fn subscribe_rejects_packet_exceeding_connack_maximum_packet_size() {
         ),
         Ok(())
     );
-    assert!(matches!(client.poll_read(), Some(Event::Connected { .. })));
+    assert!(matches!(client.poll_read(), Some(Event::Connected(_))));
 
     assert_eq!(
         client.handle_write(at_zero(subscribe_one(app_subscription(
@@ -2381,7 +2547,7 @@ fn unsubscribe_rejects_packet_exceeding_connack_maximum_packet_size() {
         ),
         Ok(())
     );
-    assert!(matches!(client.poll_read(), Some(Event::Connected { .. })));
+    assert!(matches!(client.poll_read(), Some(Event::Connected(_))));
 
     assert_eq!(
         client.handle_write(at_zero(unsubscribe_one("a/very/long/topic/filter"))),
@@ -2419,7 +2585,7 @@ fn keep_alive_pingreq_exceeding_connack_maximum_packet_size_closes_the_connectio
         ),
         Ok(())
     );
-    assert!(matches!(client.poll_read(), Some(Event::Connected { .. })));
+    assert!(matches!(client.poll_read(), Some(Event::Connected(_))));
     assert_eq!(client.poll_timeout(), Some(Duration::from_secs(10)));
 
     assert_eq!(client.handle_timeout(Duration::from_secs(10)), Ok(()));
@@ -2432,7 +2598,11 @@ fn keep_alive_pingreq_exceeding_connack_maximum_packet_size_closes_the_connectio
     ));
     assert_eq!(
         client.poll_read(),
-        Some(Event::Disconnected(Some(ReasonCode::ProtocolError)))
+        Some(Event::Disconnected(
+            Disconnected::builder()
+                .reason(ReasonCode::ProtocolError)
+                .build()
+        ))
     );
 }
 
@@ -2485,7 +2655,7 @@ fn rejected_connect_does_not_mutate_pending_connect_options() {
     assert!(client.poll_event().is_none());
     assert_eq!(client.poll_write(), None);
     assert_eq!(read(&mut client, &success_connack()), Ok(()));
-    assert!(matches!(client.poll_read(), Some(Event::Connected { .. })));
+    assert!(matches!(client.poll_read(), Some(Event::Connected(_))));
 }
 
 #[test]
@@ -2504,7 +2674,7 @@ fn reconnect_ignores_previous_connack_maximum_packet_size_for_connect() {
         ),
         Ok(())
     );
-    assert!(matches!(client.poll_read(), Some(Event::Connected { .. })));
+    assert!(matches!(client.poll_read(), Some(Event::Connected(_))));
 
     assert_eq!(
         client.handle_event(at_zero(DriverEvent::SocketClosed)),
@@ -2533,7 +2703,11 @@ fn connack_resume_with_clean_start_is_protocol_error() {
     ));
     assert_eq!(
         client.poll_read(),
-        Some(Event::Disconnected(Some(ReasonCode::ProtocolError)))
+        Some(Event::Disconnected(
+            Disconnected::builder()
+                .reason(ReasonCode::ProtocolError)
+                .build()
+        ))
     );
 }
 
@@ -2547,7 +2721,7 @@ fn connack_resume_without_local_state_is_accepted_when_clean_start_false() {
     open_connecting(&mut client, options);
 
     assert_eq!(read(&mut client, &resume_connack()), Ok(()));
-    assert!(matches!(client.poll_read(), Some(Event::Connected { .. })));
+    assert!(matches!(client.poll_read(), Some(Event::Connected(_))));
     assert!(client.poll_event().is_none());
 }
 
@@ -2565,10 +2739,12 @@ fn resumed_session_replays_outbound_qos_publish_with_dup_set() {
 
     let outbound = message("replay/topic", ProtoQos::AtLeastOnce, b"replay");
     assert_eq!(
-        client.handle_write(at_zero(Command::Publish {
-            token: 1,
-            message: outbound.clone(),
-        })),
+        client.handle_write(at_zero(Command::Publish(
+            PublishOptions::builder()
+                .token(1)
+                .message(outbound.clone())
+                .build()
+        ))),
         Ok(())
     );
 
@@ -2594,7 +2770,7 @@ fn resumed_session_replays_outbound_qos_publish_with_dup_set() {
 
     open_connecting(&mut client, session_expiry_options(30));
     assert_eq!(read(&mut client, &resume_connack()), Ok(()));
-    assert!(matches!(client.poll_read(), Some(Event::Connected { .. })));
+    assert!(matches!(client.poll_read(), Some(Event::Connected(_))));
 
     let replay_publish = ControlPacket::Publish(
         Publish::builder()
@@ -2618,10 +2794,12 @@ fn resumed_session_replays_outbound_qos_publish_with_dup_set() {
     assert_eq!(read(&mut client, &puback), Ok(()));
     assert_eq!(
         client.poll_read(),
-        Some(Event::PublishAcknowledged {
-            token: 1,
-            reason: ReasonCode::Success,
-        })
+        Some(Event::PublishAcknowledged(
+            PublishAcknowledged::builder()
+                .token(1)
+                .reason(ReasonCode::Success)
+                .build()
+        ))
     );
 }
 
@@ -2632,10 +2810,12 @@ fn resumed_session_replay_failure_does_not_emit_connected_and_closes() {
 
     let outbound = message("replay/failure", ProtoQos::AtLeastOnce, &[0; 64]);
     assert_eq!(
-        client.handle_write(at_zero(Command::Publish {
-            token: 1,
-            message: outbound.clone(),
-        })),
+        client.handle_write(at_zero(Command::Publish(
+            PublishOptions::builder()
+                .token(1)
+                .message(outbound.clone())
+                .build()
+        ))),
         Ok(())
     );
 
@@ -2680,7 +2860,11 @@ fn resumed_session_replay_failure_does_not_emit_connected_and_closes() {
     ));
     assert_eq!(
         client.poll_read(),
-        Some(Event::Disconnected(Some(ReasonCode::ProtocolError)))
+        Some(Event::Disconnected(
+            Disconnected::builder()
+                .reason(ReasonCode::ProtocolError)
+                .build()
+        ))
     );
 }
 
@@ -2691,10 +2875,12 @@ fn resumed_session_replays_unacknowledged_pubrel() {
 
     let outbound = message("resume/qos2", ProtoQos::ExactlyOnce, b"qos2");
     assert_eq!(
-        client.handle_write(at_zero(Command::Publish {
-            token: 1,
-            message: outbound.clone(),
-        })),
+        client.handle_write(at_zero(Command::Publish(
+            PublishOptions::builder()
+                .token(1)
+                .message(outbound.clone())
+                .build()
+        ))),
         Ok(())
     );
 
@@ -2739,7 +2925,7 @@ fn resumed_session_replays_unacknowledged_pubrel() {
 
     open_connecting(&mut client, session_expiry_options(30));
     assert_eq!(read(&mut client, &resume_connack()), Ok(()));
-    assert!(matches!(client.poll_read(), Some(Event::Connected { .. })));
+    assert!(matches!(client.poll_read(), Some(Event::Connected(_))));
     assert_eq!(
         client.poll_write(),
         Some(encode_packet(&ControlPacket::PubRel(
@@ -2759,10 +2945,12 @@ fn resumed_session_replays_unacknowledged_pubrel() {
     assert_eq!(read(&mut client, &pubcomp), Ok(()));
     assert_eq!(
         client.poll_read(),
-        Some(Event::PublishCompleted {
-            token: 1,
-            reason: ReasonCode::Success,
-        })
+        Some(Event::PublishCompleted(
+            PublishCompleted::builder()
+                .token(1)
+                .reason(ReasonCode::Success)
+                .build()
+        ))
     );
 }
 
@@ -2777,10 +2965,12 @@ fn non_resumed_session_drops_inflight_and_emits_publish_dropped_events() {
 
     let qos1_topic = "drop/topic";
     assert_eq!(
-        client.handle_write(at_zero(Command::Publish {
-            token: 1,
-            message: message(qos1_topic, ProtoQos::AtLeastOnce, b"qos1"),
-        })),
+        client.handle_write(at_zero(Command::Publish(
+            PublishOptions::builder()
+                .token(1)
+                .message(message(qos1_topic, ProtoQos::AtLeastOnce, b"qos1"))
+                .build()
+        ))),
         Ok(())
     );
     let qos1_packet_id = NonZero::new(1).expect("non-zero packet id");
@@ -2800,10 +2990,12 @@ fn non_resumed_session_drops_inflight_and_emits_publish_dropped_events() {
     );
 
     assert_eq!(
-        client.handle_write(at_zero(Command::Publish {
-            token: 2,
-            message: message(qos1_topic, ProtoQos::ExactlyOnce, b"qos2"),
-        })),
+        client.handle_write(at_zero(Command::Publish(
+            PublishOptions::builder()
+                .token(2)
+                .message(message(qos1_topic, ProtoQos::ExactlyOnce, b"qos2"))
+                .build()
+        ))),
         Ok(())
     );
     let qos2_packet_id = NonZero::new(2).expect("non-zero packet id");
@@ -2846,20 +3038,24 @@ fn non_resumed_session_drops_inflight_and_emits_publish_dropped_events() {
 
     open_connecting(&mut client, session_expiry_options(30));
     assert_eq!(read(&mut client, &success_connack()), Ok(()));
-    assert!(matches!(client.poll_read(), Some(Event::Connected { .. })));
+    assert!(matches!(client.poll_read(), Some(Event::Connected(_))));
     assert_eq!(
         client.poll_read(),
-        Some(Event::PublishDropped {
-            token: 1,
-            reason: DropReason::SessionNotResumed,
-        })
+        Some(Event::PublishDropped(
+            PublishDropped::builder()
+                .token(1)
+                .reason(DropReason::SessionNotResumed)
+                .build()
+        ))
     );
     assert_eq!(
         client.poll_read(),
-        Some(Event::PublishDropped {
-            token: 2,
-            reason: DropReason::SessionNotResumed,
-        })
+        Some(Event::PublishDropped(
+            PublishDropped::builder()
+                .token(2)
+                .reason(DropReason::SessionNotResumed)
+                .build()
+        ))
     );
     assert!(client.poll_read().is_none());
     assert_eq!(client.poll_write(), None);
@@ -2888,10 +3084,12 @@ fn non_resumed_connack_discards_all_local_session_state() {
     connect_default(&mut client);
 
     assert_eq!(
-        client.handle_write(at_zero(Command::Publish {
-            token: 1,
-            message: message("state/topic", ProtoQos::AtLeastOnce, b"qos1"),
-        })),
+        client.handle_write(at_zero(Command::Publish(
+            PublishOptions::builder()
+                .token(1)
+                .message(message("state/topic", ProtoQos::AtLeastOnce, b"qos1"))
+                .build()
+        ))),
         Ok(())
     );
     assert!(client.poll_write().is_some());
@@ -2932,7 +3130,7 @@ fn non_resumed_connack_discards_all_local_session_state() {
 
     open_connecting(&mut client, connect_options());
     assert_eq!(read(&mut client, &success_connack()), Ok(()));
-    assert!(matches!(client.poll_read(), Some(Event::Connected { .. })));
+    assert!(matches!(client.poll_read(), Some(Event::Connected(_))));
 
     let pubrel = ControlPacket::PubRel(
         PubRel::builder()
@@ -2979,7 +3177,7 @@ fn non_resumed_connack_discards_all_local_session_state() {
     assert!(matches!(client.poll_read(), Some(Event::Disconnected(_))));
     open_connecting(&mut client, connect_options());
     assert_eq!(read(&mut client, &success_connack()), Ok(()));
-    assert!(matches!(client.poll_read(), Some(Event::Connected { .. })));
+    assert!(matches!(client.poll_read(), Some(Event::Connected(_))));
 
     let stale_unsuback = ControlPacket::UnsubAck(
         UnsubAck::builder()
@@ -3015,7 +3213,7 @@ fn stale_read_buffer_is_cleared_on_socket_closed() {
 
     open_connecting(&mut client, connect_options());
     assert_eq!(read(&mut client, &success_connack()), Ok(()));
-    assert!(matches!(client.poll_read(), Some(Event::Connected { .. })));
+    assert!(matches!(client.poll_read(), Some(Event::Connected(_))));
 }
 
 #[test]
@@ -3039,12 +3237,12 @@ fn stale_read_buffer_is_cleared_on_socket_error() {
     assert!(client.poll_event().is_none());
     assert!(matches!(
         client.poll_read(),
-        Some(Event::Disconnected(None))
+        Some(Event::Disconnected(Disconnected { reason: None, .. }))
     ));
 
     open_connecting(&mut client, connect_options());
     assert_eq!(read(&mut client, &success_connack()), Ok(()));
-    assert!(matches!(client.poll_read(), Some(Event::Connected { .. })));
+    assert!(matches!(client.poll_read(), Some(Event::Connected(_))));
 }
 
 #[test]
@@ -3069,7 +3267,7 @@ fn stale_read_buffer_is_cleared_on_user_disconnect() {
 
     open_connecting(&mut client, connect_options());
     assert_eq!(read(&mut client, &success_connack()), Ok(()));
-    assert!(matches!(client.poll_read(), Some(Event::Connected { .. })));
+    assert!(matches!(client.poll_read(), Some(Event::Connected(_))));
 }
 
 #[test]
@@ -3094,7 +3292,7 @@ fn stale_read_buffer_is_cleared_on_close() {
 
     open_connecting(&mut client, connect_options());
     assert_eq!(read(&mut client, &success_connack()), Ok(()));
-    assert!(matches!(client.poll_read(), Some(Event::Connected { .. })));
+    assert!(matches!(client.poll_read(), Some(Event::Connected(_))));
 }
 
 #[test]
@@ -3153,7 +3351,7 @@ fn close_succeeds_even_when_disconnect_packet_exceeds_maximum_packet_size() {
         ),
         Ok(())
     );
-    assert!(matches!(client.poll_read(), Some(Event::Connected { .. })));
+    assert!(matches!(client.poll_read(), Some(Event::Connected(_))));
 
     assert_eq!(client.close(), Ok(()));
     assert_eq!(client.poll_write(), None);
@@ -3186,7 +3384,7 @@ fn user_disconnect_succeeds_even_when_disconnect_packet_exceeds_maximum_packet_s
         ),
         Ok(())
     );
-    assert!(matches!(client.poll_read(), Some(Event::Connected { .. })));
+    assert!(matches!(client.poll_read(), Some(Event::Connected(_))));
 
     assert_eq!(client.handle_write(at_zero(Command::Disconnect)), Ok(()));
     assert_eq!(client.poll_write(), None);
@@ -3307,7 +3505,7 @@ fn connecting_auth_then_connack_success_transitions_connected() {
         Ok(())
     );
     assert_eq!(read(&mut client, &success_connack()), Ok(()));
-    assert!(matches!(client.poll_read(), Some(Event::Connected { .. })));
+    assert!(matches!(client.poll_read(), Some(Event::Connected(_))));
 }
 
 #[test]
@@ -3358,13 +3556,15 @@ fn publish_qos_above_server_maximum_qos_is_rejected() {
         ),
         Ok(())
     );
-    assert!(matches!(client.poll_read(), Some(Event::Connected { .. })));
+    assert!(matches!(client.poll_read(), Some(Event::Connected(_))));
 
     assert_eq!(
-        client.handle_write(at_zero(Command::Publish {
-            token: 1,
-            message: message("qos/guard", ProtoQos::AtLeastOnce, b"payload"),
-        })),
+        client.handle_write(at_zero(Command::Publish(
+            PublishOptions::builder()
+                .token(1)
+                .message(message("qos/guard", ProtoQos::AtLeastOnce, b"payload"))
+                .build()
+        ))),
         Err(Error::CapabilityNotAvailable(Capability::MaximumQos))
     );
     assert_eq!(client.poll_write(), None);
@@ -3381,15 +3581,17 @@ fn publish_retain_when_server_retain_not_available_is_rejected() {
         ),
         Ok(())
     );
-    assert!(matches!(client.poll_read(), Some(Event::Connected { .. })));
+    assert!(matches!(client.poll_read(), Some(Event::Connected(_))));
 
     let mut retained_message = message("retain/guard", ProtoQos::AtMostOnce, b"payload");
     retained_message.retain = true;
     assert_eq!(
-        client.handle_write(at_zero(Command::Publish {
-            token: 1,
-            message: retained_message,
-        })),
+        client.handle_write(at_zero(Command::Publish(
+            PublishOptions::builder()
+                .token(1)
+                .message(retained_message)
+                .build()
+        ))),
         Err(Error::CapabilityNotAvailable(Capability::Retain))
     );
     assert_eq!(client.poll_write(), None);
@@ -3424,7 +3626,7 @@ fn subscribe_wildcard_when_server_disallows_is_rejected() {
         ),
         Ok(())
     );
-    assert!(matches!(client.poll_read(), Some(Event::Connected { .. })));
+    assert!(matches!(client.poll_read(), Some(Event::Connected(_))));
 
     assert_eq!(
         client.handle_write(at_zero(subscribe_one(app_subscription("topic/#")))),
@@ -3450,7 +3652,7 @@ fn subscribe_shared_when_server_disallows_is_rejected() {
         ),
         Ok(())
     );
-    assert!(matches!(client.poll_read(), Some(Event::Connected { .. })));
+    assert!(matches!(client.poll_read(), Some(Event::Connected(_))));
 
     assert_eq!(
         client.handle_write(at_zero(subscribe_one(app_subscription("$share/g/topic")))),
@@ -3476,7 +3678,7 @@ fn subscribe_identifier_when_server_disallows_is_rejected() {
         ),
         Ok(())
     );
-    assert!(matches!(client.poll_read(), Some(Event::Connected { .. })));
+    assert!(matches!(client.poll_read(), Some(Event::Connected(_))));
 
     assert_eq!(
         client.handle_write(at_zero(Command::Subscribe(
@@ -3505,7 +3707,7 @@ fn connecting_auth_continue_then_connack_success_connects() {
         Ok(())
     );
     assert_eq!(read(&mut client, &success_connack()), Ok(()));
-    assert!(matches!(client.poll_read(), Some(Event::Connected { .. })));
+    assert!(matches!(client.poll_read(), Some(Event::Connected(_))));
 }
 
 /// [MQTT-4.12.0-2] AUTH in the Connected state must be forwarded to the
@@ -3527,7 +3729,7 @@ fn auth_in_connected_state_is_forwarded_not_protocol_error() {
         "AUTH in Connected state must be forwarded to the application, not treated as an error"
     );
     assert!(
-        matches!(client.poll_read(), Some(Event::Auth { .. })),
+        matches!(client.poll_read(), Some(Event::Auth(_))),
         "AUTH event must be emitted to the application"
     );
     assert!(client.poll_event().is_none(), "no CloseSocket expected");
@@ -3561,7 +3763,7 @@ fn connack_server_keep_alive_zero_disables_keepalive_without_panic() {
         ),
         Ok(())
     );
-    assert!(matches!(client.poll_read(), Some(Event::Connected { .. })));
+    assert!(matches!(client.poll_read(), Some(Event::Connected(_))));
 
     assert_eq!(client.handle_timeout(Duration::from_secs(1)), Ok(()));
     assert_eq!(client.poll_write(), None);
@@ -3626,7 +3828,10 @@ fn timeout_in_connecting_state_closes_connection_and_reports_disconnected() {
         matches!(client.poll_event(), Some(DriverAction::CloseSocket)),
         "CloseSocket must be emitted on Connecting timeout"
     );
-    assert_eq!(client.poll_read(), Some(Event::Disconnected(None)));
+    assert_eq!(
+        client.poll_read(),
+        Some(Event::Disconnected(Disconnected::builder().build()))
+    );
 }
 
 /// [MQTT-3.1.2-4] The server may override the session expiry interval in
@@ -3649,13 +3854,15 @@ fn connack_session_expiry_zero_overrides_client_session_should_persist() {
             .build(),
     );
     assert_eq!(read(&mut client, &connack_no_persist), Ok(()));
-    assert!(matches!(client.poll_read(), Some(Event::Connected { .. })));
+    assert!(matches!(client.poll_read(), Some(Event::Connected(_))));
 
     assert_eq!(
-        client.handle_write(at_zero(Command::Publish {
-            token: 1,
-            message: message("test/topic", ProtoQos::AtLeastOnce, b"data"),
-        })),
+        client.handle_write(at_zero(Command::Publish(
+            PublishOptions::builder()
+                .token(1)
+                .message(message("test/topic", ProtoQos::AtLeastOnce, b"data"))
+                .build()
+        ))),
         Ok(())
     );
     assert!(client.poll_write().is_some(), "PUBLISH must be sent");
@@ -3671,7 +3878,7 @@ fn connack_session_expiry_zero_overrides_client_session_should_persist() {
     assert_eq!(read(&mut client, &connack_no_persist), Ok(()));
     let first = client.poll_read();
     assert!(
-        matches!(first, Some(Event::Connected { .. })),
+        matches!(first, Some(Event::Connected(_))),
         "expected Connected, got {first:?}"
     );
     assert!(
@@ -3700,13 +3907,15 @@ fn connack_session_expiry_nonzero_sets_session_should_persist() {
             .build(),
     );
     assert_eq!(read(&mut client, &connack_persist), Ok(()));
-    assert!(matches!(client.poll_read(), Some(Event::Connected { .. })));
+    assert!(matches!(client.poll_read(), Some(Event::Connected(_))));
 
     assert_eq!(
-        client.handle_write(at_zero(Command::Publish {
-            token: 1,
-            message: message("test/topic", ProtoQos::AtLeastOnce, b"data"),
-        })),
+        client.handle_write(at_zero(Command::Publish(
+            PublishOptions::builder()
+                .token(1)
+                .message(message("test/topic", ProtoQos::AtLeastOnce, b"data"))
+                .build()
+        ))),
         Ok(())
     );
     assert!(client.poll_write().is_some(), "PUBLISH must be sent");
@@ -3724,16 +3933,16 @@ fn connack_session_expiry_nonzero_sets_session_should_persist() {
     let first = client.poll_read();
     let second = client.poll_read();
     assert!(
-        matches!(first, Some(Event::Connected { .. })),
+        matches!(first, Some(Event::Connected(_))),
         "expected Connected, got {first:?}"
     );
     assert!(
         matches!(
             second,
-            Some(Event::PublishDropped {
+            Some(Event::PublishDropped(PublishDropped {
                 reason: DropReason::SessionNotResumed,
                 ..
-            })
+            }))
         ),
         "expected PublishDropped(SessionNotResumed), got {second:?}"
     );
@@ -3753,10 +3962,12 @@ fn clean_start_true_clears_local_session_before_connect() {
     connect_client(&mut client, first_options);
 
     assert_eq!(
-        client.handle_write(at_zero(Command::Publish {
-            token: 1,
-            message: message("clean/start", ProtoQos::AtLeastOnce, b"qos1"),
-        })),
+        client.handle_write(at_zero(Command::Publish(
+            PublishOptions::builder()
+                .token(1)
+                .message(message("clean/start", ProtoQos::AtLeastOnce, b"qos1"))
+                .build()
+        ))),
         Ok(())
     );
     assert!(client.poll_write().is_some());
@@ -3783,7 +3994,11 @@ fn clean_start_true_clears_local_session_before_connect() {
     ));
     assert_eq!(
         client.poll_read(),
-        Some(Event::Disconnected(Some(ReasonCode::ProtocolError)))
+        Some(Event::Disconnected(
+            Disconnected::builder()
+                .reason(ReasonCode::ProtocolError)
+                .build()
+        ))
     );
 }
 
@@ -3793,10 +4008,16 @@ fn session_with_expiry_keeps_inflight_across_graceful_disconnect() {
     connect_client(&mut client, session_expiry_options(30));
 
     assert_eq!(
-        client.handle_write(at_zero(Command::Publish {
-            token: 1,
-            message: message("session/persist", ProtoQos::AtLeastOnce, b"persist"),
-        })),
+        client.handle_write(at_zero(Command::Publish(
+            PublishOptions::builder()
+                .token(1)
+                .message(message(
+                    "session/persist",
+                    ProtoQos::AtLeastOnce,
+                    b"persist"
+                ))
+                .build()
+        ))),
         Ok(())
     );
     let publish = client.poll_write().expect("publish expected");
@@ -3811,7 +4032,7 @@ fn session_with_expiry_keeps_inflight_across_graceful_disconnect() {
 
     open_connecting(&mut client, session_expiry_options(30));
     assert_eq!(read(&mut client, &resume_connack()), Ok(()));
-    assert!(matches!(client.poll_read(), Some(Event::Connected { .. })));
+    assert!(matches!(client.poll_read(), Some(Event::Connected(_))));
 
     let replay_publish = client.poll_write().expect("replayed publish expected");
     assert_eq!(replay_publish.len(), publish.len());
@@ -3825,10 +4046,12 @@ fn zero_session_expiry_clears_inflight_on_disconnect() {
     connect_client(&mut client, session_expiry_options(0));
 
     assert_eq!(
-        client.handle_write(at_zero(Command::Publish {
-            token: 1,
-            message: message("session/clear", ProtoQos::AtLeastOnce, b"clear"),
-        })),
+        client.handle_write(at_zero(Command::Publish(
+            PublishOptions::builder()
+                .token(1)
+                .message(message("session/clear", ProtoQos::AtLeastOnce, b"clear"))
+                .build()
+        ))),
         Ok(())
     );
     assert!(client.poll_write().is_some());
@@ -3843,7 +4066,7 @@ fn zero_session_expiry_clears_inflight_on_disconnect() {
 
     open_connecting(&mut client, session_expiry_options(0));
     assert_eq!(read(&mut client, &resume_connack()), Ok(()));
-    assert!(matches!(client.poll_read(), Some(Event::Connected { .. })));
+    assert!(matches!(client.poll_read(), Some(Event::Connected(_))));
     assert_eq!(client.poll_write(), None);
     assert!(client.poll_event().is_none());
 }
@@ -3854,10 +4077,16 @@ fn zero_session_expiry_clears_inflight_on_socket_closed() {
     connect_client(&mut client, session_expiry_options(0));
 
     assert_eq!(
-        client.handle_write(at_zero(Command::Publish {
-            token: 1,
-            message: message("session/close-clear", ProtoQos::AtLeastOnce, b"clear"),
-        })),
+        client.handle_write(at_zero(Command::Publish(
+            PublishOptions::builder()
+                .token(1)
+                .message(message(
+                    "session/close-clear",
+                    ProtoQos::AtLeastOnce,
+                    b"clear"
+                ))
+                .build()
+        ))),
         Ok(())
     );
     let first_publish = client.poll_write().expect("publish expected");
@@ -3870,7 +4099,7 @@ fn zero_session_expiry_clears_inflight_on_socket_closed() {
 
     open_connecting(&mut client, session_expiry_options(0));
     assert_eq!(read(&mut client, &resume_connack()), Ok(()));
-    assert!(matches!(client.poll_read(), Some(Event::Connected { .. })));
+    assert!(matches!(client.poll_read(), Some(Event::Connected(_))));
 
     let replay = client.poll_write();
     assert_eq!(replay, None);
@@ -3891,10 +4120,16 @@ fn keepalive_timeout_with_session_expiry_preserves_inflight_for_resume() {
     connect_client(&mut client, options.clone());
 
     assert_eq!(
-        client.handle_write(at_zero(Command::Publish {
-            token: 1,
-            message: message("session/timeout-persist", ProtoQos::AtLeastOnce, b"persist"),
-        })),
+        client.handle_write(at_zero(Command::Publish(
+            PublishOptions::builder()
+                .token(1)
+                .message(message(
+                    "session/timeout-persist",
+                    ProtoQos::AtLeastOnce,
+                    b"persist"
+                ))
+                .build()
+        ))),
         Ok(())
     );
     let first_publish = client.poll_write().expect("publish expected");
@@ -3917,11 +4152,15 @@ fn keepalive_timeout_with_session_expiry_preserves_inflight_for_resume() {
 
     assert_eq!(
         client.poll_read(),
-        Some(Event::Disconnected(Some(ReasonCode::KeepAliveTimeout)))
+        Some(Event::Disconnected(
+            Disconnected::builder()
+                .reason(ReasonCode::KeepAliveTimeout)
+                .build()
+        ))
     );
     open_connecting(&mut client, options);
     assert_eq!(read(&mut client, &resume_connack()), Ok(()));
-    assert!(matches!(client.poll_read(), Some(Event::Connected { .. })));
+    assert!(matches!(client.poll_read(), Some(Event::Connected(_))));
 
     let replay_publish = client.poll_write().expect("replayed publish expected");
     assert_eq!(replay_publish.len(), first_publish.len());
@@ -3941,10 +4180,12 @@ fn subscribe_tracks_packet_id_until_suback() {
     let subscribe_frame = client.poll_write().expect("subscribe frame expected");
 
     assert_eq!(
-        client.handle_write(at_zero(Command::Publish {
-            token: 1,
-            message: message("topic/pub", ProtoQos::AtLeastOnce, b"payload"),
-        })),
+        client.handle_write(at_zero(Command::Publish(
+            PublishOptions::builder()
+                .token(1)
+                .message(message("topic/pub", ProtoQos::AtLeastOnce, b"payload"))
+                .build()
+        ))),
         Ok(())
     );
     let publish_frame = client.poll_write().expect("publish frame expected");
@@ -3971,10 +4212,12 @@ fn unsubscribe_tracks_packet_id_until_unsuback() {
     let unsub_frame = client.poll_write().expect("unsubscribe frame expected");
 
     assert_eq!(
-        client.handle_write(at_zero(Command::Publish {
-            token: 1,
-            message: message("topic/pub", ProtoQos::AtLeastOnce, b"payload"),
-        })),
+        client.handle_write(at_zero(Command::Publish(
+            PublishOptions::builder()
+                .token(1)
+                .message(message("topic/pub", ProtoQos::AtLeastOnce, b"payload"))
+                .build()
+        ))),
         Ok(())
     );
     let publish_frame = client.poll_write().expect("publish frame expected");
@@ -4024,7 +4267,7 @@ fn unknown_suback_or_unsuback_is_protocol_error() {
 
 /// [MQTT-4.13.0-1] When the server sends a DISCONNECT packet, the reason code
 /// must be forwarded to the application via
-/// `Event::Disconnected(Some(reason))`.
+/// `Event::Disconnected(Disconnected { reason: Some(reason), .. })`.
 #[test]
 fn server_disconnect_with_reason_code_forwarded_to_application() {
     let mut client = Client::<Duration>::default();
@@ -4039,7 +4282,9 @@ fn server_disconnect_with_reason_code_forwarded_to_application() {
 
     let event = client.poll_read();
     match event {
-        Some(Event::Disconnected(Some(rc))) => {
+        Some(Event::Disconnected(Disconnected {
+            reason: Some(rc), ..
+        })) => {
             assert_eq!(
                 rc,
                 ReasonCode::ServerBusy,
@@ -4069,7 +4314,9 @@ fn server_normal_disconnect_reason_code_forwarded() {
 
     let event = client.poll_read();
     match event {
-        Some(Event::Disconnected(Some(rc))) => {
+        Some(Event::Disconnected(Disconnected {
+            reason: Some(rc), ..
+        })) => {
             assert_eq!(rc, ReasonCode::NormalDisconnection);
         }
         other => panic!("expected Disconnected(Some(NormalDisconnection)), got {other:?}"),
@@ -4086,7 +4333,10 @@ fn client_initiated_disconnect_emits_disconnected_none() {
     assert_eq!(client.handle_write(at_zero(Command::Disconnect)), Ok(()));
     let event = client.poll_read();
     assert!(
-        matches!(event, Some(Event::Disconnected(None))),
+        matches!(
+            event,
+            Some(Event::Disconnected(Disconnected { reason: None, .. }))
+        ),
         "client-initiated disconnect must emit Disconnected(None), got {event:?}"
     );
 }
@@ -4112,7 +4362,7 @@ fn auth_packet_in_connected_state_forwarded_to_application() {
 
     let event = client.poll_read();
     assert!(
-        matches!(event, Some(Event::Auth { .. })),
+        matches!(event, Some(Event::Auth(_))),
         "AUTH packet must be forwarded as Event::Auth, got {event:?}"
     );
     assert!(client.poll_event().is_none(), "no action events expected");
@@ -4138,7 +4388,7 @@ fn make_connected_client_with_keep_alive(keep_alive_secs: Option<u16>) -> Client
         ),
         Ok(())
     );
-    assert!(matches!(client.poll_read(), Some(Event::Connected { .. })));
+    assert!(matches!(client.poll_read(), Some(Event::Connected(_))));
     client
 }
 
@@ -4162,7 +4412,7 @@ fn keep_alive_timer_armed_after_connack_uses_received_at_timestamp() {
         ),
         Ok(())
     );
-    assert!(matches!(client.poll_read(), Some(Event::Connected { .. })));
+    assert!(matches!(client.poll_read(), Some(Event::Connected(_))));
     // Tr = received_at + interval = 100 + 30 = 130.
     assert_eq!(client.poll_timeout(), Some(Duration::from_secs(130)));
 }
@@ -4172,7 +4422,7 @@ fn keep_alive_timer_not_armed_when_no_keep_alive_configured() {
     let mut client = Client::<Duration>::new(ClientSettings::builder().keep_alive(None).build());
     open_connecting(&mut client, connect_options());
     assert_eq!(read(&mut client, &success_connack()), Ok(()));
-    assert!(matches!(client.poll_read(), Some(Event::Connected { .. })));
+    assert!(matches!(client.poll_read(), Some(Event::Connected(_))));
 
     assert_eq!(client.poll_timeout(), None);
 }
@@ -4185,7 +4435,7 @@ fn keep_alive_from_settings_arms_the_timer_after_connack() {
     let mut client = Client::<Duration>::default();
     open_connecting(&mut client, connect_options());
     assert_eq!(read(&mut client, &success_connack()), Ok(()));
-    assert!(matches!(client.poll_read(), Some(Event::Connected { .. })));
+    assert!(matches!(client.poll_read(), Some(Event::Connected(_))));
 
     assert_eq!(
         client.poll_timeout(),
@@ -4207,10 +4457,12 @@ fn handle_timeout_reschedules_deadline_to_now_plus_interval_when_outgoing_packet
     assert_eq!(client.poll_timeout(), Some(Duration::from_secs(30)));
 
     assert_eq!(
-        client.handle_write(at_zero(Command::Publish {
-            token: 1,
-            message: message("t", ProtoQos::AtMostOnce, b""),
-        })),
+        client.handle_write(at_zero(Command::Publish(
+            PublishOptions::builder()
+                .token(1)
+                .message(message("t", ProtoQos::AtMostOnce, b""))
+                .build()
+        ))),
         Ok(())
     );
     client.poll_write();
@@ -4354,7 +4606,7 @@ fn reconnect_from_disconnected_preserves_connect_options_for_effective_limit_rec
         .poll_write()
         .expect("reconnect CONNECT frame expected");
     assert_eq!(read(&mut client, &success_connack()), Ok(()));
-    assert!(matches!(client.poll_read(), Some(Event::Connected { .. })));
+    assert!(matches!(client.poll_read(), Some(Event::Connected(_))));
 
     let alias = NonZero::new(5).expect("non-zero alias");
     let publish_with_alias = ControlPacket::Publish(
@@ -4381,10 +4633,12 @@ fn outbound_qos1_puback_unspecified_error_is_reported() {
 
     let qos1_message = message("test/topic", ProtoQos::AtLeastOnce, b"qos1");
     assert_eq!(
-        client.handle_write(at_zero(Command::Publish {
-            token: 7,
-            message: qos1_message,
-        })),
+        client.handle_write(at_zero(Command::Publish(
+            PublishOptions::builder()
+                .token(7)
+                .message(qos1_message)
+                .build()
+        ))),
         Ok(())
     );
     assert!(client.poll_write().is_some());
@@ -4398,10 +4652,12 @@ fn outbound_qos1_puback_unspecified_error_is_reported() {
     assert_eq!(read(&mut client, &puback), Ok(()));
     assert_eq!(
         client.poll_read(),
-        Some(Event::PublishAcknowledged {
-            token: 7,
-            reason: ReasonCode::UnspecifiedError,
-        })
+        Some(Event::PublishAcknowledged(
+            PublishAcknowledged::builder()
+                .token(7)
+                .reason(ReasonCode::UnspecifiedError)
+                .build()
+        ))
     );
 }
 
@@ -4412,10 +4668,12 @@ fn outbound_qos2_pubrec_unspecified_error_drops_the_publish() {
 
     let qos2_message = message("test/topic", ProtoQos::ExactlyOnce, b"qos2");
     assert_eq!(
-        client.handle_write(at_zero(Command::Publish {
-            token: 8,
-            message: qos2_message,
-        })),
+        client.handle_write(at_zero(Command::Publish(
+            PublishOptions::builder()
+                .token(8)
+                .message(qos2_message)
+                .build()
+        ))),
         Ok(())
     );
     assert!(client.poll_write().is_some());
@@ -4429,10 +4687,16 @@ fn outbound_qos2_pubrec_unspecified_error_drops_the_publish() {
     assert_eq!(read(&mut client, &pubrec), Ok(()));
     assert_eq!(
         client.poll_read(),
-        Some(Event::PublishDropped {
-            token: 8,
-            reason: DropReason::BrokerRejected(ReasonCode::UnspecifiedError),
-        })
+        Some(Event::PublishDropped(
+            PublishDropped::builder()
+                .token(8)
+                .reason(DropReason::BrokerRejected(
+                    BrokerRejected::builder()
+                        .reason(ReasonCode::UnspecifiedError)
+                        .build()
+                ))
+                .build()
+        ))
     );
 }
 
@@ -4449,7 +4713,11 @@ fn server_disconnect_with_unspecified_error_is_forwarded() {
     assert_eq!(read(&mut client, &server_disconnect), Ok(()));
     assert_eq!(
         client.poll_read(),
-        Some(Event::Disconnected(Some(ReasonCode::UnspecifiedError)))
+        Some(Event::Disconnected(
+            Disconnected::builder()
+                .reason(ReasonCode::UnspecifiedError)
+                .build()
+        ))
     );
 }
 
@@ -4493,10 +4761,12 @@ fn connected_event_reports_server_assigned_client_identifier() {
     assert_eq!(read(&mut client, &connack), Ok(()));
     assert_eq!(
         client.poll_read(),
-        Some(Event::Connected {
-            assigned_client_id: Some(ByteString::from_static("assigned-42")),
-            session_present: false,
-        })
+        Some(Event::Connected(
+            Connected::builder()
+                .assigned_client_id(ByteString::from_static("assigned-42"))
+                .session_present(false)
+                .build()
+        ))
     );
 }
 
@@ -4509,10 +4779,9 @@ fn connected_event_without_assigned_client_identifier_reports_none() {
     assert_eq!(read(&mut client, &success_connack()), Ok(()));
     assert_eq!(
         client.poll_read(),
-        Some(Event::Connected {
-            assigned_client_id: None,
-            session_present: false,
-        })
+        Some(Event::Connected(
+            Connected::builder().session_present(false).build()
+        ))
     );
 }
 
@@ -4526,9 +4795,8 @@ fn connected_event_reports_session_present_on_resume() {
     assert_eq!(read(&mut client, &resume_connack()), Ok(()));
     assert_eq!(
         client.poll_read(),
-        Some(Event::Connected {
-            assigned_client_id: None,
-            session_present: true,
-        })
+        Some(Event::Connected(
+            Connected::builder().session_present(true).build()
+        ))
     );
 }

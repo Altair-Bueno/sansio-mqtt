@@ -13,8 +13,10 @@ use core::num::NonZero;
 use core::time::Duration;
 use encode::Encodable as _;
 use sansio::Protocol as _;
+use sansio_mqtt_protocol::AcknowledgeOptions;
 use sansio_mqtt_protocol::Command;
 use sansio_mqtt_protocol::ConnectOptions;
+use sansio_mqtt_protocol::Disconnected;
 use sansio_mqtt_protocol::DriverAction;
 use sansio_mqtt_protocol::DriverEvent;
 use sansio_mqtt_protocol::Error;
@@ -22,7 +24,10 @@ use sansio_mqtt_protocol::Event;
 use sansio_mqtt_protocol::IncomingData;
 use sansio_mqtt_protocol::Message;
 use sansio_mqtt_protocol::MessageId;
+use sansio_mqtt_protocol::MessageRequiresAcknowledgement;
+use sansio_mqtt_protocol::PublishOptions;
 use sansio_mqtt_protocol::Qos as ProtoQos;
+use sansio_mqtt_protocol::RejectOptions;
 use sansio_mqtt_protocol::RejectReason;
 use sansio_mqtt_protocol::SubscribeOptions;
 use sansio_mqtt_protocol::Subscription as ProtoSubscription;
@@ -132,7 +137,7 @@ fn connected_client(properties: ConnAckProperties) -> Client<Duration> {
     );
     assert!(client.poll_write().is_some(), "CONNECT should be queued");
     assert_eq!(read(&mut client, &connack(properties)), Ok(()));
-    assert!(matches!(client.poll_read(), Some(Event::Connected { .. })));
+    assert!(matches!(client.poll_read(), Some(Event::Connected(_))));
     client
 }
 
@@ -170,7 +175,7 @@ fn packet_split_across_two_reads_is_reassembled() {
     );
     assert!(matches!(
         client.poll_read(),
-        Some(Event::MessageRequiresAcknowledgement(..))
+        Some(Event::MessageRequiresAcknowledgement(_))
     ));
 }
 
@@ -200,7 +205,7 @@ fn trailing_partial_packet_is_retained_across_reads() {
     for _ in 0..3 {
         assert!(matches!(
             client.poll_read(),
-            Some(Event::MessageRequiresAcknowledgement(..))
+            Some(Event::MessageRequiresAcknowledgement(_))
         ));
     }
     assert!(client.poll_read().is_none());
@@ -214,7 +219,7 @@ fn trailing_partial_packet_is_retained_across_reads() {
     );
     assert!(matches!(
         client.poll_read(),
-        Some(Event::MessageRequiresAcknowledgement(..))
+        Some(Event::MessageRequiresAcknowledgement(_))
     ));
 }
 
@@ -237,12 +242,16 @@ fn acknowledgement_exceeding_broker_maximum_packet_size_fails_the_connection() {
         Ok(())
     );
     let id = match client.poll_read() {
-        Some(Event::MessageRequiresAcknowledgement(id, _)) => id,
+        Some(Event::MessageRequiresAcknowledgement(MessageRequiresAcknowledgement {
+            id, ..
+        })) => id,
         other => panic!("expected an ack-required message, got {other:?}"),
     };
 
     assert_eq!(
-        client.handle_write(at_zero(Command::Acknowledge(id))),
+        client.handle_write(at_zero(Command::Acknowledge(
+            AcknowledgeOptions::builder().id(id).build()
+        ))),
         Ok(()),
         "an unsendable PUBACK leaves the QoS1 exchange unresolvable"
     );
@@ -266,24 +275,35 @@ fn deciding_twice_on_a_message_is_an_invalid_state_transition() {
         Ok(())
     );
     let id = match client.poll_read() {
-        Some(Event::MessageRequiresAcknowledgement(id, _)) => id,
+        Some(Event::MessageRequiresAcknowledgement(MessageRequiresAcknowledgement {
+            id, ..
+        })) => id,
         other => panic!("expected an ack-required message, got {other:?}"),
     };
 
     // First decision moves the QoS2 exchange on to awaiting PUBREL.
     assert_eq!(
-        client.handle_write(at_zero(Command::Acknowledge(id))),
+        client.handle_write(at_zero(Command::Acknowledge(
+            AcknowledgeOptions::builder().id(id).build()
+        ))),
         Ok(())
     );
     assert!(client.poll_write().is_some(), "PUBREC should be queued");
 
     assert_eq!(
-        client.handle_write(at_zero(Command::Acknowledge(id))),
+        client.handle_write(at_zero(Command::Acknowledge(
+            AcknowledgeOptions::builder().id(id).build()
+        ))),
         Err(Error::InvalidStateTransition),
         "the peer did nothing wrong, so this is not a protocol error"
     );
     assert_eq!(
-        client.handle_write(at_zero(Command::Reject(id, RejectReason::UnspecifiedError))),
+        client.handle_write(at_zero(Command::Reject(
+            RejectOptions::builder()
+                .id(id)
+                .reason(RejectReason::UnspecifiedError)
+                .build()
+        ))),
         Err(Error::InvalidStateTransition)
     );
 
@@ -308,7 +328,11 @@ fn deciding_on_an_undelivered_packet_id_is_an_invalid_state_transition() {
     let mut client = connected_client(ConnAckProperties::default());
 
     assert_eq!(
-        client.handle_write(at_zero(Command::Acknowledge(MessageId::new(packet_id(9))))),
+        client.handle_write(at_zero(Command::Acknowledge(
+            AcknowledgeOptions::builder()
+                .id(MessageId::new(packet_id(9)))
+                .build()
+        ))),
         Err(Error::InvalidStateTransition)
     );
     assert!(
@@ -330,12 +354,16 @@ fn acknowledging_a_qos2_message_moves_it_to_awaiting_pubrel() {
         Ok(())
     );
     let id = match client.poll_read() {
-        Some(Event::MessageRequiresAcknowledgement(id, _)) => id,
+        Some(Event::MessageRequiresAcknowledgement(MessageRequiresAcknowledgement {
+            id, ..
+        })) => id,
         other => panic!("expected an ack-required message, got {other:?}"),
     };
 
     assert_eq!(
-        client.handle_write(at_zero(Command::Acknowledge(id))),
+        client.handle_write(at_zero(Command::Acknowledge(
+            AcknowledgeOptions::builder().id(id).build()
+        ))),
         Ok(())
     );
     assert!(client.poll_write().is_some(), "PUBREC should be queued");
@@ -461,7 +489,7 @@ fn socket_error_while_connected_resets_and_reports_disconnected() {
     assert!(client.poll_event().is_none());
     assert!(matches!(
         client.poll_read(),
-        Some(Event::Disconnected(None))
+        Some(Event::Disconnected(Disconnected { reason: None, .. }))
     ));
 }
 
@@ -482,10 +510,12 @@ fn resumed_session_replays_qos2_publish_awaiting_pubrec() {
     let mut client = connected_client(ConnAckProperties::default());
 
     assert_eq!(
-        client.handle_write(at_zero(Command::Publish {
-            token: 1,
-            message: message("cov/qos2", ProtoQos::ExactlyOnce, b"q2"),
-        })),
+        client.handle_write(at_zero(Command::Publish(
+            PublishOptions::builder()
+                .token(1)
+                .message(message("cov/qos2", ProtoQos::ExactlyOnce, b"q2"))
+                .build()
+        ))),
         Ok(())
     );
     assert!(client.poll_write().is_some(), "PUBLISH should be queued");
@@ -496,7 +526,7 @@ fn resumed_session_replays_qos2_publish_awaiting_pubrec() {
     );
     assert!(matches!(
         client.poll_read(),
-        Some(Event::Disconnected(None))
+        Some(Event::Disconnected(Disconnected { reason: None, .. }))
     ));
 
     assert_eq!(
@@ -523,7 +553,7 @@ fn resumed_session_replays_qos2_publish_awaiting_pubrec() {
         ),
         Ok(())
     );
-    assert!(matches!(client.poll_read(), Some(Event::Connected { .. })));
+    assert!(matches!(client.poll_read(), Some(Event::Connected(_))));
 
     let replayed = ControlPacket::Publish(
         Publish::builder()
@@ -548,11 +578,15 @@ fn redelivered_qos2_publish_awaiting_pubrel_resends_pubrec() {
     let publish = inbound_publish(packet_id(1), GuaranteedQoS::ExactlyOnce);
     assert_eq!(read(&mut client, &publish), Ok(()));
     let id = match client.poll_read() {
-        Some(Event::MessageRequiresAcknowledgement(id, _)) => id,
+        Some(Event::MessageRequiresAcknowledgement(MessageRequiresAcknowledgement {
+            id, ..
+        })) => id,
         other => panic!("expected an ack-required message, got {other:?}"),
     };
     assert_eq!(
-        client.handle_write(at_zero(Command::Acknowledge(id))),
+        client.handle_write(at_zero(Command::Acknowledge(
+            AcknowledgeOptions::builder().id(id).build()
+        ))),
         Ok(())
     );
     let first_pubrec = client.poll_write().expect("PUBREC should be queued");

@@ -100,11 +100,11 @@ pub struct ClientSettings {
     /// restarted when the socket connects. When it elapses the client gives
     /// up on the attempt: it withdraws or cancels the socket request, or
     /// closes the socket without sending DISCONNECT, and reports
-    /// [`Event::Disconnected(None)`](sansio_mqtt_protocol::Event::Disconnected).
-    /// "If the Client does not receive a CONNACK packet from the Server within
-    /// a reasonable amount of time, the Client SHOULD close the Network
-    /// Connection" (MQTT v5.0 §3.2). Once CONNACK arrives, the keep-alive
-    /// deadline (if any) takes its place. Defaults to
+    /// an [`Event::Disconnected`](sansio_mqtt_protocol::Event::Disconnected)
+    /// with no reason. "If the Client does not receive a CONNACK packet from
+    /// the Server within a reasonable amount of time, the Client SHOULD close
+    /// the Network Connection" (MQTT v5.0 §3.2). Once CONNACK arrives, the
+    /// keep-alive deadline (if any) takes its place. Defaults to
     /// [`DEFAULT_CONNECT_TIMEOUT`](Self::DEFAULT_CONNECT_TIMEOUT).
     #[builder(default = ClientSettings::DEFAULT_CONNECT_TIMEOUT)]
     #[cfg_attr(

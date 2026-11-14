@@ -20,6 +20,9 @@ use sansio_mqtt_protocol::Error;
 use sansio_mqtt_protocol::Event;
 use sansio_mqtt_protocol::IncomingData;
 use sansio_mqtt_protocol::Message;
+use sansio_mqtt_protocol::PublishAcknowledged;
+use sansio_mqtt_protocol::PublishCompleted;
+use sansio_mqtt_protocol::PublishOptions;
 use sansio_mqtt_protocol::Qos as ProtoQos;
 use sansio_mqtt_protocol::ReasonCode;
 use sansio_mqtt_protocol::SubscribeOptions;
@@ -98,7 +101,7 @@ fn connect(client: &mut Client<Duration>) {
             .build(),
     );
     assert_eq!(read(client, &connack), Ok(()));
-    assert!(matches!(client.poll_read(), Some(Event::Connected { .. })));
+    assert!(matches!(client.poll_read(), Some(Event::Connected(_))));
 }
 
 /// `QoS` 1 publish with an app-chosen token: PUBACK echoes back that same
@@ -113,10 +116,12 @@ fn qos1_publish_acknowledged_event_carries_the_app_token() {
     connect(&mut client);
 
     assert_eq!(
-        client.handle_write(at_zero(Command::Publish {
-            token: 42,
-            message: message("public/qos1", ProtoQos::AtLeastOnce, b"hi"),
-        })),
+        client.handle_write(at_zero(Command::Publish(
+            PublishOptions::builder()
+                .token(42)
+                .message(message("public/qos1", ProtoQos::AtLeastOnce, b"hi"))
+                .build()
+        ))),
         Ok(())
     );
     let publish_bytes = client.poll_write().expect("PUBLISH should be queued");
@@ -144,10 +149,12 @@ fn qos1_publish_acknowledged_event_carries_the_app_token() {
     assert_eq!(read(&mut client, &puback), Ok(()));
     assert_eq!(
         client.poll_read(),
-        Some(Event::PublishAcknowledged {
-            token: 42,
-            reason: ReasonCode::Success,
-        })
+        Some(Event::PublishAcknowledged(
+            PublishAcknowledged::builder()
+                .token(42)
+                .reason(ReasonCode::Success)
+                .build()
+        ))
     );
 }
 
@@ -163,10 +170,12 @@ fn qos2_publish_completed_event_carries_the_app_token() {
     connect(&mut client);
 
     assert_eq!(
-        client.handle_write(at_zero(Command::Publish {
-            token: 42,
-            message: message("public/qos2", ProtoQos::ExactlyOnce, b"hi"),
-        })),
+        client.handle_write(at_zero(Command::Publish(
+            PublishOptions::builder()
+                .token(42)
+                .message(message("public/qos2", ProtoQos::ExactlyOnce, b"hi"))
+                .build()
+        ))),
         Ok(())
     );
     let publish_bytes = client.poll_write().expect("PUBLISH should be queued");
@@ -203,10 +212,12 @@ fn qos2_publish_completed_event_carries_the_app_token() {
     assert_eq!(read(&mut client, &pubcomp), Ok(()));
     assert_eq!(
         client.poll_read(),
-        Some(Event::PublishCompleted {
-            token: 42,
-            reason: ReasonCode::Success,
-        })
+        Some(Event::PublishCompleted(
+            PublishCompleted::builder()
+                .token(42)
+                .reason(ReasonCode::Success)
+                .build()
+        ))
     );
 }
 
@@ -222,18 +233,22 @@ fn two_in_flight_publishes_acknowledged_out_of_order_report_the_right_tokens() {
     connect(&mut client);
 
     assert_eq!(
-        client.handle_write(at_zero(Command::Publish {
-            token: 100,
-            message: message("public/first", ProtoQos::AtLeastOnce, b"a"),
-        })),
+        client.handle_write(at_zero(Command::Publish(
+            PublishOptions::builder()
+                .token(100)
+                .message(message("public/first", ProtoQos::AtLeastOnce, b"a"))
+                .build()
+        ))),
         Ok(())
     );
     let first_bytes = client.poll_write().expect("first PUBLISH should be queued");
     assert_eq!(
-        client.handle_write(at_zero(Command::Publish {
-            token: 200,
-            message: message("public/second", ProtoQos::AtLeastOnce, b"b"),
-        })),
+        client.handle_write(at_zero(Command::Publish(
+            PublishOptions::builder()
+                .token(200)
+                .message(message("public/second", ProtoQos::AtLeastOnce, b"b"))
+                .build()
+        ))),
         Ok(())
     );
     let second_bytes = client
@@ -272,10 +287,12 @@ fn two_in_flight_publishes_acknowledged_out_of_order_report_the_right_tokens() {
     );
     assert_eq!(
         client.poll_read(),
-        Some(Event::PublishAcknowledged {
-            token: 200,
-            reason: ReasonCode::Success,
-        })
+        Some(Event::PublishAcknowledged(
+            PublishAcknowledged::builder()
+                .token(200)
+                .reason(ReasonCode::Success)
+                .build()
+        ))
     );
 
     assert_eq!(
@@ -292,10 +309,12 @@ fn two_in_flight_publishes_acknowledged_out_of_order_report_the_right_tokens() {
     );
     assert_eq!(
         client.poll_read(),
-        Some(Event::PublishAcknowledged {
-            token: 100,
-            reason: ReasonCode::Success,
-        })
+        Some(Event::PublishAcknowledged(
+            PublishAcknowledged::builder()
+                .token(100)
+                .reason(ReasonCode::Success)
+                .build()
+        ))
     );
 }
 
@@ -307,10 +326,12 @@ fn publish_with_wildcard_topic_is_invalid_topic_and_emits_no_bytes() {
     connect(&mut client);
 
     assert_eq!(
-        client.handle_write(at_zero(Command::Publish {
-            token: 1,
-            message: message("a/+/b", ProtoQos::AtMostOnce, b"x"),
-        })),
+        client.handle_write(at_zero(Command::Publish(
+            PublishOptions::builder()
+                .token(1)
+                .message(message("a/+/b", ProtoQos::AtMostOnce, b"x"))
+                .build()
+        ))),
         Err(Error::InvalidTopic)
     );
     assert_eq!(client.poll_write(), None);
@@ -325,10 +346,12 @@ fn publish_with_oversized_topic_is_string_too_long() {
 
     let topic = "t".repeat(70_000);
     assert_eq!(
-        client.handle_write(at_zero(Command::Publish {
-            token: 1,
-            message: message(&topic, ProtoQos::AtMostOnce, b"x"),
-        })),
+        client.handle_write(at_zero(Command::Publish(
+            PublishOptions::builder()
+                .token(1)
+                .message(message(&topic, ProtoQos::AtMostOnce, b"x"))
+                .build()
+        ))),
         Err(Error::StringTooLong)
     );
     assert_eq!(client.poll_write(), None);
@@ -362,10 +385,12 @@ fn outbound_publish_never_carries_a_topic_alias() {
     connect(&mut client);
 
     assert_eq!(
-        client.handle_write(at_zero(Command::Publish {
-            token: 1,
-            message: message("public/no-alias", ProtoQos::AtMostOnce, b"x"),
-        })),
+        client.handle_write(at_zero(Command::Publish(
+            PublishOptions::builder()
+                .token(1)
+                .message(message("public/no-alias", ProtoQos::AtMostOnce, b"x"))
+                .build()
+        ))),
         Ok(())
     );
     let publish_bytes = client.poll_write().expect("PUBLISH should be queued");

@@ -407,9 +407,17 @@ pub enum DropReason {
     /// The server did not resume the session (CONNACK Session Present was 0),
     /// so the message still in flight from the previous connection is lost.
     SessionNotResumed,
-    /// The server answered the PUBLISH with this failure Reason Code (0x80 or
-    /// above).
-    BrokerRejected(ReasonCode),
+    /// The server answered the PUBLISH with a failure Reason Code.
+    BrokerRejected(BrokerRejected),
+}
+
+/// The server's refusal of a PUBLISH, carried by
+/// [`DropReason::BrokerRejected`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, bon::Builder)]
+#[non_exhaustive]
+pub struct BrokerRejected {
+    /// The failure Reason Code (0x80 or above) the server answered with.
+    pub reason: ReasonCode,
 }
 
 /// A version-neutral MQTT Reason Code (MQTT v5.0 section 2.4).
@@ -521,7 +529,7 @@ pub enum ReasonCode {
 /// Passed to the protocol wrapped in [`Timestamped`]. A command the protocol
 /// cannot accept is rejected with an [`Error`] and has no effect.
 #[derive(Debug, Clone, PartialEq, Eq, strum::EnumDiscriminants)]
-#[strum_discriminants(derive(strum::Display))]
+#[strum_discriminants(derive(strum::Display), non_exhaustive)]
 #[non_exhaustive]
 pub enum Command {
     /// Start a connection: ask the driver to open a socket, then send CONNECT
@@ -531,26 +539,15 @@ pub enum Command {
     /// attempt exists.
     Connect(ConnectOptions),
     /// Publish a message while connected.
-    ///
-    /// `token` is an opaque value chosen by the application and echoed back
-    /// in the [`Event::PublishAcknowledged`] (`QoS` 1),
-    /// [`Event::PublishCompleted`] (`QoS` 2) or [`Event::PublishDropped`] that
-    /// ends the exchange. A `QoS` 0 publish produces no such event, so its
-    /// token is unused.
-    Publish {
-        /// The application's correlation token for this publish.
-        token: u64,
-        /// The message to publish.
-        message: Message,
-    },
+    Publish(PublishOptions),
     /// Accept an inbound message delivered in
     /// [`Event::MessageRequiresAcknowledgement`]: answer with a successful
     /// PUBACK (`QoS` 1) or PUBREC (`QoS` 2).
-    Acknowledge(MessageId),
+    Acknowledge(AcknowledgeOptions),
     /// Refuse an inbound message delivered in
     /// [`Event::MessageRequiresAcknowledgement`]: answer with a PUBACK
-    /// (`QoS` 1) or PUBREC (`QoS` 2) carrying the given failure Reason Code.
-    Reject(MessageId, RejectReason),
+    /// (`QoS` 1) or PUBREC (`QoS` 2) carrying a failure Reason Code.
+    Reject(RejectOptions),
     /// Send a SUBSCRIBE while connected.
     Subscribe(SubscribeOptions),
     /// Send an UNSUBSCRIBE while connected.
@@ -561,84 +558,165 @@ pub enum Command {
     Disconnect,
 }
 
+/// The content of a PUBLISH, carried by [`Command::Publish`].
+#[derive(Debug, Clone, PartialEq, Eq, bon::Builder)]
+#[non_exhaustive]
+pub struct PublishOptions {
+    /// An opaque value chosen by the application and echoed back in the
+    /// [`Event::PublishAcknowledged`] (`QoS` 1), [`Event::PublishCompleted`]
+    /// (`QoS` 2) or [`Event::PublishDropped`] that ends the exchange. A `QoS` 0
+    /// publish produces no such event, so its token is unused.
+    pub token: u64,
+    /// The message to publish.
+    pub message: Message,
+}
+
+/// The acceptance of an inbound message, carried by
+/// [`Command::Acknowledge`].
+#[derive(Debug, Clone, PartialEq, Eq, bon::Builder)]
+#[non_exhaustive]
+pub struct AcknowledgeOptions {
+    /// The [`MessageId`] reported in
+    /// [`Event::MessageRequiresAcknowledgement`].
+    pub id: MessageId,
+}
+
+/// The refusal of an inbound message, carried by [`Command::Reject`].
+#[derive(Debug, Clone, PartialEq, Eq, bon::Builder)]
+#[non_exhaustive]
+pub struct RejectOptions {
+    /// The [`MessageId`] reported in
+    /// [`Event::MessageRequiresAcknowledgement`].
+    pub id: MessageId,
+    /// The failure Reason Code sent in the PUBACK or PUBREC.
+    pub reason: RejectReason,
+}
+
 /// A notification from the protocol to the application.
 ///
 /// Read through `poll_read` after feeding the protocol an input.
 #[derive(Debug, Clone, PartialEq, Eq, strum::EnumDiscriminants)]
-#[strum_discriminants(derive(strum::Display))]
+#[strum_discriminants(derive(strum::Display), non_exhaustive)]
 #[non_exhaustive]
 pub enum Event {
     /// The server accepted the connection with a successful CONNACK.
-    Connected {
-        /// The Assigned Client Identifier property (MQTT v5.0 section
-        /// 3.2.2.3.7), present when the CONNECT carried an empty
-        /// [`ConnectOptions::client_id`] and the server chose one
-        /// [MQTT-3.2.2-16]. Pass it as the `client_id` of the next
-        /// [`Command::Connect`] to resume the session. `None` when the server
-        /// kept the Client Identifier sent in CONNECT.
-        assigned_client_id: Option<ByteString>,
-        /// The CONNACK Session Present flag (MQTT v5.0 section 3.2.2.1.1):
-        /// `true` when the server resumed the session of a previous connection,
-        /// keeping its subscriptions [MQTT-3.2.2-2]. When `false`, the server
-        /// started a new session and the application must subscribe again.
-        session_present: bool,
-    },
+    Connected(Connected),
     /// The connection or connection attempt ended.
-    ///
-    /// Carries the Reason Code that ended it when one applies: the one in the
-    /// server's DISCONNECT or failed CONNACK, or the one the client sent when
-    /// it closed the connection because of a protocol failure or a timeout.
-    /// `None` for a client-initiated [`Command::Disconnect`], a lost socket,
-    /// or an abandoned connection attempt.
-    Disconnected(Option<ReasonCode>),
+    Disconnected(Disconnected),
     /// An inbound `QoS` 0 message. It needs no acknowledgement.
     Message(Message),
     /// An inbound `QoS` 1 or `QoS` 2 message. The application must answer
-    /// with [`Command::Acknowledge`] or [`Command::Reject`] carrying this
-    /// [`MessageId`]. A redelivery of a message still awaiting that answer is
-    /// not reported again.
-    MessageRequiresAcknowledgement(MessageId, Message),
+    /// with [`Command::Acknowledge`] or [`Command::Reject`]. A redelivery of a
+    /// message still awaiting that answer is not reported again.
+    MessageRequiresAcknowledgement(MessageRequiresAcknowledgement),
     /// The server answered a `QoS` 1 [`Command::Publish`] with PUBACK.
-    PublishAcknowledged {
-        /// The token of the [`Command::Publish`].
-        token: u64,
-        /// The PUBACK Reason Code, e.g. [`ReasonCode::Success`] or a failure
-        /// such as [`ReasonCode::NotAuthorized`].
-        reason: ReasonCode,
-    },
+    PublishAcknowledged(PublishAcknowledged),
     /// The `QoS` 2 exchange of a [`Command::Publish`] completed with PUBCOMP.
-    PublishCompleted {
-        /// The token of the [`Command::Publish`].
-        token: u64,
-        /// The PUBCOMP Reason Code: [`ReasonCode::Success`] or
-        /// [`ReasonCode::PacketIdentifierNotFound`].
-        reason: ReasonCode,
-    },
+    PublishCompleted(PublishCompleted),
     /// A `QoS` 1 or `QoS` 2 [`Command::Publish`] ended without delivery.
-    PublishDropped {
-        /// The token of the [`Command::Publish`].
-        token: u64,
-        /// Why the message was dropped.
-        reason: DropReason,
-    },
+    PublishDropped(PublishDropped),
     /// The server sent an AUTH packet (MQTT v5.0 section 3.15) while
     /// connected, e.g. to start re-authentication. The application is
     /// responsible for responding [MQTT-4.12.0-4].
-    Auth {
-        /// The AUTH Reason Code: [`ReasonCode::Success`],
-        /// [`ReasonCode::ContinueAuthentication`] or
-        /// [`ReasonCode::ReAuthenticate`].
-        reason: ReasonCode,
-        /// The Authentication Method property, or the empty string if the
-        /// packet omitted it.
-        method: ByteString,
-        /// The Authentication Data property, if present.
-        data: Option<Bytes>,
-        /// The Reason String property, if present: a human-readable diagnostic.
-        reason_string: Option<ByteString>,
-        /// The User Property name/value pairs, in order.
-        user_properties: Vec<(ByteString, ByteString)>,
-    },
+    Auth(Auth),
+}
+
+/// A successful CONNACK, carried by [`Event::Connected`].
+#[derive(Debug, Clone, PartialEq, Eq, bon::Builder)]
+#[builder(on(ByteString, into))]
+#[non_exhaustive]
+pub struct Connected {
+    /// The Assigned Client Identifier property (MQTT v5.0 section
+    /// 3.2.2.3.7), present when the CONNECT carried an empty
+    /// [`ConnectOptions::client_id`] and the server chose one
+    /// [MQTT-3.2.2-16]. Pass it as the `client_id` of the next
+    /// [`Command::Connect`] to resume the session. `None` when the server
+    /// kept the Client Identifier sent in CONNECT.
+    pub assigned_client_id: Option<ByteString>,
+    /// The CONNACK Session Present flag (MQTT v5.0 section 3.2.2.1.1): `true`
+    /// when the server resumed the session of a previous connection, keeping
+    /// its subscriptions [MQTT-3.2.2-2]. When `false`, the server started a
+    /// new session and the application must subscribe again.
+    pub session_present: bool,
+}
+
+/// The end of a connection or connection attempt, carried by
+/// [`Event::Disconnected`].
+#[derive(Debug, Clone, PartialEq, Eq, bon::Builder)]
+#[non_exhaustive]
+pub struct Disconnected {
+    /// The Reason Code that ended the connection when one applies: the one in
+    /// the server's DISCONNECT or failed CONNACK, or the one the client sent
+    /// when it closed the connection because of a protocol failure or a
+    /// timeout. `None` for a client-initiated [`Command::Disconnect`], a lost
+    /// socket, or an abandoned connection attempt.
+    pub reason: Option<ReasonCode>,
+}
+
+/// An inbound `QoS` 1 or `QoS` 2 message awaiting the application's answer,
+/// carried by [`Event::MessageRequiresAcknowledgement`].
+#[derive(Debug, Clone, PartialEq, Eq, bon::Builder)]
+#[non_exhaustive]
+pub struct MessageRequiresAcknowledgement {
+    /// The identifier to pass in [`AcknowledgeOptions`] or [`RejectOptions`].
+    pub id: MessageId,
+    /// The received message.
+    pub message: Message,
+}
+
+/// A PUBACK for a `QoS` 1 publish, carried by [`Event::PublishAcknowledged`].
+#[derive(Debug, Clone, PartialEq, Eq, bon::Builder)]
+#[non_exhaustive]
+pub struct PublishAcknowledged {
+    /// The [`PublishOptions::token`] of the [`Command::Publish`].
+    pub token: u64,
+    /// The PUBACK Reason Code, e.g. [`ReasonCode::Success`] or a failure such
+    /// as [`ReasonCode::NotAuthorized`].
+    pub reason: ReasonCode,
+}
+
+/// A PUBCOMP ending a `QoS` 2 publish, carried by
+/// [`Event::PublishCompleted`].
+#[derive(Debug, Clone, PartialEq, Eq, bon::Builder)]
+#[non_exhaustive]
+pub struct PublishCompleted {
+    /// The [`PublishOptions::token`] of the [`Command::Publish`].
+    pub token: u64,
+    /// The PUBCOMP Reason Code: [`ReasonCode::Success`] or
+    /// [`ReasonCode::PacketIdentifierNotFound`].
+    pub reason: ReasonCode,
+}
+
+/// A `QoS` 1 or `QoS` 2 publish that ended without delivery, carried by
+/// [`Event::PublishDropped`].
+#[derive(Debug, Clone, PartialEq, Eq, bon::Builder)]
+#[non_exhaustive]
+pub struct PublishDropped {
+    /// The [`PublishOptions::token`] of the [`Command::Publish`].
+    pub token: u64,
+    /// Why the message was dropped.
+    pub reason: DropReason,
+}
+
+/// An AUTH packet received while connected, carried by [`Event::Auth`].
+#[derive(Debug, Clone, PartialEq, Eq, bon::Builder)]
+#[builder(on(ByteString, into), on(Bytes, into))]
+#[non_exhaustive]
+pub struct Auth {
+    /// The AUTH Reason Code: [`ReasonCode::Success`],
+    /// [`ReasonCode::ContinueAuthentication`] or
+    /// [`ReasonCode::ReAuthenticate`].
+    pub reason: ReasonCode,
+    /// The Authentication Method property, or the empty string if the packet
+    /// omitted it.
+    pub method: ByteString,
+    /// The Authentication Data property, if present.
+    pub data: Option<Bytes>,
+    /// The Reason String property, if present: a human-readable diagnostic.
+    pub reason_string: Option<ByteString>,
+    /// The User Property name/value pairs, in order.
+    #[builder(default, with = FromIterator::from_iter)]
+    pub user_properties: Vec<(ByteString, ByteString)>,
 }
 
 /// A socket lifecycle notification from the driver to the protocol.
@@ -669,8 +747,7 @@ pub enum Event {
 ///   attempt queued behind the `CloseSocket` untouched. The driver still
 ///   performs the pending `CloseSocket`, which then has no socket to close.
 /// - Otherwise, if the application believed a connection or connection attempt
-///   existed, the protocol emits
-///   [`Event::Disconnected(None)`](Event::Disconnected).
+///   existed, the protocol emits an [`Event::Disconnected`] with no reason.
 /// - Otherwise the report is a no-op, so no duplicate `Disconnected` is ever
 ///   emitted.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

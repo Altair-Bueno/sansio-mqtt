@@ -12,6 +12,7 @@ use futures_util::StreamExt as _;
 use sansio_mqtt_protocol::ByteString;
 use sansio_mqtt_protocol::Command;
 use sansio_mqtt_protocol::ConnectOptions;
+use sansio_mqtt_protocol::Connected;
 use sansio_mqtt_protocol::Event;
 use sansio_mqtt_tokio::Driver;
 use sansio_mqtt_tokio::connector::RustlsConnector;
@@ -119,7 +120,7 @@ async fn secure_websocket_carries_mqtt_through_tls() {
     tokio::select! {
         () = broker => unreachable!(),
         event = timeout(STEP, driver.next()) => {
-            assert_eq!(event.expect("no event within the timeout"), Event::Connected { assigned_client_id: None, session_present: false });
+            assert_eq!(event.expect("no event within the timeout"), Event::Connected(Connected::builder().session_present(false).build()));
         }
     }
 }

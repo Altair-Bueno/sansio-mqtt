@@ -537,11 +537,13 @@ pub(crate) fn auth_packet_to_event(auth: WireAuth) -> Event {
         None | Some(_) => (ByteString::new(), None),
     };
 
-    Event::Auth {
-        reason,
-        method,
-        data,
-        reason_string: auth.properties.reason_string.map(Utf8String::into_inner),
-        user_properties: user_properties_from_wire(auth.properties.user_properties),
-    }
+    Event::Auth(
+        sansio_mqtt_protocol::Auth::builder()
+            .reason(reason)
+            .method(method)
+            .maybe_data(data)
+            .maybe_reason_string(auth.properties.reason_string.map(Utf8String::into_inner))
+            .user_properties(user_properties_from_wire(auth.properties.user_properties))
+            .build(),
+    )
 }

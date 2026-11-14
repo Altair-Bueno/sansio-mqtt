@@ -18,6 +18,8 @@ use encode::Encodable as _;
 use sansio::Protocol as _;
 use sansio_mqtt_protocol::Command;
 use sansio_mqtt_protocol::ConnectOptions;
+use sansio_mqtt_protocol::Connected;
+use sansio_mqtt_protocol::Disconnected;
 use sansio_mqtt_protocol::DriverAction;
 use sansio_mqtt_protocol::DriverEvent;
 use sansio_mqtt_protocol::Error;
@@ -178,7 +180,10 @@ fn timeout_before_open_socket_is_polled_withdraws_it_and_disconnects() {
 
     assert_eq!(drain_actions(&mut client), vec![]);
     assert_eq!(drain_writes(&mut client), Vec::<Bytes>::new());
-    assert_eq!(drain_events(&mut client), vec![Event::Disconnected(None)]);
+    assert_eq!(
+        drain_events(&mut client),
+        vec![Event::Disconnected(Disconnected::builder().build())]
+    );
     assert_eq!(client.poll_timeout(), None);
 }
 
@@ -192,7 +197,10 @@ fn timeout_while_the_socket_is_opening_cancels_it_and_disconnects() {
 
     assert_eq!(drain_actions(&mut client), vec![DriverAction::CloseSocket]);
     assert_eq!(drain_writes(&mut client), Vec::<Bytes>::new());
-    assert_eq!(drain_events(&mut client), vec![Event::Disconnected(None)]);
+    assert_eq!(
+        drain_events(&mut client),
+        vec![Event::Disconnected(Disconnected::builder().build())]
+    );
     assert_eq!(client.poll_timeout(), None);
 }
 
@@ -209,7 +217,10 @@ fn timeout_while_awaiting_connack_closes_the_socket_without_disconnect() {
         Vec::<Bytes>::new(),
         "no DISCONNECT before CONNACK"
     );
-    assert_eq!(drain_events(&mut client), vec![Event::Disconnected(None)]);
+    assert_eq!(
+        drain_events(&mut client),
+        vec![Event::Disconnected(Disconnected::builder().build())]
+    );
     assert_eq!(client.poll_timeout(), None);
 }
 
@@ -249,10 +260,9 @@ fn connack_without_keep_alive_clears_the_connect_deadline() {
 
     assert_eq!(
         drain_events(&mut client),
-        vec![Event::Connected {
-            assigned_client_id: None,
-            session_present: false
-        }]
+        vec![Event::Connected(
+            Connected::builder().session_present(false).build()
+        )]
     );
     assert_eq!(client.poll_timeout(), None);
 }
@@ -275,10 +285,9 @@ fn connack_with_keep_alive_replaces_the_connect_deadline_with_keep_alive() {
 
     assert_eq!(
         drain_events(&mut client),
-        vec![Event::Connected {
-            assigned_client_id: None,
-            session_present: false
-        }]
+        vec![Event::Connected(
+            Connected::builder().session_present(false).build()
+        )]
     );
     assert_eq!(
         client.poll_timeout(),
@@ -295,7 +304,11 @@ fn refused_connack_clears_the_connect_deadline() {
 
     assert_eq!(
         drain_events(&mut client),
-        vec![Event::Disconnected(Some(ReasonCode::NotAuthorized))]
+        vec![Event::Disconnected(
+            Disconnected::builder()
+                .reason(ReasonCode::NotAuthorized)
+                .build()
+        )]
     );
     assert_eq!(client.poll_timeout(), None);
 }
@@ -309,7 +322,11 @@ fn protocol_error_during_the_handshake_clears_the_connect_deadline() {
 
     assert_eq!(
         drain_events(&mut client),
-        vec![Event::Disconnected(Some(ReasonCode::ProtocolError))]
+        vec![Event::Disconnected(
+            Disconnected::builder()
+                .reason(ReasonCode::ProtocolError)
+                .build()
+        )]
     );
     assert_eq!(client.poll_timeout(), None);
 }
@@ -325,7 +342,10 @@ fn failed_open_socket_clears_the_connect_deadline() {
         Ok(())
     );
 
-    assert_eq!(drain_events(&mut client), vec![Event::Disconnected(None)]);
+    assert_eq!(
+        drain_events(&mut client),
+        vec![Event::Disconnected(Disconnected::builder().build())]
+    );
     assert_eq!(client.poll_timeout(), None);
 }
 
@@ -337,7 +357,10 @@ fn socket_loss_while_awaiting_connack_clears_the_connect_deadline() {
 
         assert_eq!(client.handle_event(at(loss, T0)), Ok(()), "{loss:?}");
 
-        assert_eq!(drain_events(&mut client), vec![Event::Disconnected(None)]);
+        assert_eq!(
+            drain_events(&mut client),
+            vec![Event::Disconnected(Disconnected::builder().build())]
+        );
         assert_eq!(client.poll_timeout(), None, "{loss:?}");
     }
 }
@@ -349,7 +372,10 @@ fn disconnect_while_connecting_clears_the_connect_deadline() {
 
     assert_eq!(client.handle_write(at(Command::Disconnect, T0)), Ok(()));
 
-    assert_eq!(drain_events(&mut client), vec![Event::Disconnected(None)]);
+    assert_eq!(
+        drain_events(&mut client),
+        vec![Event::Disconnected(Disconnected::builder().build())]
+    );
     assert_eq!(client.poll_timeout(), None);
 }
 

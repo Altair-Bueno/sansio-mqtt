@@ -92,9 +92,9 @@ where
             }
             // Nothing is connected, so there is nothing to publish on,
             // acknowledge, (un)subscribe or disconnect.
-            Command::Publish { .. }
+            Command::Publish(_)
             | Command::Acknowledge(_)
-            | Command::Reject(..)
+            | Command::Reject(_)
             | Command::Subscribe(_)
             | Command::Unsubscribe(_)
             | Command::Disconnect

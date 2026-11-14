@@ -192,14 +192,18 @@ where
 
     // [MQTT-3.2.2-16] Report the Client Identifier the server assigned, so the
     // application can reuse it to resume the session.
-    scratchpad.read_queue.push_back(Event::Connected {
-        assigned_client_id: connack
-            .properties
-            .assigned_client_identifier
-            .clone()
-            .map(Utf8String::into_inner),
-        session_present,
-    });
+    scratchpad.read_queue.push_back(Event::Connected(
+        sansio_mqtt_protocol::Connected::builder()
+            .maybe_assigned_client_id(
+                connack
+                    .properties
+                    .assigned_client_identifier
+                    .clone()
+                    .map(Utf8String::into_inner),
+            )
+            .session_present(session_present)
+            .build(),
+    ));
 
     if !session_present {
         // [MQTT-3.2.2-2] Session Present=0 means the server discarded any prior
@@ -287,9 +291,9 @@ where
             // A user-requested disconnect is the same teardown as `close`.
             Command::Disconnect => self.close(settings, session, scratchpad),
             Command::Connect(_)
-            | Command::Publish { .. }
+            | Command::Publish(_)
             | Command::Acknowledge(_)
-            | Command::Reject(..)
+            | Command::Reject(_)
             | Command::Subscribe(_)
             | Command::Unsubscribe(_)
             | _ => (

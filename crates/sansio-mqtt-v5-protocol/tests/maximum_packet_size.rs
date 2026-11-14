@@ -23,6 +23,7 @@ use encode::Encodable as _;
 use sansio::Protocol as _;
 use sansio_mqtt_protocol::Command;
 use sansio_mqtt_protocol::ConnectOptions;
+use sansio_mqtt_protocol::Disconnected;
 use sansio_mqtt_protocol::DriverAction;
 use sansio_mqtt_protocol::DriverEvent;
 use sansio_mqtt_protocol::Error;
@@ -121,7 +122,11 @@ fn assert_disconnected_packet_too_large(client: &mut Client<Duration>) {
     assert_eq!(client.poll_event(), Some(DriverAction::CloseSocket));
     assert_eq!(
         client.poll_read(),
-        Some(Event::Disconnected(Some(ReasonCode::PacketTooLarge)))
+        Some(Event::Disconnected(
+            Disconnected::builder()
+                .reason(ReasonCode::PacketTooLarge)
+                .build()
+        ))
     );
 }
 
@@ -184,7 +189,7 @@ fn packet_exactly_at_maximum_packet_size_is_accepted() {
     let mut client = connecting_client(NonZero::new(size).expect("non-zero"));
 
     assert_eq!(read(&mut client, &small_connack()), Ok(()));
-    assert!(matches!(client.poll_read(), Some(Event::Connected { .. })));
+    assert!(matches!(client.poll_read(), Some(Event::Connected(_))));
 }
 
 /// One byte over the limit is rejected, even though its Remaining Length
@@ -204,7 +209,7 @@ fn connack_within_maximum_packet_size_is_accepted() {
     let mut client = connecting_client(NonZero::new(32).expect("non-zero"));
 
     assert_eq!(read(&mut client, &small_connack()), Ok(()));
-    assert!(matches!(client.poll_read(), Some(Event::Connected { .. })));
+    assert!(matches!(client.poll_read(), Some(Event::Connected(_))));
 }
 
 /// The client always advertises the Maximum Packet Size its parser enforces,
@@ -220,7 +225,7 @@ fn default_maximum_packet_size_is_advertised_and_enforced() {
     assert_eq!(connect.properties.maximum_packet_size, Some(default));
 
     assert_eq!(read(&mut client, &small_connack()), Ok(()));
-    assert!(matches!(client.poll_read(), Some(Event::Connected { .. })));
+    assert!(matches!(client.poll_read(), Some(Event::Connected(_))));
 
     // A PUBLISH fixed header whose Remaining Length (`0x81 0x80 0x40`,
     // 1_048_577) alone exceeds the limit is rejected from the header, before

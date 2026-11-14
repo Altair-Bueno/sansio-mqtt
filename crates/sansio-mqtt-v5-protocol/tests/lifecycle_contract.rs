@@ -24,12 +24,15 @@ use encode::Encodable as _;
 use sansio::Protocol as _;
 use sansio_mqtt_protocol::Command;
 use sansio_mqtt_protocol::ConnectOptions;
+use sansio_mqtt_protocol::Connected;
+use sansio_mqtt_protocol::Disconnected;
 use sansio_mqtt_protocol::DriverAction;
 use sansio_mqtt_protocol::DriverEvent;
 use sansio_mqtt_protocol::Error;
 use sansio_mqtt_protocol::Event;
 use sansio_mqtt_protocol::IncomingData;
 use sansio_mqtt_protocol::Message;
+use sansio_mqtt_protocol::PublishOptions;
 use sansio_mqtt_protocol::Qos;
 use sansio_mqtt_protocol::ReasonCode;
 use sansio_mqtt_protocol::Timestamped;
@@ -131,10 +134,12 @@ fn message(qos: Qos, payload: &[u8]) -> Message {
 }
 
 fn publish(token: u64, qos: Qos, payload: &[u8]) -> Command {
-    Command::Publish {
-        token,
-        message: message(qos, payload),
-    }
+    Command::Publish(
+        PublishOptions::builder()
+            .token(token)
+            .message(message(qos, payload))
+            .build(),
+    )
 }
 
 fn drain_writes(client: &mut Client<Duration>) -> Vec<Bytes> {
@@ -178,10 +183,9 @@ fn connected_with(
     assert_eq!(read(&mut client, ack), Ok(()));
     assert_eq!(
         drain_events(&mut client),
-        vec![Event::Connected {
-            assigned_client_id: None,
-            session_present: false
-        }]
+        vec![Event::Connected(
+            Connected::builder().session_present(false).build()
+        )]
     );
     client
 }
@@ -221,7 +225,10 @@ fn socket_error_while_connected_emits_disconnected_and_does_not_close_socket() {
         Ok(())
     );
 
-    assert_eq!(drain_events(&mut client), vec![Event::Disconnected(None)]);
+    assert_eq!(
+        drain_events(&mut client),
+        vec![Event::Disconnected(Disconnected::builder().build())]
+    );
     assert_eq!(drain_actions(&mut client), vec![]);
     assert_eq!(drain_writes(&mut client), Vec::<Bytes>::new());
     assert_can_reconnect(&mut client);
@@ -236,7 +243,10 @@ fn socket_closed_while_connected_emits_disconnected_and_does_not_close_socket() 
         Ok(())
     );
 
-    assert_eq!(drain_events(&mut client), vec![Event::Disconnected(None)]);
+    assert_eq!(
+        drain_events(&mut client),
+        vec![Event::Disconnected(Disconnected::builder().build())]
+    );
     assert_eq!(drain_actions(&mut client), vec![]);
     assert_can_reconnect(&mut client);
 }
@@ -249,7 +259,10 @@ fn socket_loss_while_awaiting_connack_emits_disconnected_and_does_not_close_sock
 
         assert_eq!(client.handle_event(at_zero(evt)), Ok(()), "{evt:?}");
 
-        assert_eq!(drain_events(&mut client), vec![Event::Disconnected(None)]);
+        assert_eq!(
+            drain_events(&mut client),
+            vec![Event::Disconnected(Disconnected::builder().build())]
+        );
         assert_eq!(drain_actions(&mut client), vec![]);
         assert_can_reconnect(&mut client);
     }
@@ -265,7 +278,10 @@ fn failed_open_socket_emits_disconnected() {
         Ok(())
     );
 
-    assert_eq!(drain_events(&mut client), vec![Event::Disconnected(None)]);
+    assert_eq!(
+        drain_events(&mut client),
+        vec![Event::Disconnected(Disconnected::builder().build())]
+    );
     assert_eq!(drain_actions(&mut client), vec![]);
     assert_eq!(drain_writes(&mut client), Vec::<Bytes>::new());
     assert_can_reconnect(&mut client);
@@ -292,7 +308,10 @@ fn socket_loss_while_already_disconnected_is_a_no_op() {
             client.handle_event(at_zero(DriverEvent::SocketClosed)),
             Ok(())
         );
-        assert_eq!(drain_events(&mut client), vec![Event::Disconnected(None)]);
+        assert_eq!(
+            drain_events(&mut client),
+            vec![Event::Disconnected(Disconnected::builder().build())]
+        );
 
         assert_eq!(client.handle_event(at_zero(evt)), Ok(()), "{evt:?}");
 
@@ -310,7 +329,10 @@ fn socket_loss_while_already_disconnected_is_a_no_op() {
 fn socket_loss_after_protocol_initiated_close_is_a_no_op() {
     let mut client = connected();
     assert_eq!(client.handle_write(at_zero(Command::Disconnect)), Ok(()));
-    assert_eq!(drain_events(&mut client), vec![Event::Disconnected(None)]);
+    assert_eq!(
+        drain_events(&mut client),
+        vec![Event::Disconnected(Disconnected::builder().build())]
+    );
 
     assert_eq!(
         client.handle_event(at_zero(DriverEvent::SocketError)),
@@ -349,7 +371,10 @@ fn loss_of_the_closing_socket_is_not_attributed_to_a_new_connection_attempt() {
             client.handle_write(at_zero(Command::Connect(connect_options()))),
             Ok(())
         );
-        assert_eq!(drain_events(&mut client), vec![Event::Disconnected(None)]);
+        assert_eq!(
+            drain_events(&mut client),
+            vec![Event::Disconnected(Disconnected::builder().build())]
+        );
 
         assert_eq!(client.handle_event(at_zero(evt)), Ok(()), "{evt:?}");
 
@@ -383,7 +408,10 @@ fn loss_of_the_closing_socket_discards_every_byte_queued_for_it() {
         );
     }
     assert_eq!(client.handle_write(at_zero(Command::Disconnect)), Ok(()));
-    assert_eq!(drain_events(&mut client), vec![Event::Disconnected(None)]);
+    assert_eq!(
+        drain_events(&mut client),
+        vec![Event::Disconnected(Disconnected::builder().build())]
+    );
 
     // The first PUBLISH fails to write.
     assert_eq!(client.poll_write().map(|bytes| bytes[0]), Some(0x30));
@@ -411,7 +439,10 @@ fn socket_loss_while_disconnected_discards_unsent_bytes() {
     );
 
     assert_eq!(drain_writes(&mut client), Vec::<Bytes>::new());
-    assert_eq!(drain_events(&mut client), vec![Event::Disconnected(None)]);
+    assert_eq!(
+        drain_events(&mut client),
+        vec![Event::Disconnected(Disconnected::builder().build())]
+    );
 }
 
 // ── Invariant (b): no bytes after CloseSocket until the next SocketConnected ─
@@ -427,7 +458,10 @@ fn graceful_disconnect_queues_disconnect_bytes_before_close_socket_and_nothing_a
         vec![Bytes::from_static(&DISCONNECT_NORMAL)]
     );
     assert_eq!(drain_actions(&mut client), vec![DriverAction::CloseSocket]);
-    assert_eq!(drain_events(&mut client), vec![Event::Disconnected(None)]);
+    assert_eq!(
+        drain_events(&mut client),
+        vec![Event::Disconnected(Disconnected::builder().build())]
+    );
 
     // Every command and timer is now inert on the wire.
     assert_eq!(
@@ -484,7 +518,11 @@ fn packets_after_a_fatal_one_in_the_same_read_are_discarded() {
 
     assert_eq!(
         drain_events(&mut client),
-        vec![Event::Disconnected(Some(ReasonCode::ProtocolError))]
+        vec![Event::Disconnected(
+            Disconnected::builder()
+                .reason(ReasonCode::ProtocolError)
+                .build()
+        )]
     );
     assert_eq!(
         drain_writes(&mut client),
@@ -501,10 +539,9 @@ fn packets_after_a_fatal_one_in_the_same_read_are_discarded() {
     );
     assert_eq!(
         drain_events(&mut client),
-        vec![Event::Connected {
-            assigned_client_id: None,
-            session_present: false
-        }]
+        vec![Event::Connected(
+            Connected::builder().session_present(false).build()
+        )]
     );
 }
 
@@ -587,7 +624,10 @@ fn disconnect_before_open_socket_is_polled_withdraws_the_request() {
 
     assert_eq!(drain_actions(&mut client), vec![]);
     assert_eq!(drain_writes(&mut client), Vec::<Bytes>::new());
-    assert_eq!(drain_events(&mut client), vec![Event::Disconnected(None)]);
+    assert_eq!(
+        drain_events(&mut client),
+        vec![Event::Disconnected(Disconnected::builder().build())]
+    );
     assert_can_reconnect(&mut client);
 }
 
@@ -600,7 +640,10 @@ fn disconnect_after_open_socket_is_polled_cancels_it_with_close_socket() {
 
     assert_eq!(drain_actions(&mut client), vec![DriverAction::CloseSocket]);
     assert_eq!(drain_writes(&mut client), Vec::<Bytes>::new());
-    assert_eq!(drain_events(&mut client), vec![Event::Disconnected(None)]);
+    assert_eq!(
+        drain_events(&mut client),
+        vec![Event::Disconnected(Disconnected::builder().build())]
+    );
 }
 
 // ── Handled connection failures: Ok + Event::Disconnected ──────────────────
@@ -614,7 +657,11 @@ fn malformed_packet_disconnects_with_reason_and_returns_ok() {
 
     assert_eq!(
         drain_events(&mut client),
-        vec![Event::Disconnected(Some(ReasonCode::MalformedPacket))]
+        vec![Event::Disconnected(
+            Disconnected::builder()
+                .reason(ReasonCode::MalformedPacket)
+                .build()
+        )]
     );
     assert_eq!(
         drain_writes(&mut client),
@@ -631,7 +678,11 @@ fn protocol_violation_disconnects_with_reason_and_returns_ok() {
 
     assert_eq!(
         drain_events(&mut client),
-        vec![Event::Disconnected(Some(ReasonCode::ProtocolError))]
+        vec![Event::Disconnected(
+            Disconnected::builder()
+                .reason(ReasonCode::ProtocolError)
+                .build()
+        )]
     );
     assert_eq!(
         drain_writes(&mut client),
@@ -649,7 +700,11 @@ fn protocol_violation_during_handshake_disconnects_and_returns_ok() {
 
     assert_eq!(
         drain_events(&mut client),
-        vec![Event::Disconnected(Some(ReasonCode::ProtocolError))]
+        vec![Event::Disconnected(
+            Disconnected::builder()
+                .reason(ReasonCode::ProtocolError)
+                .build()
+        )]
     );
     assert_eq!(drain_actions(&mut client), vec![DriverAction::CloseSocket]);
 }
@@ -666,7 +721,11 @@ fn rejected_connack_disconnects_with_broker_reason_and_returns_ok() {
 
     assert_eq!(
         drain_events(&mut client),
-        vec![Event::Disconnected(Some(ReasonCode::NotAuthorized))]
+        vec![Event::Disconnected(
+            Disconnected::builder()
+                .reason(ReasonCode::NotAuthorized)
+                .build()
+        )]
     );
     // [MQTT-3.2.2-7] The server closes the connection; the client sends
     // nothing more on it.
@@ -682,7 +741,10 @@ fn connect_timeout_disconnects_and_returns_ok() {
 
     assert_eq!(client.handle_timeout(Duration::from_secs(30)), Ok(()));
 
-    assert_eq!(drain_events(&mut client), vec![Event::Disconnected(None)]);
+    assert_eq!(
+        drain_events(&mut client),
+        vec![Event::Disconnected(Disconnected::builder().build())]
+    );
     assert_eq!(drain_writes(&mut client), Vec::<Bytes>::new());
     assert_eq!(drain_actions(&mut client), vec![DriverAction::CloseSocket]);
     assert_can_reconnect(&mut client);
@@ -721,7 +783,11 @@ fn keep_alive_timeout_disconnects_with_reason_and_returns_ok() {
 
     assert_eq!(
         drain_events(&mut client),
-        vec![Event::Disconnected(Some(ReasonCode::KeepAliveTimeout))]
+        vec![Event::Disconnected(
+            Disconnected::builder()
+                .reason(ReasonCode::KeepAliveTimeout)
+                .build()
+        )]
     );
     assert_eq!(
         drain_writes(&mut client),

@@ -13,10 +13,15 @@
 use core::num::NonZero;
 use std::path::PathBuf;
 
+use sansio_mqtt_protocol::AcknowledgeOptions;
 use sansio_mqtt_protocol::Command;
 use sansio_mqtt_protocol::ConnectOptions;
+use sansio_mqtt_protocol::Connected;
+use sansio_mqtt_protocol::Disconnected;
 use sansio_mqtt_protocol::Event;
 use sansio_mqtt_protocol::Message;
+use sansio_mqtt_protocol::MessageRequiresAcknowledgement;
+use sansio_mqtt_protocol::PublishOptions;
 use sansio_mqtt_protocol::Qos;
 use sansio_mqtt_protocol::SubscribeOptions;
 use sansio_mqtt_protocol::Subscription;
@@ -139,13 +144,19 @@ impl Cli {
     }
 
     fn publish(&self) -> Option<Command> {
-        self.message.as_ref().map(|payload| Command::Publish {
-            token: 1,
-            message: Message::builder()
-                .topic(self.topic.as_str())
-                .payload(payload.clone())
-                .qos(self.qos())
-                .build(),
+        self.message.as_ref().map(|payload| {
+            Command::Publish(
+                PublishOptions::builder()
+                    .token(1)
+                    .message(
+                        Message::builder()
+                            .topic(self.topic.as_str())
+                            .payload(payload.clone())
+                            .qos(self.qos())
+                            .build(),
+                    )
+                    .build(),
+            )
         })
     }
 }
@@ -170,10 +181,11 @@ async fn run(cli: &Cli, driver: &mut DynDriver) -> Result<(), BoxError> {
             reason = "`Event` is `#[non_exhaustive]`; the example logs every event it does not act on"
         )]
         let message = match event {
-            Event::Connected {
+            Event::Connected(Connected {
                 assigned_client_id,
                 session_present,
-            } => {
+                ..
+            }) => {
                 tracing::info!(topic = %cli.topic, ?assigned_client_id, session_present, "connected, subscribing");
                 driver.submit(cli.subscribe())?;
                 if let Some(publish) = cli.publish() {
@@ -182,11 +194,17 @@ async fn run(cli: &Cli, driver: &mut DynDriver) -> Result<(), BoxError> {
                 continue;
             }
             Event::Message(message) => message,
-            Event::MessageRequiresAcknowledgement(id, message) => {
-                driver.submit(Command::Acknowledge(id))?;
+            Event::MessageRequiresAcknowledgement(MessageRequiresAcknowledgement {
+                id,
+                message,
+                ..
+            }) => {
+                driver.submit(Command::Acknowledge(
+                    AcknowledgeOptions::builder().id(id).build(),
+                ))?;
                 message
             }
-            Event::Disconnected(reason) => {
+            Event::Disconnected(Disconnected { reason, .. }) => {
                 tracing::info!(?reason, "disconnected");
                 break;
             }

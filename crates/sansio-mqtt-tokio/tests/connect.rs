@@ -18,6 +18,8 @@ use futures_util::StreamExt as _;
 use sansio_mqtt_protocol::ByteString;
 use sansio_mqtt_protocol::Command;
 use sansio_mqtt_protocol::ConnectOptions;
+use sansio_mqtt_protocol::Connected;
+use sansio_mqtt_protocol::Disconnected;
 use sansio_mqtt_protocol::Event;
 use sansio_mqtt_tokio::BrokerUrlError;
 use sansio_mqtt_tokio::DynDriver;
@@ -128,10 +130,7 @@ async fn connect_mqtt_url_connects_over_tcp() {
     let broker = async { accept_connect(listener.accept().await.unwrap().0).await };
     assert_eq!(
         first_event(&mut driver, broker).await,
-        Event::Connected {
-            assigned_client_id: None,
-            session_present: false
-        }
+        Event::Connected(Connected::builder().session_present(false).build())
     );
 }
 
@@ -147,10 +146,7 @@ async fn connect_mqtt_url_accepts_a_domain_and_an_ipv6_literal() {
         let broker = async { accept_connect(listener.accept().await.unwrap().0).await };
         assert_eq!(
             first_event(&mut driver, broker).await,
-            Event::Connected {
-                assigned_client_id: None,
-                session_present: false
-            },
+            Event::Connected(Connected::builder().session_present(false).build()),
             "{host}"
         );
     }
@@ -220,7 +216,7 @@ async fn connect_connect_timeout_parameter_gives_up_on_a_silent_broker() {
         () = broker => unreachable!(),
         event = timeout(STEP, driver.next()) => event.expect("the connect timeout did not fire"),
     };
-    assert_eq!(event, Event::Disconnected(None));
+    assert_eq!(event, Event::Disconnected(Disconnected::builder().build()));
 }
 
 #[tokio::test]
@@ -252,10 +248,7 @@ async fn connect_mqtts_url_connects_over_tls() {
     };
     assert_eq!(
         first_event(&mut driver, broker).await,
-        Event::Connected {
-            assigned_client_id: None,
-            session_present: false
-        }
+        Event::Connected(Connected::builder().session_present(false).build())
     );
 }
 
@@ -310,10 +303,7 @@ async fn connect_ws_url_connects_over_websocket() {
     let broker = async { accept_websocket_connect(listener.accept().await.unwrap().0).await };
     assert_eq!(
         first_event(&mut driver, broker).await,
-        Event::Connected {
-            assigned_client_id: None,
-            session_present: false
-        }
+        Event::Connected(Connected::builder().session_present(false).build())
     );
 }
 
@@ -331,10 +321,7 @@ async fn connect_wss_url_connects_over_websocket_over_tls() {
     };
     assert_eq!(
         first_event(&mut driver, Box::pin(broker)).await,
-        Event::Connected {
-            assigned_client_id: None,
-            session_present: false
-        }
+        Event::Connected(Connected::builder().session_present(false).build())
     );
 }
 
@@ -353,10 +340,7 @@ async fn connect_driver_can_be_spawned() {
     };
     assert_eq!(
         event,
-        Event::Connected {
-            assigned_client_id: None,
-            session_present: false
-        }
+        Event::Connected(Connected::builder().session_present(false).build())
     );
 }
 
