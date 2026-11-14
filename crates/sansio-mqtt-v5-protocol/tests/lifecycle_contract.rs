@@ -257,7 +257,7 @@ fn socket_loss_while_awaiting_connack_emits_disconnected_and_does_not_close_sock
         let mut client = Client::<Duration>::default();
         open_connecting(&mut client, connect_options());
 
-        assert_eq!(client.handle_event(at_zero(evt)), Ok(()), "{evt:?}");
+        assert_eq!(client.handle_event(at_zero(evt.clone())), Ok(()), "{evt:?}");
 
         assert_eq!(
             drain_events(&mut client),
@@ -292,7 +292,7 @@ fn socket_loss_without_connection_attempt_is_a_no_op() {
     for evt in [DriverEvent::SocketError, DriverEvent::SocketClosed] {
         let mut client = Client::<Duration>::default();
 
-        assert_eq!(client.handle_event(at_zero(evt)), Ok(()), "{evt:?}");
+        assert_eq!(client.handle_event(at_zero(evt.clone())), Ok(()), "{evt:?}");
 
         assert_eq!(drain_events(&mut client), vec![]);
         assert_eq!(drain_actions(&mut client), vec![]);
@@ -313,7 +313,7 @@ fn socket_loss_while_already_disconnected_is_a_no_op() {
             vec![Event::Disconnected(Disconnected::builder().build())]
         );
 
-        assert_eq!(client.handle_event(at_zero(evt)), Ok(()), "{evt:?}");
+        assert_eq!(client.handle_event(at_zero(evt.clone())), Ok(()), "{evt:?}");
 
         assert_eq!(
             drain_events(&mut client),
@@ -376,7 +376,7 @@ fn loss_of_the_closing_socket_is_not_attributed_to_a_new_connection_attempt() {
             vec![Event::Disconnected(Disconnected::builder().build())]
         );
 
-        assert_eq!(client.handle_event(at_zero(evt)), Ok(()), "{evt:?}");
+        assert_eq!(client.handle_event(at_zero(evt.clone())), Ok(()), "{evt:?}");
 
         assert_eq!(drain_events(&mut client), vec![], "{evt:?}");
         assert_eq!(

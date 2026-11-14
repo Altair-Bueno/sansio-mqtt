@@ -355,7 +355,11 @@ fn socket_loss_while_awaiting_connack_clears_the_connect_deadline() {
         let mut client = Client::<Duration>::default();
         awaiting_connack(&mut client, connect_options());
 
-        assert_eq!(client.handle_event(at(loss, T0)), Ok(()), "{loss:?}");
+        assert_eq!(
+            client.handle_event(at(loss.clone(), T0)),
+            Ok(()),
+            "{loss:?}"
+        );
 
         assert_eq!(
             drain_events(&mut client),

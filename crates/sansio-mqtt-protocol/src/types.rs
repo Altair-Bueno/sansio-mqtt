@@ -750,7 +750,7 @@ pub struct Auth {
 ///   existed, the protocol emits an [`Event::Disconnected`] with no reason.
 /// - Otherwise the report is a no-op, so no duplicate `Disconnected` is ever
 ///   emitted.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum DriverEvent {
     /// The socket requested by [`DriverAction::OpenSocket`] is connected.
@@ -783,7 +783,7 @@ pub enum DriverEvent {
 ///   `SocketConnected` and the next `CloseSocket`, `SocketClosed` or
 ///   `SocketError`. In the action queue, a `CloseSocket` always precedes the
 ///   next `OpenSocket`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum DriverAction {
     /// Open a socket to the server and answer with
@@ -840,7 +840,7 @@ pub enum Capability {
 /// [`Event::Disconnected`] carrying the most fitting [`ReasonCode`] (for
 /// example [`ReasonCode::MalformedPacket`], [`ReasonCode::ProtocolError`] or
 /// [`ReasonCode::KeepAliveTimeout`]), or `None` when no reason code applies.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[non_exhaustive]
 pub enum Error {
     /// The command needs a capability that is not available on this
