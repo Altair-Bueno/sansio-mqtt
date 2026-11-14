@@ -82,7 +82,7 @@ where
 {
     limits::reset_negotiated_limits(settings, session, scratchpad);
     scratchpad.write_queue.push_back(connect);
-    scratchpad.keep_alive_saw_network_activity = false;
+    scratchpad.keep_alive_sent_unstamped = true;
     scratchpad.keep_alive_ping_outstanding = false;
     (
         ClientState::Connecting(Connecting {
@@ -170,7 +170,6 @@ where
         Some(server_keep_alive) => NonZero::new(server_keep_alive),
         None => settings.keep_alive,
     };
-    scratchpad.keep_alive_saw_network_activity = false;
     scratchpad.keep_alive_ping_outstanding = false;
 
     if session_present {
@@ -213,12 +212,13 @@ where
     }
 
     // CONNACK ends the connection attempt, and with it the connect deadline
-    // (MQTT v5.0 §3.2). [MQTT-3.1.2-22] Arm the keep-alive timer from the
-    // CONNACK arrival instant so the first deadline fires one interval after
-    // the session was established.
+    // (MQTT v5.0 §3.2). [MQTT-3.1.2-20] Arm the keep-alive timer one interval
+    // after CONNECT, the last packet sent; packets queued while handling this
+    // CONNACK only push the PINGREQ further out when the timer fires.
     scratchpad.next_timeout = None;
     if let Some(interval_secs) = scratchpad.keep_alive_interval_secs {
-        scratchpad.arm_keep_alive_deadline(received_at, u64::from(interval_secs.get()));
+        let connect_sent_at = scratchpad.keep_alive_last_sent.unwrap_or(received_at);
+        scratchpad.arm_keep_alive_deadline(connect_sent_at, u64::from(interval_secs.get()));
     }
 
     (ClientState::Connected(Connected), Ok(()))

@@ -3782,10 +3782,12 @@ fn keepalive_timeout_without_pingresp_closes_connection() {
         .build();
     connect_client(&mut client, options);
 
-    assert_eq!(client.handle_timeout(Duration::from_secs(1)), Ok(()));
+    assert_eq!(client.poll_timeout(), Some(Duration::from_secs(10)));
+    assert_eq!(client.handle_timeout(Duration::from_secs(10)), Ok(()));
     assert_eq!(client.poll_write(), Some(Bytes::from_static(&[0xC0, 0x00])));
 
-    assert_eq!(client.handle_timeout(Duration::from_secs(2)), Ok(()));
+    assert_eq!(client.poll_timeout(), Some(Duration::from_secs(15)));
+    assert_eq!(client.handle_timeout(Duration::from_secs(15)), Ok(()));
     assert_eq!(
         client.poll_write(),
         Some(Bytes::from_static(&[0xE0, 0x02, 0x8D, 0x00]))
@@ -4134,13 +4136,10 @@ fn keepalive_timeout_with_session_expiry_preserves_inflight_for_resume() {
     );
     let first_publish = client.poll_write().expect("publish expected");
 
-    assert_eq!(client.handle_timeout(Duration::from_secs(1)), Ok(()));
-    assert_eq!(client.poll_write(), None);
-
-    assert_eq!(client.handle_timeout(Duration::from_secs(2)), Ok(()));
+    assert_eq!(client.handle_timeout(Duration::from_secs(10)), Ok(()));
     assert_eq!(client.poll_write(), Some(Bytes::from_static(&[0xC0, 0x00])));
 
-    assert_eq!(client.handle_timeout(Duration::from_secs(3)), Ok(()));
+    assert_eq!(client.handle_timeout(Duration::from_secs(15)), Ok(()));
     assert_eq!(
         client.poll_write(),
         Some(Bytes::from_static(&[0xE0, 0x02, 0x8D, 0x00]))
@@ -4399,8 +4398,10 @@ fn keep_alive_timer_armed_after_connack_when_keep_alive_configured() {
     assert_eq!(client.poll_timeout(), Some(Duration::from_secs(30)));
 }
 
+/// [MQTT-3.1.2-20] The interval runs from CONNECT, the last packet sent, not
+/// from the CONNACK that answers it.
 #[test]
-fn keep_alive_timer_armed_after_connack_uses_received_at_timestamp() {
+fn keep_alive_timer_armed_after_connack_counts_from_connect() {
     let mut client = Client::<Duration>::default();
     open_connecting(&mut client, connect_options());
 
@@ -4408,13 +4409,13 @@ fn keep_alive_timer_armed_after_connack_uses_received_at_timestamp() {
         read_at(
             &mut client,
             &connack_with_properties(ConnAckProperties::builder().server_keep_alive(30).build(),),
-            Duration::from_secs(100),
+            Duration::from_secs(5),
         ),
         Ok(())
     );
     assert!(matches!(client.poll_read(), Some(Event::Connected(_))));
-    // Tr = received_at + interval = 100 + 30 = 130.
-    assert_eq!(client.poll_timeout(), Some(Duration::from_secs(130)));
+    // CONNECT sent at 0: 0 + 30 = 30.
+    assert_eq!(client.poll_timeout(), Some(Duration::from_secs(30)));
 }
 
 #[test]
@@ -4445,11 +4446,11 @@ fn keep_alive_from_settings_arms_the_timer_after_connack() {
     );
 }
 
-/// An outgoing packet (any successful `handle_write`) sets the keep-alive
-/// activity flag so that `handle_timeout` reschedules the deadline without
-/// sending a PINGREQ.
+/// [MQTT-3.1.2-20] An outgoing packet sent after the deadline was armed
+/// makes `handle_timeout` reschedule it one interval after that packet,
+/// without sending a PINGREQ.
 #[test]
-fn handle_timeout_reschedules_deadline_to_now_plus_interval_when_outgoing_packet_sent() {
+fn handle_timeout_reschedules_deadline_one_interval_after_the_last_outgoing_packet() {
     let interval_secs: u64 = 30;
     let mut client = make_connected_client_with_keep_alive(Some(
         u16::try_from(interval_secs).expect("keep-alive interval fits in a u16"),
@@ -4457,12 +4458,15 @@ fn handle_timeout_reschedules_deadline_to_now_plus_interval_when_outgoing_packet
     assert_eq!(client.poll_timeout(), Some(Duration::from_secs(30)));
 
     assert_eq!(
-        client.handle_write(at_zero(Command::Publish(
-            PublishOptions::builder()
-                .token(1)
-                .message(message("t", ProtoQos::AtMostOnce, b""))
-                .build()
-        ))),
+        client.handle_write(Timestamped {
+            value: Command::Publish(
+                PublishOptions::builder()
+                    .token(1)
+                    .message(message("t", ProtoQos::AtMostOnce, b""))
+                    .build()
+            ),
+            at: Duration::from_secs(5),
+        }),
         Ok(())
     );
     client.poll_write();
@@ -4473,7 +4477,7 @@ fn handle_timeout_reschedules_deadline_to_now_plus_interval_when_outgoing_packet
         None,
         "no PINGREQ when outgoing packet was sent"
     );
-    assert_eq!(client.poll_timeout(), Some(Duration::from_mins(1)));
+    assert_eq!(client.poll_timeout(), Some(Duration::from_secs(35)));
 }
 
 /// [MQTT-3.1.2-24] The server MUST close the connection if it receives no
@@ -4536,11 +4540,20 @@ fn handle_timeout_pingresp_before_half_interval_deadline_resets_ping_outstanding
         Ok(()),
         "connection must NOT close after PINGRESP was received"
     );
-    assert!(
-        client.poll_write().is_some(),
-        "PINGREQ sent — no outgoing traffic"
+    assert_eq!(
+        client.poll_write(),
+        None,
+        "the PINGREQ sent at 10 keeps the connection alive until 20"
     );
     assert_eq!(client.poll_timeout(), Some(Duration::from_secs(20)));
+
+    assert_eq!(client.handle_timeout(Duration::from_secs(20)), Ok(()));
+    assert_eq!(
+        client.poll_write(),
+        Some(Bytes::from_static(&[0xC0, 0x00])),
+        "next PINGREQ one full interval after the previous one"
+    );
+    assert_eq!(client.poll_timeout(), Some(Duration::from_secs(25)));
 }
 
 /// Regression test: `handle_event(SocketConnected)` must preserve

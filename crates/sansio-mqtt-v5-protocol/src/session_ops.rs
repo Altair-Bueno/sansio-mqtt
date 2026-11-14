@@ -16,7 +16,8 @@ use sansio_mqtt_v5_wire::PublishKind;
 /// lifecycle boundaries.
 pub(crate) fn reset_keepalive<T>(scratchpad: &mut ClientScratchpad<T>) {
     scratchpad.keep_alive_interval_secs = None;
-    scratchpad.keep_alive_saw_network_activity = false;
+    scratchpad.keep_alive_sent_unstamped = false;
+    scratchpad.keep_alive_last_sent = None;
     scratchpad.keep_alive_ping_outstanding = false;
     scratchpad.next_timeout = None;
 }

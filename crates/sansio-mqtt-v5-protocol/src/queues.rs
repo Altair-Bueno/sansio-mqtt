@@ -42,12 +42,9 @@ pub(crate) fn enqueue_packet<T>(
     let encoded = encode_control_packet(packet)?;
     crate::limits::validate_outbound_packet_size(scratchpad, encoded.len())?;
     scratchpad.write_queue.push_back(encoded);
-    // [MQTT-3.1.2-22]: Any outbound control packet counts as keep-alive
-    // activity, except PINGREQ itself (which is the keep-alive probe and must
-    // not suppress its own sending).
-    if !matches!(packet, ControlPacket::PingReq(_)) {
-        scratchpad.keep_alive_saw_network_activity = true;
-    }
+    // [MQTT-3.1.2-20] Every packet sent, PINGREQ included, restarts the
+    // keep-alive interval. `Client` stamps it with the input's instant.
+    scratchpad.keep_alive_sent_unstamped = true;
     Ok(())
 }
 

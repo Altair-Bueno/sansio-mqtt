@@ -40,7 +40,12 @@ pub(crate) struct ClientScratchpad<T> {
     pub(crate) negotiated_shared_subscription_available: bool,
     pub(crate) negotiated_subscription_identifiers_available: bool,
     pub(crate) keep_alive_interval_secs: Option<NonZero<u16>>,
-    pub(crate) keep_alive_saw_network_activity: bool,
+    /// A packet reached the write queue during the current input and still
+    /// awaits the instant of that input in
+    /// [`keep_alive_last_sent`](Self::keep_alive_last_sent).
+    pub(crate) keep_alive_sent_unstamped: bool,
+    /// When the last packet was queued for sending on this connection.
+    pub(crate) keep_alive_last_sent: Option<T>,
     pub(crate) keep_alive_ping_outstanding: bool,
     pub(crate) read_buffer: BytesMut,
     pub(crate) read_queue: VecDeque<Event>,
@@ -67,6 +72,14 @@ where
     pub(crate) fn arm_keep_alive_deadline(&mut self, from: T, secs: u64) {
         self.next_timeout = Some(from + Duration::from_secs(secs));
     }
+
+    /// Records `at`, the instant of the input being handled, as the last send
+    /// if that input queued any packet.
+    pub(crate) fn stamp_sent(&mut self, at: T) {
+        if core::mem::take(&mut self.keep_alive_sent_unstamped) {
+            self.keep_alive_last_sent = Some(at);
+        }
+    }
 }
 
 impl<T> Default for ClientScratchpad<T> {
@@ -90,7 +103,8 @@ impl<T> Default for ClientScratchpad<T> {
             negotiated_shared_subscription_available: true,
             negotiated_subscription_identifiers_available: true,
             keep_alive_interval_secs: None,
-            keep_alive_saw_network_activity: false,
+            keep_alive_sent_unstamped: false,
+            keep_alive_last_sent: None,
             keep_alive_ping_outstanding: false,
             read_buffer: BytesMut::new(),
             read_queue: VecDeque::new(),

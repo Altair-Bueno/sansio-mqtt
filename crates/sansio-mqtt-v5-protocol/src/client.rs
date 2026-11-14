@@ -179,6 +179,40 @@ where
         )
     }
 
+    /// Feeds `bytes`, read at `received_at`, to the state machine packet by
+    /// packet.
+    fn read_packets(&mut self, bytes: &[u8], received_at: T) -> Result<(), Error> {
+        // Bytes can only come from a socket the driver reported connected and
+        // the protocol has not closed since.
+        if !self.state.has_open_socket() {
+            return Err(Error::InvalidStateTransition);
+        }
+
+        if self.scratchpad.read_buffer.is_empty() {
+            // Nothing pending: parse straight out of the driver's buffer so the
+            // common case of whole packets per read copies nothing.
+            let consumed = self.consume_packets(bytes, received_at)?;
+            if self.state.has_open_socket() {
+                self.scratchpad
+                    .read_buffer
+                    .extend_from_slice(&bytes[consumed..]);
+            }
+        } else {
+            self.scratchpad.read_buffer.extend_from_slice(bytes);
+            let mut buffer = core::mem::take(&mut self.scratchpad.read_buffer);
+            let consumed = self.consume_packets(&buffer, received_at)?;
+            if self.state.has_open_socket() {
+                // Drop the consumed prefix by moving the start pointer; the
+                // leading capacity is reclaimed by the next
+                // `extend_from_slice`.
+                buffer.advance(consumed);
+                self.scratchpad.read_buffer = buffer;
+            }
+        }
+
+        Ok(())
+    }
+
     fn fail_connection(&mut self, reason: DisconnectReasonCode) -> Result<(), Error> {
         self.dispatch(|_s, set, ses, sp| crate::state::fail_with(set, ses, sp, reason))
     }
@@ -198,56 +232,33 @@ where
 
     #[tracing::instrument(skip_all)]
     fn handle_read(&mut self, msg: IncomingData<'bytes, T>) -> Result<(), Self::Error> {
-        // Bytes can only come from a socket the driver reported connected and
-        // the protocol has not closed since.
-        if !self.state.has_open_socket() {
-            return Err(Error::InvalidStateTransition);
-        }
-
-        let received_at = msg.received_at;
-
-        if self.scratchpad.read_buffer.is_empty() {
-            // Nothing pending: parse straight out of the driver's buffer so the
-            // common case of whole packets per read copies nothing.
-            let consumed = self.consume_packets(msg.bytes, received_at)?;
-            if self.state.has_open_socket() {
-                self.scratchpad
-                    .read_buffer
-                    .extend_from_slice(&msg.bytes[consumed..]);
-            }
-        } else {
-            self.scratchpad.read_buffer.extend_from_slice(msg.bytes);
-            let mut buffer = core::mem::take(&mut self.scratchpad.read_buffer);
-            let consumed = self.consume_packets(&buffer, received_at)?;
-            if self.state.has_open_socket() {
-                // Drop the consumed prefix by moving the start pointer; the
-                // leading capacity is reclaimed by the next
-                // `extend_from_slice`.
-                buffer.advance(consumed);
-                self.scratchpad.read_buffer = buffer;
-            }
-        }
-
-        Ok(())
+        let IncomingData { bytes, received_at } = msg;
+        let result = self.read_packets(bytes, received_at);
+        self.scratchpad.stamp_sent(received_at);
+        result
     }
 
     #[tracing::instrument(skip_all)]
     fn handle_write(&mut self, msg: Timestamped<Command, T>) -> Result<(), Self::Error> {
-        // Keep-alive activity is tracked in `queues::enqueue_packet`, at the
-        // one point where a packet actually reaches the write queue.
         let Timestamped { value, at } = msg;
-        self.dispatch(|s, set, ses, sp| s.handle_write(set, ses, sp, value, at))
+        let result = self.dispatch(|s, set, ses, sp| s.handle_write(set, ses, sp, value, at));
+        self.scratchpad.stamp_sent(at);
+        result
     }
 
     #[tracing::instrument(skip_all)]
     fn handle_event(&mut self, evt: Timestamped<DriverEvent, T>) -> Result<(), Self::Error> {
         let Timestamped { value, at } = evt;
-        self.dispatch(|s, set, ses, sp| s.handle_event(set, ses, sp, value, at))
+        let result = self.dispatch(|s, set, ses, sp| s.handle_event(set, ses, sp, value, at));
+        self.scratchpad.stamp_sent(at);
+        result
     }
 
     #[tracing::instrument(skip_all)]
     fn handle_timeout(&mut self, now: Self::Time) -> Result<(), Self::Error> {
-        self.dispatch(|s, set, ses, sp| s.handle_timeout(set, ses, sp, now))
+        let result = self.dispatch(|s, set, ses, sp| s.handle_timeout(set, ses, sp, now));
+        self.scratchpad.stamp_sent(now);
+        result
     }
 
     #[tracing::instrument(skip_all)]

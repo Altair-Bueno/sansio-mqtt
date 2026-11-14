@@ -289,9 +289,11 @@ fn connack_with_keep_alive_replaces_the_connect_deadline_with_keep_alive() {
             Connected::builder().session_present(false).build()
         )]
     );
+    // [MQTT-3.1.2-20] One interval after CONNECT, sent when the socket
+    // connected at `T0 + 1s`.
     assert_eq!(
         client.poll_timeout(),
-        Some(received_at + Duration::from_secs(10))
+        Some(T0 + Duration::from_secs(1) + Duration::from_secs(10))
     );
 }
 

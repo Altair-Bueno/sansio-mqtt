@@ -15,6 +15,7 @@ use crate::state::fail_with;
 use crate::state::fail_with_protocol_error;
 use crate::state::on_socket_lost;
 use core::num::NonZero;
+use core::time::Duration;
 use sansio_mqtt_protocol::Command;
 use sansio_mqtt_protocol::DriverAction;
 use sansio_mqtt_protocol::DriverEvent;
@@ -689,11 +690,11 @@ where
         };
 
         if scratchpad.keep_alive_ping_outstanding {
-            // [MQTT-3.1.2-24] [MQTT-4.13.1-1] Keep Alive timeout closes the
+            // [MQTT-3.1.2-22] [MQTT-4.13.1-1] Keep Alive timeout closes the
             // network connection. The timer was set to interval/2
             // after sending PINGREQ, so we have now waited a total
             // of 1.5× the keep-alive interval since the last packet
-            // was received.
+            // was sent.
             let _ = queues::fail_connection(
                 settings,
                 session,
@@ -703,16 +704,19 @@ where
             return (ClientState::Disconnected(Disconnected), Ok(()));
         }
 
-        if scratchpad.keep_alive_saw_network_activity {
-            // [MQTT-3.1.2-22] Any control packet traffic resets keep-alive idle
-            // detection. Schedule the next check one full interval from now.
-            scratchpad.keep_alive_saw_network_activity = false;
-            scratchpad.arm_keep_alive_deadline(now, u64::from(interval_secs.get()));
-            return (ClientState::Connected(self), Ok(()));
+        // [MQTT-3.1.2-20] The interval runs from the last packet sent, not from
+        // this deadline: a packet sent since it was armed moves the next check
+        // to exactly one interval after that packet.
+        if let Some(last_sent) = scratchpad.keep_alive_last_sent {
+            let due = last_sent + Duration::from_secs(u64::from(interval_secs.get()));
+            if due > now {
+                scratchpad.next_timeout = Some(due);
+                return (ClientState::Connected(self), Ok(()));
+            }
         }
 
-        // [MQTT-3.1.2-22] [MQTT-3.12.4-1] Send PINGREQ when Keep Alive elapses
-        // without traffic. [MQTT-3.1.2-24] After sending PINGREQ, set
+        // [MQTT-3.1.2-20] [MQTT-3.12.4-1] Send PINGREQ when Keep Alive elapses
+        // without traffic. [MQTT-3.1.2-22] After sending PINGREQ, set
         // the next deadline to interval/2 from now so that the total
         // wait from the last packet is 1.5× the keep-alive interval:
         // t=0:            last packet / timer start   t=interval:
