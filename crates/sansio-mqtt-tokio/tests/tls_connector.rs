@@ -8,6 +8,7 @@
 
 extern crate alloc;
 
+use alloc::rc::Rc;
 use alloc::sync::Arc;
 use core::time::Duration;
 
@@ -25,6 +26,7 @@ use sansio_mqtt_tokio::rustls::pki_types::ServerName;
 use sansio_mqtt_v5_protocol::Client;
 use tokio::io::AsyncReadExt as _;
 use tokio::net::TcpListener;
+use tokio::net::TcpStream;
 use tokio::time::Instant;
 use tokio::time::timeout;
 use tokio_rustls::TlsAcceptor;
@@ -113,4 +115,48 @@ async fn tls_connector_untrusted_certificate_reports_disconnected() {
             assert_eq!(event.expect("no event within the timeout"), Event::Disconnected(None));
         }
     }
+}
+
+#[tokio::test]
+async fn tls_connector_runs_over_a_connector_that_is_not_send() {
+    let (acceptor, certified) = localhost_server();
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let mut roots = RootCertStore::empty();
+    roots.add(certified.cert.der().clone()).unwrap();
+    // `Rc` makes both the connector and its connection attempts `!Send`.
+    let address = Rc::new(listener.local_addr().unwrap());
+    let not_send = move || {
+        let address = Rc::clone(&address);
+        async move { TcpStream::connect(*address).await }
+    };
+    let connector = TlsConnector::new(
+        not_send,
+        tls_context(roots),
+        ServerName::try_from("localhost").unwrap(),
+    );
+    let mut driver = Driver::new(Client::<Instant>::default(), connector);
+    driver.submit(connect_command()).unwrap();
+
+    let first_byte = async {
+        let (tcp, _) = listener.accept().await.unwrap();
+        let mut broker = acceptor.accept(tcp).await.unwrap();
+        broker.read_u8().await.unwrap()
+    };
+    tokio::select! {
+        event = driver.next() => panic!("unexpected event {event:?}"),
+        first_byte = timeout(STEP, first_byte) => {
+            assert_eq!(first_byte.expect("no CONNECT within the timeout"), 0x10);
+        }
+    }
+}
+
+#[test]
+fn driver_over_send_connectors_is_send() {
+    fn assert_send<T: Send>(_: &T) {}
+    let connector = TlsConnector::new(
+        TcpConnector::new("localhost:8883"),
+        tls_context(RootCertStore::empty()),
+        ServerName::try_from("localhost").unwrap(),
+    );
+    assert_send(&Driver::new(Client::<Instant>::default(), connector));
 }

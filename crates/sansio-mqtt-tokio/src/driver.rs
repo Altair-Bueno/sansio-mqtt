@@ -1,5 +1,6 @@
 use crate::Connector;
 use bytes::Bytes;
+use core::future::Future;
 use core::future::pending;
 use core::pin::Pin;
 use sansio_mqtt_protocol::Command;
@@ -34,13 +35,19 @@ use tokio::time::sleep_until;
 /// opening the socket or waiting for CONNACK when the protocol's connect
 /// timeout elapses is abandoned and reported as
 /// [`Event::Disconnected(None)`](Event::Disconnected).
-pub struct Driver<Protocol, C>
+///
+/// `Attempt` is the type of `C`'s connection attempts, the future
+/// [`Connector::connect`] returns. [`Driver::new`] infers it, so it is never
+/// written by hand; code that stores a driver stays generic over it.
+pub struct Driver<Protocol, C, Attempt = ()>
 where
     C: Connector,
 {
     client: Protocol,
     connector: C,
-    connection: Connection<BufReader<C::Connection>, C::Future>,
+    /// [`Connector::connect`] for `C`, through which `Attempt` gets a name.
+    connect: fn(&mut C) -> Attempt,
+    connection: Connection<BufReader<C::Connection>, Attempt>,
     /// Bytes handed out by the client that are not yet written to the socket.
     outgoing: Bytes,
     needs_flush: bool,
@@ -86,16 +93,27 @@ where
 {
     /// Creates a driver for `client` that opens every socket with
     /// `connector`.
-    pub fn new(client: Protocol, connector: C) -> Self {
-        Self {
+    pub fn new(
+        client: Protocol,
+        connector: C,
+    ) -> Driver<Protocol, C, impl Future<Output = Result<C::Connection, C::Error>>> {
+        Driver {
             client,
             connector,
+            connect: C::connect,
             connection: Connection::Closed,
             outgoing: Bytes::new(),
             needs_flush: false,
         }
     }
+}
 
+impl<Protocol, C, Attempt> Driver<Protocol, C, Attempt>
+where
+    Protocol: for<'bytes> MqttProtocol<'bytes, Instant>,
+    C: Connector,
+    Attempt: Future<Output = Result<C::Connection, C::Error>>,
+{
     /// Hands `command` to the client, stamped with the current instant.
     ///
     /// This performs no I/O: an accepted command only takes effect on the
@@ -269,7 +287,8 @@ where
                     matches!(self.connection, Connection::Closed),
                     "client requested a socket while one is open"
                 );
-                self.connection = Connection::Opening(Box::pin(self.connector.connect()));
+                self.connection =
+                    Connection::Opening(Box::pin((self.connect)(&mut self.connector)));
             }
             DriverAction::CloseSocket => {
                 if let Connection::Open(socket) =
@@ -352,7 +371,7 @@ where
     }
 }
 
-impl<Protocol, C> core::fmt::Debug for Driver<Protocol, C>
+impl<Protocol, C, Attempt> core::fmt::Debug for Driver<Protocol, C, Attempt>
 where
     Protocol: core::fmt::Debug,
     C: Connector,

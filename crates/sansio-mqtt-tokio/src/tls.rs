@@ -1,5 +1,4 @@
 use core::future::Future;
-use core::pin::Pin;
 use std::io;
 use tokio_rustls::client::TlsStream;
 use tokio_rustls::rustls::pki_types::ServerName;
@@ -64,22 +63,18 @@ pub enum TlsConnectError<E> {
 impl<C> Connector for TlsConnector<C>
 where
     C: Connector,
-    C::Connection: Send + 'static,
-    C::Future: Send + 'static,
 {
     type Connection = TlsStream<C::Connection>;
     type Error = TlsConnectError<C::Error>;
-    type Future = Pin<Box<dyn Future<Output = Result<Self::Connection, Self::Error>> + Send>>;
-
-    fn connect(&mut self) -> Self::Future {
+    fn connect(&mut self) -> impl Future<Output = Result<Self::Connection, Self::Error>> + use<C> {
         let socket = self.inner.connect();
         let tls = self.tls.clone();
         let server_name = self.server_name.clone();
-        Box::pin(async move {
+        async move {
             let socket = socket.await.map_err(TlsConnectError::Transport)?;
             tls.connect(server_name, socket)
                 .await
                 .map_err(TlsConnectError::Handshake)
-        })
+        }
     }
 }
