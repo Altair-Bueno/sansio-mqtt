@@ -184,7 +184,7 @@ fn packet_exactly_at_maximum_packet_size_is_accepted() {
     let mut client = connecting_client(NonZero::new(size).expect("non-zero"));
 
     assert_eq!(read(&mut client, &small_connack()), Ok(()));
-    assert!(matches!(client.poll_read(), Some(Event::Connected)));
+    assert!(matches!(client.poll_read(), Some(Event::Connected { .. })));
 }
 
 /// One byte over the limit is rejected, even though its Remaining Length
@@ -204,7 +204,7 @@ fn connack_within_maximum_packet_size_is_accepted() {
     let mut client = connecting_client(NonZero::new(32).expect("non-zero"));
 
     assert_eq!(read(&mut client, &small_connack()), Ok(()));
-    assert!(matches!(client.poll_read(), Some(Event::Connected)));
+    assert!(matches!(client.poll_read(), Some(Event::Connected { .. })));
 }
 
 /// The client always advertises the Maximum Packet Size its parser enforces,
@@ -220,7 +220,7 @@ fn default_maximum_packet_size_is_advertised_and_enforced() {
     assert_eq!(connect.properties.maximum_packet_size, Some(default));
 
     assert_eq!(read(&mut client, &small_connack()), Ok(()));
-    assert!(matches!(client.poll_read(), Some(Event::Connected)));
+    assert!(matches!(client.poll_read(), Some(Event::Connected { .. })));
 
     // A PUBLISH fixed header whose Remaining Length (`0x81 0x80 0x40`,
     // 1_048_577) alone exceeds the limit is rejected from the header, before

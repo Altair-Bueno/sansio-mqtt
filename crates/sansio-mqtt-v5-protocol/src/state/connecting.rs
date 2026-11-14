@@ -23,6 +23,7 @@ use sansio_mqtt_v5_wire::ConnAck;
 use sansio_mqtt_v5_wire::ConnAckKind;
 use sansio_mqtt_v5_wire::ConnackReasonCode;
 use sansio_mqtt_v5_wire::ControlPacket;
+use sansio_mqtt_v5_wire::Utf8String;
 
 /// A connection attempt is in progress: `OpenSocket` has been requested and
 /// CONNACK has not arrived yet.
@@ -189,7 +190,16 @@ where
         }
     }
 
-    scratchpad.read_queue.push_back(Event::Connected);
+    // [MQTT-3.2.2-16] Report the Client Identifier the server assigned, so the
+    // application can reuse it to resume the session.
+    scratchpad.read_queue.push_back(Event::Connected {
+        assigned_client_id: connack
+            .properties
+            .assigned_client_identifier
+            .clone()
+            .map(Utf8String::into_inner),
+        session_present,
+    });
 
     if !session_present {
         // [MQTT-3.2.2-2] Session Present=0 means the server discarded any prior

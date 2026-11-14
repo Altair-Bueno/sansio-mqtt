@@ -247,7 +247,13 @@ fn connack_without_keep_alive_clears_the_connect_deadline() {
         T0 + Duration::from_secs(2),
     );
 
-    assert_eq!(drain_events(&mut client), vec![Event::Connected]);
+    assert_eq!(
+        drain_events(&mut client),
+        vec![Event::Connected {
+            assigned_client_id: None,
+            session_present: false
+        }]
+    );
     assert_eq!(client.poll_timeout(), None);
 }
 
@@ -267,7 +273,13 @@ fn connack_with_keep_alive_replaces_the_connect_deadline_with_keep_alive() {
         received_at,
     );
 
-    assert_eq!(drain_events(&mut client), vec![Event::Connected]);
+    assert_eq!(
+        drain_events(&mut client),
+        vec![Event::Connected {
+            assigned_client_id: None,
+            session_present: false
+        }]
+    );
     assert_eq!(
         client.poll_timeout(),
         Some(received_at + Duration::from_secs(10))

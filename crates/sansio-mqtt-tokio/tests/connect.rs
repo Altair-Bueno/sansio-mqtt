@@ -126,7 +126,13 @@ async fn connect_mqtt_url_connects_over_tcp() {
     let mut driver = connect(&parse(&format!("mqtt://127.0.0.1:{port}"))).unwrap();
 
     let broker = async { accept_connect(listener.accept().await.unwrap().0).await };
-    assert_eq!(first_event(&mut driver, broker).await, Event::Connected);
+    assert_eq!(
+        first_event(&mut driver, broker).await,
+        Event::Connected {
+            assigned_client_id: None,
+            session_present: false
+        }
+    );
 }
 
 #[tokio::test]
@@ -141,7 +147,10 @@ async fn connect_mqtt_url_accepts_a_domain_and_an_ipv6_literal() {
         let broker = async { accept_connect(listener.accept().await.unwrap().0).await };
         assert_eq!(
             first_event(&mut driver, broker).await,
-            Event::Connected,
+            Event::Connected {
+                assigned_client_id: None,
+                session_present: false
+            },
             "{host}"
         );
     }
@@ -241,7 +250,13 @@ async fn connect_mqtts_url_connects_over_tls() {
         let (tcp, _) = listener.accept().await.unwrap();
         accept_connect(acceptor.accept(tcp).await.unwrap()).await
     };
-    assert_eq!(first_event(&mut driver, broker).await, Event::Connected);
+    assert_eq!(
+        first_event(&mut driver, broker).await,
+        Event::Connected {
+            assigned_client_id: None,
+            session_present: false
+        }
+    );
 }
 
 #[tokio::test]
@@ -293,7 +308,13 @@ async fn connect_ws_url_connects_over_websocket() {
     let mut driver = connect(&parse(&format!("ws://127.0.0.1:{port}/mqtt?keep_alive=30"))).unwrap();
 
     let broker = async { accept_websocket_connect(listener.accept().await.unwrap().0).await };
-    assert_eq!(first_event(&mut driver, broker).await, Event::Connected);
+    assert_eq!(
+        first_event(&mut driver, broker).await,
+        Event::Connected {
+            assigned_client_id: None,
+            session_present: false
+        }
+    );
 }
 
 #[tokio::test]
@@ -310,7 +331,10 @@ async fn connect_wss_url_connects_over_websocket_over_tls() {
     };
     assert_eq!(
         first_event(&mut driver, Box::pin(broker)).await,
-        Event::Connected
+        Event::Connected {
+            assigned_client_id: None,
+            session_present: false
+        }
     );
 }
 
@@ -327,7 +351,13 @@ async fn connect_driver_can_be_spawned() {
         _ = broker => unreachable!(),
         event = timeout(STEP, client) => event.expect("no event within the timeout").unwrap(),
     };
-    assert_eq!(event, Event::Connected);
+    assert_eq!(
+        event,
+        Event::Connected {
+            assigned_client_id: None,
+            session_present: false
+        }
+    );
 }
 
 #[track_caller]

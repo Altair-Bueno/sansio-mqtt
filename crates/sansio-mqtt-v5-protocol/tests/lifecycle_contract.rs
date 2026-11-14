@@ -176,7 +176,13 @@ fn connected_with(
     let mut client = Client::<Duration>::new(settings);
     open_connecting(&mut client, options);
     assert_eq!(read(&mut client, ack), Ok(()));
-    assert_eq!(drain_events(&mut client), vec![Event::Connected]);
+    assert_eq!(
+        drain_events(&mut client),
+        vec![Event::Connected {
+            assigned_client_id: None,
+            session_present: false
+        }]
+    );
     client
 }
 
@@ -493,7 +499,13 @@ fn packets_after_a_fatal_one_in_the_same_read_are_discarded() {
         read(&mut client, &connack(ConnackReasonCode::Success)),
         Ok(())
     );
-    assert_eq!(drain_events(&mut client), vec![Event::Connected]);
+    assert_eq!(
+        drain_events(&mut client),
+        vec![Event::Connected {
+            assigned_client_id: None,
+            session_present: false
+        }]
+    );
 }
 
 // ── Invariant (a): no OpenSocket while a socket is open ────────────────────

@@ -119,7 +119,7 @@ async fn secure_websocket_carries_mqtt_through_tls() {
     tokio::select! {
         () = broker => unreachable!(),
         event = timeout(STEP, driver.next()) => {
-            assert_eq!(event.expect("no event within the timeout"), Event::Connected);
+            assert_eq!(event.expect("no event within the timeout"), Event::Connected { assigned_client_id: None, session_present: false });
         }
     }
 }

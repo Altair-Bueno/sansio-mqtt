@@ -170,8 +170,11 @@ async fn run(cli: &Cli, driver: &mut DynDriver) -> Result<(), BoxError> {
             reason = "`Event` is `#[non_exhaustive]`; the example logs every event it does not act on"
         )]
         let message = match event {
-            Event::Connected => {
-                tracing::info!(topic = %cli.topic, "connected, subscribing");
+            Event::Connected {
+                assigned_client_id,
+                session_present,
+            } => {
+                tracing::info!(topic = %cli.topic, ?assigned_client_id, session_present, "connected, subscribing");
                 driver.submit(cli.subscribe())?;
                 if let Some(publish) = cli.publish() {
                     driver.submit(publish)?;

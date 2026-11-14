@@ -130,7 +130,13 @@ async fn websocket_connector_carries_mqtt_in_binary_messages() {
     })
     .await;
 
-    assert_eq!(observed, [Event::Connected]);
+    assert_eq!(
+        observed,
+        [Event::Connected {
+            assigned_client_id: None,
+            session_present: false
+        }]
+    );
 }
 
 #[tokio::test]
@@ -152,7 +158,13 @@ async fn websocket_connector_reassembles_packets_split_across_messages() {
     })
     .await;
 
-    assert_eq!(observed, [Event::Connected]);
+    assert_eq!(
+        observed,
+        [Event::Connected {
+            assigned_client_id: None,
+            session_present: false
+        }]
+    );
 }
 
 #[tokio::test]
@@ -170,7 +182,13 @@ async fn websocket_connector_ignores_pings_between_mqtt_packets() {
     })
     .await;
 
-    assert_eq!(observed, [Event::Connected]);
+    assert_eq!(
+        observed,
+        [Event::Connected {
+            assigned_client_id: None,
+            session_present: false
+        }]
+    );
 }
 
 #[tokio::test]
@@ -188,7 +206,16 @@ async fn websocket_connector_text_message_closes_the_connection() {
     })
     .await;
 
-    assert_eq!(observed, [Event::Connected, Event::Disconnected(None)]);
+    assert_eq!(
+        observed,
+        [
+            Event::Connected {
+                assigned_client_id: None,
+                session_present: false
+            },
+            Event::Disconnected(None)
+        ]
+    );
 }
 
 #[tokio::test]
@@ -204,7 +231,16 @@ async fn websocket_connector_close_message_reports_disconnected() {
     })
     .await;
 
-    assert_eq!(observed, [Event::Connected, Event::Disconnected(None)]);
+    assert_eq!(
+        observed,
+        [
+            Event::Connected {
+                assigned_client_id: None,
+                session_present: false
+            },
+            Event::Disconnected(None)
+        ]
+    );
 }
 
 #[tokio::test]
@@ -253,7 +289,16 @@ async fn websocket_connector_dropped_connection_reports_disconnected() {
     })
     .await;
 
-    assert_eq!(observed, [Event::Connected, Event::Disconnected(None)]);
+    assert_eq!(
+        observed,
+        [
+            Event::Connected {
+                assigned_client_id: None,
+                session_present: false
+            },
+            Event::Disconnected(None)
+        ]
+    );
 }
 
 #[tokio::test]
@@ -273,7 +318,13 @@ async fn websocket_connector_disconnect_sends_disconnect_then_closes_the_websock
         (disconnect, close)
     };
     let client = async {
-        assert_eq!(driver.next().await, Event::Connected);
+        assert_eq!(
+            driver.next().await,
+            Event::Connected {
+                assigned_client_id: None,
+                session_present: false
+            }
+        );
         driver.submit(Command::Disconnect).unwrap();
         driver.next().await
     };

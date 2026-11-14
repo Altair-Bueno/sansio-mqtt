@@ -98,7 +98,7 @@ fn connect(client: &mut Client<Duration>) {
             .build(),
     );
     assert_eq!(read(client, &connack), Ok(()));
-    assert!(matches!(client.poll_read(), Some(Event::Connected)));
+    assert!(matches!(client.poll_read(), Some(Event::Connected { .. })));
 }
 
 /// `QoS` 1 publish with an app-chosen token: PUBACK echoes back that same

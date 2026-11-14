@@ -166,7 +166,10 @@ impl<'bytes>
             return Err(Error::InvalidStateTransition);
         }
         self.deadline = None;
-        self.events.push_back(Event::Connected);
+        self.events.push_back(Event::Connected {
+            assigned_client_id: None,
+            session_present: false,
+        });
         Ok(())
     }
 
@@ -214,7 +217,13 @@ async fn protocol_timers_fire_without_a_socket_even_after_a_rejected_timeout() {
         .await
         .expect("the protocol timer never fired");
 
-    assert_eq!(event, Event::Connected);
+    assert_eq!(
+        event,
+        Event::Connected {
+            assigned_client_id: None,
+            session_present: false
+        }
+    );
     // The first expiry was rejected and re-armed the timer one second later.
     assert!(started.elapsed() >= Duration::from_secs(2));
 }

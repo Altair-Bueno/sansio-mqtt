@@ -341,7 +341,13 @@ impl Harness {
                 .build(),
         );
         self.broker().write_all(&encode(&connack)).await.unwrap();
-        assert_eq!(self.event().await, Event::Connected);
+        assert_eq!(
+            self.event().await,
+            Event::Connected {
+                assigned_client_id: None,
+                session_present: false
+            }
+        );
     }
 }
 

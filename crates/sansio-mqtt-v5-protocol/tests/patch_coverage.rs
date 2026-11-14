@@ -132,7 +132,7 @@ fn connected_client(properties: ConnAckProperties) -> Client<Duration> {
     );
     assert!(client.poll_write().is_some(), "CONNECT should be queued");
     assert_eq!(read(&mut client, &connack(properties)), Ok(()));
-    assert!(matches!(client.poll_read(), Some(Event::Connected)));
+    assert!(matches!(client.poll_read(), Some(Event::Connected { .. })));
     client
 }
 
@@ -523,7 +523,7 @@ fn resumed_session_replays_qos2_publish_awaiting_pubrec() {
         ),
         Ok(())
     );
-    assert!(matches!(client.poll_read(), Some(Event::Connected)));
+    assert!(matches!(client.poll_read(), Some(Event::Connected { .. })));
 
     let replayed = ControlPacket::Publish(
         Publish::builder()

@@ -255,7 +255,7 @@ fn open_connecting(client: &mut Client<Duration>, options: ConnectOptions) -> By
 fn connect_client(client: &mut Client<Duration>, options: ConnectOptions) -> Bytes {
     let connect_bytes = open_connecting(client, options);
     assert_eq!(read(client, &success_connack()), Ok(()));
-    assert!(matches!(client.poll_read(), Some(Event::Connected)));
+    assert!(matches!(client.poll_read(), Some(Event::Connected { .. })));
     connect_bytes
 }
 
@@ -296,7 +296,6 @@ fn message_builder_default_qos_is_at_most_once() {
 fn event_exposes_qos_delivery_variants_with_token() {
     let no_ack = Event::Message(message("t", ProtoQos::AtMostOnce, b"x"));
     assert!(matches!(no_ack, Event::Message(_)));
-    assert!(matches!(Event::Connected, Event::Connected));
 
     let acknowledged = Event::PublishAcknowledged {
         token: 7,
@@ -626,7 +625,7 @@ fn connack_transitions_to_connected_and_emits_connected() {
     open_connecting(&mut client, connect_options());
 
     assert_eq!(read(&mut client, &success_connack()), Ok(()));
-    assert!(matches!(client.poll_read(), Some(Event::Connected)));
+    assert!(matches!(client.poll_read(), Some(Event::Connected { .. })));
 
     assert_eq!(
         client.handle_write(at_zero(Command::Publish {
@@ -1775,7 +1774,7 @@ fn connack_receive_maximum_only_limits_broker_facing_publish_flow() {
         ),
         Ok(())
     );
-    assert!(matches!(client.poll_read(), Some(Event::Connected)));
+    assert!(matches!(client.poll_read(), Some(Event::Connected { .. })));
 
     let first_message = message("test/topic", ProtoQos::AtLeastOnce, b"qos1-first");
     assert_eq!(
@@ -1880,7 +1879,7 @@ fn effective_limits_recompute_on_connect_socketconnected_connack_and_socketclose
         ),
         Ok(())
     );
-    assert!(matches!(client.poll_read(), Some(Event::Connected)));
+    assert!(matches!(client.poll_read(), Some(Event::Connected { .. })));
 
     assert_eq!(
         client.handle_write(at_zero(Command::Publish {
@@ -1909,7 +1908,7 @@ fn effective_limits_recompute_on_connect_socketconnected_connack_and_socketclose
         ),
         Ok(())
     );
-    assert!(matches!(client.poll_read(), Some(Event::Connected)));
+    assert!(matches!(client.poll_read(), Some(Event::Connected { .. })));
 
     assert_eq!(
         client.handle_write(at_zero(Command::Publish {
@@ -1936,7 +1935,7 @@ fn effective_limits_recompute_on_connect_applies_pending_connect_options() {
         ),
         Ok(())
     );
-    assert!(matches!(client.poll_read(), Some(Event::Connected)));
+    assert!(matches!(client.poll_read(), Some(Event::Connected { .. })));
 
     let qos2_message = message("test/qos2", ProtoQos::ExactlyOnce, b"qos2");
     assert_eq!(
@@ -1963,7 +1962,7 @@ fn effective_limits_recompute_on_connack_applies_broker_receive_maximum() {
         ),
         Ok(())
     );
-    assert!(matches!(client.poll_read(), Some(Event::Connected)));
+    assert!(matches!(client.poll_read(), Some(Event::Connected { .. })));
 
     let first = message("test/first", ProtoQos::AtLeastOnce, b"1");
     assert_eq!(
@@ -1999,7 +1998,7 @@ fn app_retain_policy_false_blocks_retain_publish_even_if_broker_allows() {
         ),
         Ok(())
     );
-    assert!(matches!(client.poll_read(), Some(Event::Connected)));
+    assert!(matches!(client.poll_read(), Some(Event::Connected { .. })));
 
     let mut retained_message = message("retain/topic", ProtoQos::AtMostOnce, b"retained");
     retained_message.retain = true;
@@ -2034,7 +2033,7 @@ fn app_subscription_policy_flags_override_broker_allowances() {
         ),
         Ok(())
     );
-    assert!(matches!(client.poll_read(), Some(Event::Connected)));
+    assert!(matches!(client.poll_read(), Some(Event::Connected { .. })));
 
     assert_eq!(
         client.handle_write(at_zero(Command::Subscribe(
@@ -2166,7 +2165,7 @@ fn receive_maximum_full_returns_immediate_error_for_new_qos2_publish() {
         ),
         Ok(())
     );
-    assert!(matches!(client.poll_read(), Some(Event::Connected)));
+    assert!(matches!(client.poll_read(), Some(Event::Connected { .. })));
 
     let first_message = message("test/topic", ProtoQos::ExactlyOnce, b"qos2-first");
     assert_eq!(
@@ -2329,7 +2328,7 @@ fn publish_rejects_packet_exceeding_connack_maximum_packet_size() {
         ),
         Ok(())
     );
-    assert!(matches!(client.poll_read(), Some(Event::Connected)));
+    assert!(matches!(client.poll_read(), Some(Event::Connected { .. })));
 
     let message = message("test/topic", ProtoQos::AtMostOnce, &[0; 64]);
     assert_eq!(
@@ -2354,7 +2353,7 @@ fn subscribe_rejects_packet_exceeding_connack_maximum_packet_size() {
         ),
         Ok(())
     );
-    assert!(matches!(client.poll_read(), Some(Event::Connected)));
+    assert!(matches!(client.poll_read(), Some(Event::Connected { .. })));
 
     assert_eq!(
         client.handle_write(at_zero(subscribe_one(app_subscription(
@@ -2382,7 +2381,7 @@ fn unsubscribe_rejects_packet_exceeding_connack_maximum_packet_size() {
         ),
         Ok(())
     );
-    assert!(matches!(client.poll_read(), Some(Event::Connected)));
+    assert!(matches!(client.poll_read(), Some(Event::Connected { .. })));
 
     assert_eq!(
         client.handle_write(at_zero(unsubscribe_one("a/very/long/topic/filter"))),
@@ -2420,7 +2419,7 @@ fn keep_alive_pingreq_exceeding_connack_maximum_packet_size_closes_the_connectio
         ),
         Ok(())
     );
-    assert!(matches!(client.poll_read(), Some(Event::Connected)));
+    assert!(matches!(client.poll_read(), Some(Event::Connected { .. })));
     assert_eq!(client.poll_timeout(), Some(Duration::from_secs(10)));
 
     assert_eq!(client.handle_timeout(Duration::from_secs(10)), Ok(()));
@@ -2486,7 +2485,7 @@ fn rejected_connect_does_not_mutate_pending_connect_options() {
     assert!(client.poll_event().is_none());
     assert_eq!(client.poll_write(), None);
     assert_eq!(read(&mut client, &success_connack()), Ok(()));
-    assert!(matches!(client.poll_read(), Some(Event::Connected)));
+    assert!(matches!(client.poll_read(), Some(Event::Connected { .. })));
 }
 
 #[test]
@@ -2505,7 +2504,7 @@ fn reconnect_ignores_previous_connack_maximum_packet_size_for_connect() {
         ),
         Ok(())
     );
-    assert!(matches!(client.poll_read(), Some(Event::Connected)));
+    assert!(matches!(client.poll_read(), Some(Event::Connected { .. })));
 
     assert_eq!(
         client.handle_event(at_zero(DriverEvent::SocketClosed)),
@@ -2548,7 +2547,7 @@ fn connack_resume_without_local_state_is_accepted_when_clean_start_false() {
     open_connecting(&mut client, options);
 
     assert_eq!(read(&mut client, &resume_connack()), Ok(()));
-    assert!(matches!(client.poll_read(), Some(Event::Connected)));
+    assert!(matches!(client.poll_read(), Some(Event::Connected { .. })));
     assert!(client.poll_event().is_none());
 }
 
@@ -2595,7 +2594,7 @@ fn resumed_session_replays_outbound_qos_publish_with_dup_set() {
 
     open_connecting(&mut client, session_expiry_options(30));
     assert_eq!(read(&mut client, &resume_connack()), Ok(()));
-    assert!(matches!(client.poll_read(), Some(Event::Connected)));
+    assert!(matches!(client.poll_read(), Some(Event::Connected { .. })));
 
     let replay_publish = ControlPacket::Publish(
         Publish::builder()
@@ -2740,7 +2739,7 @@ fn resumed_session_replays_unacknowledged_pubrel() {
 
     open_connecting(&mut client, session_expiry_options(30));
     assert_eq!(read(&mut client, &resume_connack()), Ok(()));
-    assert!(matches!(client.poll_read(), Some(Event::Connected)));
+    assert!(matches!(client.poll_read(), Some(Event::Connected { .. })));
     assert_eq!(
         client.poll_write(),
         Some(encode_packet(&ControlPacket::PubRel(
@@ -2847,7 +2846,7 @@ fn non_resumed_session_drops_inflight_and_emits_publish_dropped_events() {
 
     open_connecting(&mut client, session_expiry_options(30));
     assert_eq!(read(&mut client, &success_connack()), Ok(()));
-    assert!(matches!(client.poll_read(), Some(Event::Connected)));
+    assert!(matches!(client.poll_read(), Some(Event::Connected { .. })));
     assert_eq!(
         client.poll_read(),
         Some(Event::PublishDropped {
@@ -2933,7 +2932,7 @@ fn non_resumed_connack_discards_all_local_session_state() {
 
     open_connecting(&mut client, connect_options());
     assert_eq!(read(&mut client, &success_connack()), Ok(()));
-    assert!(matches!(client.poll_read(), Some(Event::Connected)));
+    assert!(matches!(client.poll_read(), Some(Event::Connected { .. })));
 
     let pubrel = ControlPacket::PubRel(
         PubRel::builder()
@@ -2980,7 +2979,7 @@ fn non_resumed_connack_discards_all_local_session_state() {
     assert!(matches!(client.poll_read(), Some(Event::Disconnected(_))));
     open_connecting(&mut client, connect_options());
     assert_eq!(read(&mut client, &success_connack()), Ok(()));
-    assert!(matches!(client.poll_read(), Some(Event::Connected)));
+    assert!(matches!(client.poll_read(), Some(Event::Connected { .. })));
 
     let stale_unsuback = ControlPacket::UnsubAck(
         UnsubAck::builder()
@@ -3016,7 +3015,7 @@ fn stale_read_buffer_is_cleared_on_socket_closed() {
 
     open_connecting(&mut client, connect_options());
     assert_eq!(read(&mut client, &success_connack()), Ok(()));
-    assert!(matches!(client.poll_read(), Some(Event::Connected)));
+    assert!(matches!(client.poll_read(), Some(Event::Connected { .. })));
 }
 
 #[test]
@@ -3045,7 +3044,7 @@ fn stale_read_buffer_is_cleared_on_socket_error() {
 
     open_connecting(&mut client, connect_options());
     assert_eq!(read(&mut client, &success_connack()), Ok(()));
-    assert!(matches!(client.poll_read(), Some(Event::Connected)));
+    assert!(matches!(client.poll_read(), Some(Event::Connected { .. })));
 }
 
 #[test]
@@ -3070,7 +3069,7 @@ fn stale_read_buffer_is_cleared_on_user_disconnect() {
 
     open_connecting(&mut client, connect_options());
     assert_eq!(read(&mut client, &success_connack()), Ok(()));
-    assert!(matches!(client.poll_read(), Some(Event::Connected)));
+    assert!(matches!(client.poll_read(), Some(Event::Connected { .. })));
 }
 
 #[test]
@@ -3095,7 +3094,7 @@ fn stale_read_buffer_is_cleared_on_close() {
 
     open_connecting(&mut client, connect_options());
     assert_eq!(read(&mut client, &success_connack()), Ok(()));
-    assert!(matches!(client.poll_read(), Some(Event::Connected)));
+    assert!(matches!(client.poll_read(), Some(Event::Connected { .. })));
 }
 
 #[test]
@@ -3154,7 +3153,7 @@ fn close_succeeds_even_when_disconnect_packet_exceeds_maximum_packet_size() {
         ),
         Ok(())
     );
-    assert!(matches!(client.poll_read(), Some(Event::Connected)));
+    assert!(matches!(client.poll_read(), Some(Event::Connected { .. })));
 
     assert_eq!(client.close(), Ok(()));
     assert_eq!(client.poll_write(), None);
@@ -3187,7 +3186,7 @@ fn user_disconnect_succeeds_even_when_disconnect_packet_exceeds_maximum_packet_s
         ),
         Ok(())
     );
-    assert!(matches!(client.poll_read(), Some(Event::Connected)));
+    assert!(matches!(client.poll_read(), Some(Event::Connected { .. })));
 
     assert_eq!(client.handle_write(at_zero(Command::Disconnect)), Ok(()));
     assert_eq!(client.poll_write(), None);
@@ -3308,7 +3307,7 @@ fn connecting_auth_then_connack_success_transitions_connected() {
         Ok(())
     );
     assert_eq!(read(&mut client, &success_connack()), Ok(()));
-    assert!(matches!(client.poll_read(), Some(Event::Connected)));
+    assert!(matches!(client.poll_read(), Some(Event::Connected { .. })));
 }
 
 #[test]
@@ -3359,7 +3358,7 @@ fn publish_qos_above_server_maximum_qos_is_rejected() {
         ),
         Ok(())
     );
-    assert!(matches!(client.poll_read(), Some(Event::Connected)));
+    assert!(matches!(client.poll_read(), Some(Event::Connected { .. })));
 
     assert_eq!(
         client.handle_write(at_zero(Command::Publish {
@@ -3382,7 +3381,7 @@ fn publish_retain_when_server_retain_not_available_is_rejected() {
         ),
         Ok(())
     );
-    assert!(matches!(client.poll_read(), Some(Event::Connected)));
+    assert!(matches!(client.poll_read(), Some(Event::Connected { .. })));
 
     let mut retained_message = message("retain/guard", ProtoQos::AtMostOnce, b"payload");
     retained_message.retain = true;
@@ -3425,7 +3424,7 @@ fn subscribe_wildcard_when_server_disallows_is_rejected() {
         ),
         Ok(())
     );
-    assert!(matches!(client.poll_read(), Some(Event::Connected)));
+    assert!(matches!(client.poll_read(), Some(Event::Connected { .. })));
 
     assert_eq!(
         client.handle_write(at_zero(subscribe_one(app_subscription("topic/#")))),
@@ -3451,7 +3450,7 @@ fn subscribe_shared_when_server_disallows_is_rejected() {
         ),
         Ok(())
     );
-    assert!(matches!(client.poll_read(), Some(Event::Connected)));
+    assert!(matches!(client.poll_read(), Some(Event::Connected { .. })));
 
     assert_eq!(
         client.handle_write(at_zero(subscribe_one(app_subscription("$share/g/topic")))),
@@ -3477,7 +3476,7 @@ fn subscribe_identifier_when_server_disallows_is_rejected() {
         ),
         Ok(())
     );
-    assert!(matches!(client.poll_read(), Some(Event::Connected)));
+    assert!(matches!(client.poll_read(), Some(Event::Connected { .. })));
 
     assert_eq!(
         client.handle_write(at_zero(Command::Subscribe(
@@ -3506,7 +3505,7 @@ fn connecting_auth_continue_then_connack_success_connects() {
         Ok(())
     );
     assert_eq!(read(&mut client, &success_connack()), Ok(()));
-    assert!(matches!(client.poll_read(), Some(Event::Connected)));
+    assert!(matches!(client.poll_read(), Some(Event::Connected { .. })));
 }
 
 /// [MQTT-4.12.0-2] AUTH in the Connected state must be forwarded to the
@@ -3562,7 +3561,7 @@ fn connack_server_keep_alive_zero_disables_keepalive_without_panic() {
         ),
         Ok(())
     );
-    assert!(matches!(client.poll_read(), Some(Event::Connected)));
+    assert!(matches!(client.poll_read(), Some(Event::Connected { .. })));
 
     assert_eq!(client.handle_timeout(Duration::from_secs(1)), Ok(()));
     assert_eq!(client.poll_write(), None);
@@ -3650,7 +3649,7 @@ fn connack_session_expiry_zero_overrides_client_session_should_persist() {
             .build(),
     );
     assert_eq!(read(&mut client, &connack_no_persist), Ok(()));
-    assert!(matches!(client.poll_read(), Some(Event::Connected)));
+    assert!(matches!(client.poll_read(), Some(Event::Connected { .. })));
 
     assert_eq!(
         client.handle_write(at_zero(Command::Publish {
@@ -3672,7 +3671,7 @@ fn connack_session_expiry_zero_overrides_client_session_should_persist() {
     assert_eq!(read(&mut client, &connack_no_persist), Ok(()));
     let first = client.poll_read();
     assert!(
-        matches!(first, Some(Event::Connected)),
+        matches!(first, Some(Event::Connected { .. })),
         "expected Connected, got {first:?}"
     );
     assert!(
@@ -3701,7 +3700,7 @@ fn connack_session_expiry_nonzero_sets_session_should_persist() {
             .build(),
     );
     assert_eq!(read(&mut client, &connack_persist), Ok(()));
-    assert!(matches!(client.poll_read(), Some(Event::Connected)));
+    assert!(matches!(client.poll_read(), Some(Event::Connected { .. })));
 
     assert_eq!(
         client.handle_write(at_zero(Command::Publish {
@@ -3725,7 +3724,7 @@ fn connack_session_expiry_nonzero_sets_session_should_persist() {
     let first = client.poll_read();
     let second = client.poll_read();
     assert!(
-        matches!(first, Some(Event::Connected)),
+        matches!(first, Some(Event::Connected { .. })),
         "expected Connected, got {first:?}"
     );
     assert!(
@@ -3812,7 +3811,7 @@ fn session_with_expiry_keeps_inflight_across_graceful_disconnect() {
 
     open_connecting(&mut client, session_expiry_options(30));
     assert_eq!(read(&mut client, &resume_connack()), Ok(()));
-    assert!(matches!(client.poll_read(), Some(Event::Connected)));
+    assert!(matches!(client.poll_read(), Some(Event::Connected { .. })));
 
     let replay_publish = client.poll_write().expect("replayed publish expected");
     assert_eq!(replay_publish.len(), publish.len());
@@ -3844,7 +3843,7 @@ fn zero_session_expiry_clears_inflight_on_disconnect() {
 
     open_connecting(&mut client, session_expiry_options(0));
     assert_eq!(read(&mut client, &resume_connack()), Ok(()));
-    assert!(matches!(client.poll_read(), Some(Event::Connected)));
+    assert!(matches!(client.poll_read(), Some(Event::Connected { .. })));
     assert_eq!(client.poll_write(), None);
     assert!(client.poll_event().is_none());
 }
@@ -3871,7 +3870,7 @@ fn zero_session_expiry_clears_inflight_on_socket_closed() {
 
     open_connecting(&mut client, session_expiry_options(0));
     assert_eq!(read(&mut client, &resume_connack()), Ok(()));
-    assert!(matches!(client.poll_read(), Some(Event::Connected)));
+    assert!(matches!(client.poll_read(), Some(Event::Connected { .. })));
 
     let replay = client.poll_write();
     assert_eq!(replay, None);
@@ -3922,7 +3921,7 @@ fn keepalive_timeout_with_session_expiry_preserves_inflight_for_resume() {
     );
     open_connecting(&mut client, options);
     assert_eq!(read(&mut client, &resume_connack()), Ok(()));
-    assert!(matches!(client.poll_read(), Some(Event::Connected)));
+    assert!(matches!(client.poll_read(), Some(Event::Connected { .. })));
 
     let replay_publish = client.poll_write().expect("replayed publish expected");
     assert_eq!(replay_publish.len(), first_publish.len());
@@ -4139,7 +4138,7 @@ fn make_connected_client_with_keep_alive(keep_alive_secs: Option<u16>) -> Client
         ),
         Ok(())
     );
-    assert!(matches!(client.poll_read(), Some(Event::Connected)));
+    assert!(matches!(client.poll_read(), Some(Event::Connected { .. })));
     client
 }
 
@@ -4163,7 +4162,7 @@ fn keep_alive_timer_armed_after_connack_uses_received_at_timestamp() {
         ),
         Ok(())
     );
-    assert!(matches!(client.poll_read(), Some(Event::Connected)));
+    assert!(matches!(client.poll_read(), Some(Event::Connected { .. })));
     // Tr = received_at + interval = 100 + 30 = 130.
     assert_eq!(client.poll_timeout(), Some(Duration::from_secs(130)));
 }
@@ -4173,7 +4172,7 @@ fn keep_alive_timer_not_armed_when_no_keep_alive_configured() {
     let mut client = Client::<Duration>::new(ClientSettings::builder().keep_alive(None).build());
     open_connecting(&mut client, connect_options());
     assert_eq!(read(&mut client, &success_connack()), Ok(()));
-    assert!(matches!(client.poll_read(), Some(Event::Connected)));
+    assert!(matches!(client.poll_read(), Some(Event::Connected { .. })));
 
     assert_eq!(client.poll_timeout(), None);
 }
@@ -4186,7 +4185,7 @@ fn keep_alive_from_settings_arms_the_timer_after_connack() {
     let mut client = Client::<Duration>::default();
     open_connecting(&mut client, connect_options());
     assert_eq!(read(&mut client, &success_connack()), Ok(()));
-    assert!(matches!(client.poll_read(), Some(Event::Connected)));
+    assert!(matches!(client.poll_read(), Some(Event::Connected { .. })));
 
     assert_eq!(
         client.poll_timeout(),
@@ -4355,7 +4354,7 @@ fn reconnect_from_disconnected_preserves_connect_options_for_effective_limit_rec
         .poll_write()
         .expect("reconnect CONNECT frame expected");
     assert_eq!(read(&mut client, &success_connack()), Ok(()));
-    assert!(matches!(client.poll_read(), Some(Event::Connected)));
+    assert!(matches!(client.poll_read(), Some(Event::Connected { .. })));
 
     let alias = NonZero::new(5).expect("non-zero alias");
     let publish_with_alias = ControlPacket::Publish(
@@ -4471,4 +4470,65 @@ fn subscribe_identifier_above_variable_byte_integer_maximum_is_rejected() {
         Err(Error::PacketTooLarge)
     );
     assert_eq!(client.poll_write(), None);
+}
+
+/// [MQTT-3.2.2-16] A server-assigned Client Identifier in CONNACK is reported
+/// on `Event::Connected`, so the application can reuse it to resume the
+/// session on the next connection.
+#[test]
+fn connected_event_reports_server_assigned_client_identifier() {
+    let mut client = Client::<Duration>::default();
+    open_connecting(
+        &mut client,
+        ConnectOptions::builder()
+            .client_id(ByteString::from_static(""))
+            .build(),
+    );
+
+    let connack = connack_with_properties(
+        ConnAckProperties::builder()
+            .assigned_client_identifier(Utf8String::try_from("assigned-42").expect("valid utf8"))
+            .build(),
+    );
+    assert_eq!(read(&mut client, &connack), Ok(()));
+    assert_eq!(
+        client.poll_read(),
+        Some(Event::Connected {
+            assigned_client_id: Some(ByteString::from_static("assigned-42")),
+            session_present: false,
+        })
+    );
+}
+
+/// Without an Assigned Client Identifier property, `Event::Connected` carries
+/// none: the Client Identifier sent in CONNECT stays in effect.
+#[test]
+fn connected_event_without_assigned_client_identifier_reports_none() {
+    let mut client = Client::<Duration>::default();
+    open_connecting(&mut client, connect_options());
+    assert_eq!(read(&mut client, &success_connack()), Ok(()));
+    assert_eq!(
+        client.poll_read(),
+        Some(Event::Connected {
+            assigned_client_id: None,
+            session_present: false,
+        })
+    );
+}
+
+/// [MQTT-3.2.2-2] CONNACK Session Present = 1 is reported on
+/// `Event::Connected`, so the application knows the server kept its
+/// subscriptions.
+#[test]
+fn connected_event_reports_session_present_on_resume() {
+    let mut client = Client::<Duration>::default();
+    open_connecting(&mut client, session_expiry_options(30));
+    assert_eq!(read(&mut client, &resume_connack()), Ok(()));
+    assert_eq!(
+        client.poll_read(),
+        Some(Event::Connected {
+            assigned_client_id: None,
+            session_present: true,
+        })
+    );
 }

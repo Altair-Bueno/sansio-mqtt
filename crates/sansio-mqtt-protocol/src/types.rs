@@ -264,12 +264,37 @@ pub struct Authentication {
 /// Properties the client negotiates once for all connections (Keep Alive,
 /// Receive Maximum, Maximum Packet Size, ...) belong to the version-specific
 /// client settings instead.
+///
+/// # Resuming a session
+///
+/// The client never reconnects on its own: after [`Event::Disconnected`] the
+/// application submits another [`Command::Connect`] to the same client. The
+/// session (MQTT v5.0 section 4.1) carries over when every connection uses:
+///
+/// - the same non-empty [`client_id`](Self::client_id), or the one reported in
+///   [`Event::Connected`] if the server assigned it;
+/// - [`clean_start`](Self::clean_start) unset;
+/// - a non-zero [`session_expiry`](Self::session_expiry), which the server may
+///   override in CONNACK.
+///
+/// [`Event::Connected`] reports whether the server resumed the session. If it
+/// did (CONNACK Session Present = 1), the client retransmits every
+/// unacknowledged `QoS` 1 and `QoS` 2 PUBLISH with DUP set and every
+/// unacknowledged PUBREL [MQTT-4.4.0-1] [MQTT-4.4.0-2];
+/// subscriptions are kept by the server. Otherwise each message still in
+/// flight is reported as [`Event::PublishDropped`] with
+/// [`DropReason::SessionNotResumed`], and the application must subscribe
+/// again.
+///
+/// The session lives in the client's memory only: it does not survive the
+/// client being dropped.
 #[derive(Debug, Clone, PartialEq, Eq, bon::Builder)]
 #[builder(on(ByteString, into), on(Bytes, into))]
 #[non_exhaustive]
 pub struct ConnectOptions {
     /// The Client Identifier (section 3.1.3.1). Empty by default, which asks
-    /// the server to assign one [MQTT-3.1.3-6].
+    /// the server to assign one [MQTT-3.1.3-6], reported in
+    /// [`Event::Connected`].
     #[builder(default)]
     pub client_id: ByteString,
     /// The Clean Start flag (section 3.1.2.4): if set, the server discards any
@@ -544,7 +569,20 @@ pub enum Command {
 #[non_exhaustive]
 pub enum Event {
     /// The server accepted the connection with a successful CONNACK.
-    Connected,
+    Connected {
+        /// The Assigned Client Identifier property (MQTT v5.0 section
+        /// 3.2.2.3.7), present when the CONNECT carried an empty
+        /// [`ConnectOptions::client_id`] and the server chose one
+        /// [MQTT-3.2.2-16]. Pass it as the `client_id` of the next
+        /// [`Command::Connect`] to resume the session. `None` when the server
+        /// kept the Client Identifier sent in CONNECT.
+        assigned_client_id: Option<ByteString>,
+        /// The CONNACK Session Present flag (MQTT v5.0 section 3.2.2.1.1):
+        /// `true` when the server resumed the session of a previous connection,
+        /// keeping its subscriptions [MQTT-3.2.2-2]. When `false`, the server
+        /// started a new session and the application must subscribe again.
+        session_present: bool,
+    },
     /// The connection or connection attempt ended.
     ///
     /// Carries the Reason Code that ended it when one applies: the one in the
