@@ -1,4 +1,4 @@
-use crate::Connector;
+use crate::connector::Connector;
 use bytes::Bytes;
 use core::future::Future;
 use core::future::pending;

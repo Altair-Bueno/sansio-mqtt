@@ -16,12 +16,8 @@ use sansio_mqtt_protocol::Command;
 use sansio_mqtt_protocol::ConnectOptions;
 use sansio_mqtt_protocol::Event;
 use sansio_mqtt_tokio::Driver;
-use sansio_mqtt_tokio::RustlsConnector;
-use sansio_mqtt_tokio::TcpConnector;
-use sansio_mqtt_tokio::rustls::ClientConfig;
-use sansio_mqtt_tokio::rustls::RootCertStore;
-use sansio_mqtt_tokio::rustls::ServerConfig;
-use sansio_mqtt_tokio::rustls::pki_types::ServerName;
+use sansio_mqtt_tokio::connector::RustlsConnector;
+use sansio_mqtt_tokio::connector::TcpConnector;
 use sansio_mqtt_v5_protocol::Client;
 use tokio::io::AsyncReadExt as _;
 use tokio::net::TcpListener;
@@ -29,6 +25,10 @@ use tokio::net::TcpStream;
 use tokio::time::Instant;
 use tokio::time::timeout;
 use tokio_rustls::TlsAcceptor;
+use tokio_rustls::rustls::ClientConfig;
+use tokio_rustls::rustls::RootCertStore;
+use tokio_rustls::rustls::ServerConfig;
+use tokio_rustls::rustls::pki_types::ServerName;
 
 const STEP: Duration = Duration::from_secs(2);
 

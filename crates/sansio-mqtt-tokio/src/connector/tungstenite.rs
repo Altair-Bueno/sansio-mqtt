@@ -21,7 +21,7 @@ use tokio_tungstenite::tungstenite::http::HeaderValue;
 use tokio_tungstenite::tungstenite::http::Uri;
 use tokio_tungstenite::tungstenite::http::header::SEC_WEBSOCKET_PROTOCOL;
 
-use crate::Connector;
+use super::Connector;
 
 /// Runs MQTT over a WebSocket (MQTT v5.0 §6) on the sockets another
 /// [`Connector`] opens: plain TCP for `ws://`, TLS for `wss://`.

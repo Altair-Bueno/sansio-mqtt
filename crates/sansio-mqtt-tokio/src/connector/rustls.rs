@@ -3,7 +3,7 @@ use std::io;
 use tokio_rustls::client::TlsStream;
 use tokio_rustls::rustls::pki_types::ServerName;
 
-use crate::Connector;
+use super::Connector;
 
 /// Runs TLS over the sockets another [`Connector`] opens, using rustls.
 ///

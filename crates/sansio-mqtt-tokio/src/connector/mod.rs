@@ -1,9 +1,33 @@
+//! The sockets a [`Driver`](crate::Driver) talks MQTT over.
+//!
+//! Connectors compose by wrapping one another:
+//!
+//! - [`TcpConnector`] opens plain TCP connections.
+//! - `RustlsConnector` (feature `tokio-rustls`) adds TLS on top of any
+//!   connector, using rustls.
+//! - `TungsteniteConnector` (feature `tokio-tungstenite`) carries MQTT over
+//!   WebSocket, as specified in MQTT v5.0 section 6, using tungstenite.
 use core::future::Future;
-use std::io;
 use tokio::io::AsyncRead;
 use tokio::io::AsyncWrite;
-use tokio::net::TcpStream;
-use tokio::net::ToSocketAddrs;
+
+#[cfg(feature = "tokio-rustls")]
+mod rustls;
+mod tcp;
+#[cfg(feature = "tokio-tungstenite")]
+mod tungstenite;
+
+#[cfg(feature = "tokio-rustls")]
+pub use rustls::RustlsConnectError;
+#[cfg(feature = "tokio-rustls")]
+pub use rustls::RustlsConnector;
+pub use tcp::TcpConnector;
+#[cfg(feature = "tokio-tungstenite")]
+pub use tungstenite::TungsteniteConnectError;
+#[cfg(feature = "tokio-tungstenite")]
+pub use tungstenite::TungsteniteConnection;
+#[cfg(feature = "tokio-tungstenite")]
+pub use tungstenite::TungsteniteConnector;
 
 /// Opens the sockets a [`Driver`](crate::Driver) talks MQTT over.
 ///
@@ -46,40 +70,5 @@ where
         &mut self,
     ) -> impl Future<Output = Result<Connection, Error>> + use<F, Fut, Connection, Error> {
         self()
-    }
-}
-
-/// Opens plain TCP connections to a fixed broker address.
-///
-/// The address is anything [`ToSocketAddrs`] accepts, e.g.
-/// `"broker.example:1883"` or a [`SocketAddr`](std::net::SocketAddr), and
-/// is resolved again on every attempt. Nagle's algorithm is disabled, since
-/// MQTT exchanges many small packets.
-#[derive(Debug, Clone)]
-pub struct TcpConnector<Address> {
-    address: Address,
-}
-
-impl<Address> TcpConnector<Address> {
-    /// Creates a connector to `address`.
-    pub const fn new(address: Address) -> Self {
-        Self { address }
-    }
-}
-
-impl<Address> Connector for TcpConnector<Address>
-where
-    Address: ToSocketAddrs + Clone,
-{
-    type Connection = TcpStream;
-    type Error = io::Error;
-
-    fn connect(&mut self) -> impl Future<Output = io::Result<TcpStream>> + use<Address> {
-        let address = self.address.clone();
-        async move {
-            let stream = TcpStream::connect(address).await?;
-            stream.set_nodelay(true)?;
-            Ok(stream)
-        }
     }
 }
