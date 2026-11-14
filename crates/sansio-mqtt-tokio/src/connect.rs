@@ -4,7 +4,6 @@ use alloc::boxed::Box;
 use alloc::string::String;
 use alloc::string::ToString as _;
 use alloc::vec::Vec;
-use core::future::Future;
 use sansio_mqtt_v5_protocol::Client;
 use sansio_mqtt_v5_protocol::ClientSettings;
 use std::path::PathBuf;
@@ -13,13 +12,9 @@ use url::Host;
 use url::Url;
 use url::form_urlencoded;
 
-use crate::DynConnectError;
-use crate::DynConnection;
 use crate::DynConnector;
 use crate::DynDriver;
 use crate::DynProtocol;
-use crate::Socket;
-use crate::connector::Connector as _;
 use crate::connector::TcpConnector;
 
 /// Creates a driver for the broker `url` names, speaking the latest MQTT
@@ -101,7 +96,7 @@ pub fn connect(url: &Url) -> Result<DynDriver, BrokerUrlError> {
     let port = url.port().unwrap_or(transport.default_port());
     let connector = transport.connector(url, host, port, parameters.ca)?;
     let client = Client::<Instant>::new(parameters.settings);
-    Ok(DynDriver::new_dyn(DynProtocol::new(client), connector))
+    Ok(DynDriver::new(DynProtocol::new(client), connector))
 }
 
 /// Why [`connect`] could not build a driver for a broker URL.
@@ -258,23 +253,17 @@ impl Transport {
         port: u16,
         ca: Option<PathBuf>,
     ) -> Result<DynConnector, BrokerUrlError> {
-        let mut tcp = TcpConnector::new((host.clone(), port));
+        let tcp = TcpConnector::new((host.clone(), port));
         match self {
-            Self::Tcp => Ok(erase(move || tcp.connect())),
+            Self::Tcp => Ok(DynConnector::new(tcp)),
             #[cfg(feature = "tokio-rustls")]
-            Self::Tls => {
-                let mut tls = tls::connector(tcp, host, ca)?;
-                Ok(erase(move || tls.connect()))
-            }
+            Self::Tls => Ok(DynConnector::new(tls::connector(tcp, host, ca)?)),
             #[cfg(feature = "tokio-tungstenite")]
-            Self::WebSocket => {
-                let mut websocket = websocket::connector(tcp, url, port);
-                Ok(erase(move || websocket.connect()))
-            }
+            Self::WebSocket => Ok(DynConnector::new(websocket::connector(tcp, url, port))),
             #[cfg(all(feature = "tokio-rustls", feature = "tokio-tungstenite"))]
             Self::SecureWebSocket => {
-                let mut websocket = websocket::connector(tls::connector(tcp, host, ca)?, url, port);
-                Ok(erase(move || websocket.connect()))
+                let tls = tls::connector(tcp, host, ca)?;
+                Ok(DynConnector::new(websocket::connector(tls, url, port)))
             }
             #[cfg(not(feature = "tokio-rustls"))]
             Self::Tls => Err(BrokerUrlError::TransportDisabled {
@@ -297,32 +286,6 @@ impl Transport {
             }),
         }
     }
-}
-
-/// Erases the type of a connector, given as the closure that starts its
-/// attempts.
-///
-/// Taking the connector's `connect` as a closure lets the caller, which knows
-/// the concrete connector, prove its attempts are `Send`.
-fn erase<F, Attempt, S, E>(mut connect: F) -> DynConnector
-where
-    F: FnMut() -> Attempt + Send + 'static,
-    Attempt: Future<Output = Result<S, E>> + Send + 'static,
-    S: Socket + 'static,
-    E: core::error::Error + Send + Sync + 'static,
-{
-    DynConnector::new(move || {
-        let attempt = connect();
-        Box::pin(async move {
-            match attempt.await {
-                Ok(socket) => {
-                    let socket: DynConnection = Box::new(socket);
-                    Ok(socket)
-                }
-                Err(error) => Err(DynConnectError::new(error)),
-            }
-        })
-    })
 }
 
 /// The settings a URL's query carries.

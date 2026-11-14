@@ -20,7 +20,7 @@ use crate::Driver;
 use crate::connector::Connector;
 
 /// A [`Driver`] whose protocol and connector are chosen at run time.
-pub type DynDriver = Driver<DynProtocol, DynConnector, DynAttempt>;
+pub type DynDriver = Driver<DynProtocol, DynConnector>;
 
 /// Any MQTT client state machine, of any protocol version, behind a box.
 pub struct DynProtocol(Box<dyn for<'bytes> MqttProtocol<'bytes, Instant> + Send>);
@@ -107,9 +107,6 @@ impl<S> Socket for S where S: AsyncRead + AsyncWrite + Send + Unpin {}
 /// The socket a [`DynConnector`] opens.
 pub type DynConnection = Box<dyn Socket>;
 
-/// A connection attempt of a [`DynConnector`].
-pub type DynAttempt = Pin<Box<dyn Future<Output = Result<DynConnection, DynConnectError>> + Send>>;
-
 /// Why a [`DynConnector`] could not open a connection: the error of the
 /// connector it erases.
 #[derive(Debug, thiserror::Error)]
@@ -126,23 +123,18 @@ impl DynConnectError {
     }
 }
 
-/// Any connector, behind a box: a function that starts a type-erased
-/// connection attempt every time it is called.
-pub struct DynConnector(Box<dyn FnMut() -> DynAttempt + Send>);
+/// Any connector, behind a box.
+pub struct DynConnector(Box<dyn ErasedConnector + Send>);
 
 impl DynConnector {
-    /// Creates a connector that calls `connect` for every attempt.
-    pub fn new<F>(connect: F) -> Self
+    /// Erases the type of `connector`, of its sockets and of its errors.
+    pub fn new<C>(connector: C) -> Self
     where
-        F: FnMut() -> DynAttempt + Send + 'static,
+        C: Connector + Send + 'static,
+        C::Connection: Send + 'static,
+        C::Error: Send + Sync,
     {
-        Self(Box::new(connect))
-    }
-
-    /// Starts a connection attempt, through which [`DynDriver`] names its
-    /// attempts.
-    fn attempt(&mut self) -> DynAttempt {
-        (self.0)()
+        Self(Box::new(connector))
     }
 }
 
@@ -156,16 +148,32 @@ impl Connector for DynConnector {
     type Connection = DynConnection;
     type Error = DynConnectError;
 
-    fn connect(&mut self) -> impl Future<Output = Result<DynConnection, DynConnectError>> + use<> {
-        self.attempt()
+    fn connect(
+        &mut self,
+    ) -> impl Future<Output = Result<DynConnection, DynConnectError>> + Send + use<> {
+        self.0.connect_dyn()
     }
 }
 
-impl DynDriver {
-    /// Creates a driver for `client` that opens every socket with
-    /// `connector`, with every type erased.
-    #[must_use]
-    pub fn new_dyn(client: DynProtocol, connector: DynConnector) -> Self {
-        Self::from_parts(client, connector, DynConnector::attempt)
+/// A connection attempt of a [`DynConnector`].
+type DynAttempt = Pin<Box<dyn Future<Output = Result<DynConnection, DynConnectError>> + Send>>;
+
+/// The dyn-compatible part of [`Connector`] that [`DynConnector`] boxes.
+trait ErasedConnector {
+    fn connect_dyn(&mut self) -> DynAttempt;
+}
+
+impl<C> ErasedConnector for C
+where
+    C: Connector + 'static,
+    C::Connection: Send + 'static,
+    C::Error: Send + Sync,
+{
+    fn connect_dyn(&mut self) -> DynAttempt {
+        let attempt = self.connect();
+        Box::pin(async move {
+            let socket: DynConnection = Box::new(attempt.await.map_err(DynConnectError::new)?);
+            Ok(socket)
+        })
     }
 }

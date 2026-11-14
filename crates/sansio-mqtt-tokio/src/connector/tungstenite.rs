@@ -77,10 +77,13 @@ pub enum TungsteniteConnectError<E> {
 impl<C> Connector for TungsteniteConnector<C>
 where
     C: Connector,
+    C::Connection: Send,
 {
     type Connection = TungsteniteConnection<C::Connection>;
     type Error = TungsteniteConnectError<C::Error>;
-    fn connect(&mut self) -> impl Future<Output = Result<Self::Connection, Self::Error>> + use<C> {
+    fn connect(
+        &mut self,
+    ) -> impl Future<Output = Result<Self::Connection, Self::Error>> + Send + use<C> {
         let socket = self.inner.connect();
         // Each handshake needs its own random Sec-WebSocket-Key.
         let request = (&self.uri).into_client_request().map(|mut request| {

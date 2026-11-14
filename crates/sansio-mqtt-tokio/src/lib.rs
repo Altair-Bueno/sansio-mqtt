@@ -20,7 +20,6 @@ pub use connect::BrokerUrlError;
 #[cfg(feature = "url")]
 pub use connect::connect;
 pub use driver::Driver;
-pub use dynamic::DynAttempt;
 pub use dynamic::DynConnectError;
 pub use dynamic::DynConnection;
 pub use dynamic::DynConnector;

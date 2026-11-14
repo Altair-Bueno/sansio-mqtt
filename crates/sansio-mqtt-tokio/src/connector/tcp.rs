@@ -25,12 +25,12 @@ impl<Address> TcpConnector<Address> {
 
 impl<Address> Connector for TcpConnector<Address>
 where
-    Address: ToSocketAddrs + Clone,
+    Address: ToSocketAddrs + Clone + Send,
 {
     type Connection = TcpStream;
     type Error = io::Error;
 
-    fn connect(&mut self) -> impl Future<Output = io::Result<TcpStream>> + use<Address> {
+    fn connect(&mut self) -> impl Future<Output = io::Result<TcpStream>> + Send + use<Address> {
         let address = self.address.clone();
         async move {
             let stream = TcpStream::connect(address).await?;

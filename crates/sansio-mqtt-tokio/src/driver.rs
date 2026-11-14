@@ -35,19 +35,13 @@ use tokio::time::sleep_until;
 /// opening the socket or waiting for CONNACK when the protocol's connect
 /// timeout elapses is abandoned and reported as
 /// [`Event::Disconnected(None)`](Event::Disconnected).
-///
-/// `Attempt` is the type of `C`'s connection attempts, the future
-/// [`Connector::connect`] returns. [`Driver::new`] infers it, so it is never
-/// written by hand; code that stores a driver stays generic over it.
-pub struct Driver<Protocol, C, Attempt = ()>
+pub struct Driver<Protocol, C>
 where
     C: Connector,
 {
     client: Protocol,
     connector: C,
-    /// [`Connector::connect`] for `C`, through which `Attempt` gets a name.
-    connect: fn(&mut C) -> Attempt,
-    connection: Connection<BufReader<C::Connection>, Attempt>,
+    connection: Connection<C>,
     /// Bytes handed out by the client that are not yet written to the socket.
     outgoing: Bytes,
     needs_flush: bool,
@@ -55,12 +49,20 @@ where
 
 /// The socket as seen by the driver. Every in-flight operation lives here so
 /// that cancelling [`Driver::next`] never loses progress.
-enum Connection<Socket, ConnectFuture> {
+enum Connection<C>
+where
+    C: Connector,
+{
     Closed,
-    Opening(Pin<Box<ConnectFuture>>),
-    Open(Socket),
-    Closing(Socket),
+    Opening(Attempt<C>),
+    Open(BufReader<C::Connection>),
+    Closing(BufReader<C::Connection>),
 }
+
+/// A connection attempt of `C`, kept across cancelled [`Driver::next`] calls.
+type Attempt<C> = Pin<
+    Box<dyn Future<Output = Result<<C as Connector>::Connection, <C as Connector>::Error>> + Send>,
+>;
 
 /// How [`Driver::drain_before`] finished.
 enum Drained {
@@ -89,46 +91,20 @@ enum ReadOutcome {
 impl<Protocol, C> Driver<Protocol, C>
 where
     Protocol: for<'bytes> MqttProtocol<'bytes, Instant>,
-    C: Connector,
+    C: Connector + 'static,
 {
     /// Creates a driver for `client` that opens every socket with
     /// `connector`.
-    pub fn new(
-        client: Protocol,
-        connector: C,
-    ) -> Driver<Protocol, C, impl Future<Output = Result<C::Connection, C::Error>>> {
-        Driver::from_parts(client, connector, C::connect)
-    }
-}
-
-impl<Protocol, C, Attempt> Driver<Protocol, C, Attempt>
-where
-    C: Connector,
-{
-    /// Creates a driver whose attempts are started by `connect`, which lets
-    /// the caller name `Attempt`.
-    pub(crate) fn from_parts(
-        client: Protocol,
-        connector: C,
-        connect: fn(&mut C) -> Attempt,
-    ) -> Self {
+    pub fn new(client: Protocol, connector: C) -> Self {
         Self {
             client,
             connector,
-            connect,
             connection: Connection::Closed,
             outgoing: Bytes::new(),
             needs_flush: false,
         }
     }
-}
 
-impl<Protocol, C, Attempt> Driver<Protocol, C, Attempt>
-where
-    Protocol: for<'bytes> MqttProtocol<'bytes, Instant>,
-    C: Connector,
-    Attempt: Future<Output = Result<C::Connection, C::Error>>,
-{
     /// Hands `command` to the client, stamped with the current instant.
     ///
     /// This performs no I/O: an accepted command only takes effect on the
@@ -302,8 +278,7 @@ where
                     matches!(self.connection, Connection::Closed),
                     "client requested a socket while one is open"
                 );
-                self.connection =
-                    Connection::Opening(Box::pin((self.connect)(&mut self.connector)));
+                self.connection = Connection::Opening(Box::pin(self.connector.connect()));
             }
             DriverAction::CloseSocket => {
                 if let Connection::Open(socket) =
@@ -386,7 +361,7 @@ where
     }
 }
 
-impl<Protocol, C, Attempt> core::fmt::Debug for Driver<Protocol, C, Attempt>
+impl<Protocol, C> core::fmt::Debug for Driver<Protocol, C>
 where
     Protocol: core::fmt::Debug,
     C: Connector,

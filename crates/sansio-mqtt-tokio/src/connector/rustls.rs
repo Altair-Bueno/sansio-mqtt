@@ -68,10 +68,13 @@ pub enum RustlsConnectError<E> {
 impl<C> Connector for RustlsConnector<C>
 where
     C: Connector,
+    C::Connection: Send,
 {
     type Connection = TlsStream<C::Connection>;
     type Error = RustlsConnectError<C::Error>;
-    fn connect(&mut self) -> impl Future<Output = Result<Self::Connection, Self::Error>> + use<C> {
+    fn connect(
+        &mut self,
+    ) -> impl Future<Output = Result<Self::Connection, Self::Error>> + Send + use<C> {
         let socket = self.inner.connect();
         let tls = self.tls.clone();
         let server_name = self.server_name.clone();

@@ -49,17 +49,18 @@ pub trait Connector {
 
     /// Starts opening a new socket.
     ///
-    /// The attempt must not borrow the connector: the driver keeps it across
-    /// cancelled [`Driver::next`](crate::Driver::next) calls.
+    /// The driver keeps the attempt across cancelled
+    /// [`Driver::next`](crate::Driver::next) calls, behind a box, so it must
+    /// neither borrow the connector nor be bound to a thread.
     fn connect(
         &mut self,
-    ) -> impl Future<Output = Result<Self::Connection, Self::Error>> + use<Self>;
+    ) -> impl Future<Output = Result<Self::Connection, Self::Error>> + Send + use<Self>;
 }
 
 impl<F, Fut, Connection, Error> Connector for F
 where
     F: FnMut() -> Fut,
-    Fut: Future<Output = Result<Connection, Error>>,
+    Fut: Future<Output = Result<Connection, Error>> + Send,
     Connection: AsyncRead + AsyncWrite + Unpin,
     Error: core::error::Error + 'static,
 {
@@ -68,7 +69,8 @@ where
 
     fn connect(
         &mut self,
-    ) -> impl Future<Output = Result<Connection, Error>> + use<F, Fut, Connection, Error> {
+    ) -> impl Future<Output = Result<Connection, Error>> + Send + use<F, Fut, Connection, Error>
+    {
         self()
     }
 }
