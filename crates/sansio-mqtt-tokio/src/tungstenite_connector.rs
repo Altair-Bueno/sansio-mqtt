@@ -28,14 +28,14 @@ use crate::Connector;
 ///
 /// Every attempt performs a fresh opening handshake for `uri`, requesting
 /// the `mqtt` subprotocol [MQTT-6.0.0-3]. The connection is a
-/// [`WebSocketConnection`].
+/// [`TungsteniteConnection`].
 #[derive(Debug, Clone)]
-pub struct WebSocketConnector<C> {
+pub struct TungsteniteConnector<C> {
     inner: C,
     uri: Uri,
 }
 
-impl<C> WebSocketConnector<C> {
+impl<C> TungsteniteConnector<C> {
     /// Creates a connector that opens a socket with `inner` and performs the
     /// WebSocket handshake for `uri` over it, e.g.
     /// `ws://broker.example:8080/mqtt`.
@@ -61,9 +61,9 @@ impl<C> WebSocketConnector<C> {
     }
 }
 
-/// Why a [`WebSocketConnector`] could not open a connection.
+/// Why a [`TungsteniteConnector`] could not open a connection.
 #[derive(Debug, thiserror::Error)]
-pub enum WebSocketConnectError<E> {
+pub enum TungsteniteConnectError<E> {
     /// The inner connector failed to open the socket the WebSocket runs
     /// over.
     #[error("failed to open the socket for the WebSocket")]
@@ -74,12 +74,12 @@ pub enum WebSocketConnectError<E> {
     Handshake(#[source] tungstenite::Error),
 }
 
-impl<C> Connector for WebSocketConnector<C>
+impl<C> Connector for TungsteniteConnector<C>
 where
     C: Connector,
 {
-    type Connection = WebSocketConnection<C::Connection>;
-    type Error = WebSocketConnectError<C::Error>;
+    type Connection = TungsteniteConnection<C::Connection>;
+    type Error = TungsteniteConnectError<C::Error>;
     fn connect(&mut self) -> impl Future<Output = Result<Self::Connection, Self::Error>> + use<C> {
         let socket = self.inner.connect();
         // Each handshake needs its own random Sec-WebSocket-Key.
@@ -90,12 +90,12 @@ where
             request
         });
         async move {
-            let request = request.map_err(WebSocketConnectError::Handshake)?;
-            let socket = socket.await.map_err(WebSocketConnectError::Transport)?;
+            let request = request.map_err(TungsteniteConnectError::Handshake)?;
+            let socket = socket.await.map_err(TungsteniteConnectError::Transport)?;
             let (stream, _response) = client_async(request, socket)
                 .await
-                .map_err(WebSocketConnectError::Handshake)?;
-            Ok(WebSocketConnection {
+                .map_err(TungsteniteConnectError::Handshake)?;
+            Ok(TungsteniteConnection {
                 stream,
                 received: Bytes::new(),
                 peer_closed: false,
@@ -113,7 +113,7 @@ where
 /// text message is an error that ends the connection [MQTT-6.0.0-1]. Every
 /// write is sent as one binary message [MQTT-6.0.0-1].
 #[derive(Debug)]
-pub struct WebSocketConnection<S> {
+pub struct TungsteniteConnection<S> {
     stream: WebSocketStream<S>,
     /// The unread rest of the last binary message.
     received: Bytes,
@@ -126,7 +126,7 @@ fn websocket_error(error: tungstenite::Error) -> io::Error {
     io::Error::other(error)
 }
 
-impl<S> AsyncRead for WebSocketConnection<S>
+impl<S> AsyncRead for TungsteniteConnection<S>
 where
     S: AsyncRead + AsyncWrite + Unpin,
 {
@@ -165,7 +165,7 @@ where
     }
 }
 
-impl<S> AsyncWrite for WebSocketConnection<S>
+impl<S> AsyncWrite for TungsteniteConnection<S>
 where
     S: AsyncRead + AsyncWrite + Unpin,
 {

@@ -1,5 +1,5 @@
 //! MQTT over a secure WebSocket (`wss://`, MQTT v5.0 §6): a
-//! [`WebSocketConnector`] over a [`TlsConnector`] over a [`TcpConnector`],
+//! [`TungsteniteConnector`] over a [`RustlsConnector`] over a [`TcpConnector`],
 //! against a loopback server with a throwaway certificate for `localhost`.
 
 extern crate alloc;
@@ -14,9 +14,9 @@ use sansio_mqtt_protocol::Command;
 use sansio_mqtt_protocol::ConnectOptions;
 use sansio_mqtt_protocol::Event;
 use sansio_mqtt_tokio::Driver;
+use sansio_mqtt_tokio::RustlsConnector;
 use sansio_mqtt_tokio::TcpConnector;
-use sansio_mqtt_tokio::TlsConnector;
-use sansio_mqtt_tokio::WebSocketConnector;
+use sansio_mqtt_tokio::TungsteniteConnector;
 use sansio_mqtt_tokio::rustls::ClientConfig;
 use sansio_mqtt_tokio::rustls::RootCertStore;
 use sansio_mqtt_tokio::rustls::ServerConfig;
@@ -78,8 +78,8 @@ async fn secure_websocket_carries_mqtt_through_tls() {
 
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let port = listener.local_addr().unwrap().port();
-    let connector = WebSocketConnector::new(
-        TlsConnector::new(
+    let connector = TungsteniteConnector::new(
+        RustlsConnector::new(
             TcpConnector::new(listener.local_addr().unwrap()),
             tls,
             ServerName::try_from("localhost").unwrap(),

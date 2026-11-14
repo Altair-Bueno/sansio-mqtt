@@ -1,4 +1,4 @@
-//! [`WebSocketConnector`] against a WebSocket server on the loopback
+//! [`TungsteniteConnector`] against a WebSocket server on the loopback
 //! interface (MQTT v5.0 §6).
 
 #![expect(
@@ -18,7 +18,7 @@ use sansio_mqtt_protocol::ConnectOptions;
 use sansio_mqtt_protocol::Event;
 use sansio_mqtt_tokio::Driver;
 use sansio_mqtt_tokio::TcpConnector;
-use sansio_mqtt_tokio::WebSocketConnector;
+use sansio_mqtt_tokio::TungsteniteConnector;
 use sansio_mqtt_v5_protocol::Client;
 use tokio::io::AsyncWriteExt as _;
 use tokio::net::TcpListener;
@@ -89,10 +89,10 @@ async fn accept_mqtt(listener: &TcpListener) -> WebSocketStream<TcpStream> {
 
 fn websocket_connector(
     listener: &TcpListener,
-) -> WebSocketConnector<TcpConnector<core::net::SocketAddr>> {
+) -> TungsteniteConnector<TcpConnector<core::net::SocketAddr>> {
     let address = listener.local_addr().unwrap();
     let uri = format!("ws://{address}/mqtt").parse().unwrap();
-    WebSocketConnector::new(TcpConnector::new(address), uri).unwrap()
+    TungsteniteConnector::new(TcpConnector::new(address), uri).unwrap()
 }
 
 /// Connects a driver while `broker` plays the server side, and returns the
@@ -225,7 +225,7 @@ async fn websocket_connector_failed_handshake_reports_disconnected() {
 fn websocket_connector_rejects_a_uri_it_cannot_connect_to() {
     let uri = "http://broker.example/mqtt".parse().unwrap();
     assert!(matches!(
-        WebSocketConnector::new(TcpConnector::new("broker.example:80"), uri),
+        TungsteniteConnector::new(TcpConnector::new("broker.example:80"), uri),
         Err(UrlError::UnsupportedUrlScheme)
     ));
 }
@@ -234,7 +234,7 @@ fn websocket_connector_rejects_a_uri_it_cannot_connect_to() {
 fn websocket_connector_rejects_a_uri_without_a_host() {
     let uri = "ws://:8080/mqtt".parse().unwrap();
     assert!(matches!(
-        WebSocketConnector::new(TcpConnector::new("127.0.0.1:8080"), uri),
+        TungsteniteConnector::new(TcpConnector::new("127.0.0.1:8080"), uri),
         Err(UrlError::EmptyHostName)
     ));
 }

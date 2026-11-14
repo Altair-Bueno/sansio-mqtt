@@ -1,6 +1,5 @@
-//! [`TlsConnector`] against a rustls server on the loopback interface, using
+//! [`RustlsConnector`] against a rustls server on the loopback interface, using
 //! a throwaway self-signed certificate for `localhost`.
-#![cfg(feature = "rustls")]
 #![expect(
     clippy::unwrap_used,
     reason = "test helpers fail the test on setup errors by design"
@@ -17,8 +16,8 @@ use sansio_mqtt_protocol::Command;
 use sansio_mqtt_protocol::ConnectOptions;
 use sansio_mqtt_protocol::Event;
 use sansio_mqtt_tokio::Driver;
+use sansio_mqtt_tokio::RustlsConnector;
 use sansio_mqtt_tokio::TcpConnector;
-use sansio_mqtt_tokio::TlsConnector;
 use sansio_mqtt_tokio::rustls::ClientConfig;
 use sansio_mqtt_tokio::rustls::RootCertStore;
 use sansio_mqtt_tokio::rustls::ServerConfig;
@@ -69,7 +68,7 @@ async fn tls_connector_delivers_connect_through_the_tls_session() {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let mut roots = RootCertStore::empty();
     roots.add(certified.cert.der().clone()).unwrap();
-    let connector = TlsConnector::new(
+    let connector = RustlsConnector::new(
         TcpConnector::new(listener.local_addr().unwrap()),
         tls_context(roots),
         ServerName::try_from("localhost").unwrap(),
@@ -95,7 +94,7 @@ async fn tls_connector_delivers_connect_through_the_tls_session() {
 async fn tls_connector_untrusted_certificate_reports_disconnected() {
     let (acceptor, _certified) = localhost_server();
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let connector = TlsConnector::new(
+    let connector = RustlsConnector::new(
         TcpConnector::new(listener.local_addr().unwrap()),
         tls_context(RootCertStore::empty()),
         ServerName::try_from("localhost").unwrap(),
@@ -129,7 +128,7 @@ async fn tls_connector_runs_over_a_connector_that_is_not_send() {
         let address = Rc::clone(&address);
         async move { TcpStream::connect(*address).await }
     };
-    let connector = TlsConnector::new(
+    let connector = RustlsConnector::new(
         not_send,
         tls_context(roots),
         ServerName::try_from("localhost").unwrap(),
@@ -153,7 +152,7 @@ async fn tls_connector_runs_over_a_connector_that_is_not_send() {
 #[test]
 fn driver_over_send_connectors_is_send() {
     fn assert_send<T: Send>(_: &T) {}
-    let connector = TlsConnector::new(
+    let connector = RustlsConnector::new(
         TcpConnector::new("localhost:8883"),
         tls_context(RootCertStore::empty()),
         ServerName::try_from("localhost").unwrap(),

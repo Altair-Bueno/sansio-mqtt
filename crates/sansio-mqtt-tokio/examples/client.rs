@@ -27,9 +27,9 @@ use sansio_mqtt_protocol::SubscribeOptions;
 use sansio_mqtt_protocol::Subscription;
 use sansio_mqtt_tokio::Connector;
 use sansio_mqtt_tokio::Driver;
+use sansio_mqtt_tokio::RustlsConnector;
 use sansio_mqtt_tokio::TcpConnector;
-use sansio_mqtt_tokio::TlsConnector;
-use sansio_mqtt_tokio::WebSocketConnector;
+use sansio_mqtt_tokio::TungsteniteConnector;
 use sansio_mqtt_tokio::rustls::ClientConfig;
 use sansio_mqtt_tokio::rustls::RootCertStore;
 use sansio_mqtt_tokio::rustls::pki_types::CertificateDer;
@@ -188,14 +188,14 @@ async fn main() -> Result<(), BoxError> {
         Transport::Tcp => run(&cli, tcp).await,
         Transport::Tls => {
             let tls =
-                TlsConnector::new(tcp, tls_context(&cli)?, ServerName::try_from(host.clone())?);
+                RustlsConnector::new(tcp, tls_context(&cli)?, ServerName::try_from(host.clone())?);
             run(&cli, tls).await
         }
-        Transport::WebSocket => run(&cli, WebSocketConnector::new(tcp, uri.clone())?).await,
+        Transport::WebSocket => run(&cli, TungsteniteConnector::new(tcp, uri.clone())?).await,
         Transport::SecureWebSocket => {
             let tls =
-                TlsConnector::new(tcp, tls_context(&cli)?, ServerName::try_from(host.clone())?);
-            run(&cli, WebSocketConnector::new(tls, uri.clone())?).await
+                RustlsConnector::new(tcp, tls_context(&cli)?, ServerName::try_from(host.clone())?);
+            run(&cli, TungsteniteConnector::new(tls, uri.clone())?).await
         }
     }
 }
